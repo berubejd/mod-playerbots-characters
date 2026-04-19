@@ -1,0 +1,279 @@
+[worldserver]
+
+#########################################
+# mod-playerbots-characters configuration
+#########################################
+
+# --------------------------------------------
+# CORE MODULE TOGGLES & DEBUGGING
+# --------------------------------------------
+
+# PBC.Enable
+#     Description: Enable or disable the module.
+#     Default:     1 (true)
+PBC.Enable = 1
+
+# PBC.DebugEnabled
+#     Description: Enables extra logging for debugging purposes.
+#                  When set to 1 (true), detailed debug information will be logged by the module.
+#                  When set to 0 (false), only standard logging is used.
+#     Default:     0 (false)
+PBC.DebugEnabled = 0
+
+# PBC.DebugShowFullPrompt
+#     Description: When enabled (1), logs the complete prompt sent to the API.
+#                  Only active when PBC.DebugEnabled is also enabled.
+#                  When disabled (0), only standard logging is used.
+#     Default:     0 (false)
+PBC.DebugShowFullPrompt = 0
+
+
+# --------------------------------------------
+# API CONNECTION
+# --------------------------------------------
+
+# PBC.BaseUrl
+#     Description: The base URL of the OpenAI-compatible API.
+#                  The module appends /chat/completions to this URL.
+#     Default:     https://api.deepseek.com/v1
+PBC.BaseUrl = https://api.deepseek.com/v1
+
+# PBC.ApiKey
+#     Description: Bearer token sent in the Authorization header.
+#                  Leave blank if your endpoint does not require authentication
+#                  (e.g. a local Ollama-compatible or LM Studio instance).
+#     Default:     (empty)
+PBC.ApiKey =
+
+# PBC.RequestTimeoutSec
+#     Description: HTTP request timeout in seconds.
+#                  Keep low — if the API is unreachable you don't want to block a thread for long.
+#     Default:     30
+PBC.RequestTimeoutSec = 30
+
+# PBC.MaxConcurrentRequests
+#     Description: Maximum number of LLM API requests that can be in-flight simultaneously.
+#                  Each request runs on a detached thread. A global semaphore enforces this cap.
+#                  When the cap is reached, new requests for that tick are silently dropped
+#                  (the event is still logged to history).
+#                  Set to 0 for no limit (not recommended on busy servers).
+#     Default:     5
+PBC.MaxConcurrentRequests = 5
+
+
+# --------------------------------------------
+# MODEL PARAMETERS
+# --------------------------------------------
+
+# PBC.Model
+#     Description: The model identifier to be used in the API request.
+#     Default:     deepseek-chat
+PBC.Model = deepseek-chat
+
+# PBC.MaxResponseLength
+#     Description: Maximum number of tokens for the model to generate.
+#                  0 = unlimited.
+#     Default:     100
+PBC.MaxResponseLength = 100
+
+# PBC.Temperature
+#     Description: Controls the "creativity" or randomness of the model's output.
+#                  Check model description to determine correct value.
+#     Example:     PBC.Temperature = 0.6
+#     Default:     1.5
+PBC.Temperature = 1.5
+
+# PBC.FrequencyPenalty
+#     Description: Number between -2.0 and 2.0.
+#                  Positive values penalize new tokens based on their existing frequency,
+#                  decreasing the model's likelihood to repeat the same line verbatim.
+#     Example:     PBC.FrequencyPenalty = 0.3
+#     Default:     0.5
+PBC.FrequencyPenalty = 0.5
+
+# PBC.PresencePenalty
+#     Description: Number between -2.0 and 2.0.
+#                  Positive values penalize new tokens based on whether they appear in the text,
+#                  increasing the model's likelihood to talk about new topics.
+#     Example:     PBC.PresencePenalty = -0.1
+#     Default:     0.2
+PBC.PresencePenalty = 0.2
+
+# PBC.MaxCtx
+#     Description: Maximum context length (in tokens) before condensation happens.
+#                  Recommended to keep it at around 25% of the total model max context.
+#     Example:     PBC.MaxCtx = 8192
+#     Default:     32768
+PBC.MaxCtx = 32768
+
+
+# --------------------------------------------
+# CHARACTER SETTINGS
+# --------------------------------------------
+
+# PBC.CharacterCardsPath
+#     Description: Path to the directory containing character cards.
+#                  This should be a relative path from the server's working directory.
+#                  The module will load all .card.txt files from this directory and activate the bots with matching names.
+#     Default:     ../../../modules/mod-playerbots-characters/characters
+PBC.CharacterCardsPath = ../../../modules/mod-playerbots-characters/characters
+
+# PBC.DefaultCharacterDescription
+#     Description: Character description used when there is no associated character card.
+#                  Supports placeholders: {char_gender}, {char_race}, {char_class}, {char_name}.
+#     Default:     "You are a {char_gender} {char_race} {char_class} named {char_name}. You are grounded in the world around you, you speak with a casual but authentic tone."
+PBC.DefaultCharacterDescription = "You are a {char_gender} {char_race} {char_class} named {char_name}. You are grounded in the world around you, you speak with a casual but authentic tone."
+
+# PBC.CharacterContext
+#     Description: Current context description appended to every prompt, always sent last.
+#                  Supports placeholders: {char_level}, {char_location}, {combat_status}, {char_group}, {char_los}.
+#                  Leave blank to disable.
+#     Default:     "Your level is {char_level}.\n{char_location}\n{scene}\n{combat_status}\n{char_group}\n{char_los}"
+PBC.CharacterContext = "{char_location}\n{scene}\n{combat_status}\n{char_group}\n{char_los}"
+
+
+# --------------------------------------------
+# PROMPTS
+# --------------------------------------------
+
+# PBC.SystemPrompt
+#     Description: System prompt content, crucial for defining what the model should do.
+#                  Leave blank for no system prompt, or enter your own.
+#     Default:
+PBC.SystemPrompt = "You are a character living in the world of Azeroth during the war against the Lich King. You have no awareness of being in a game, no knowledge of the internet, game patches, developers, or anything outside this world. You speak and think as a real inhabitant of Azeroth — a warrior, mage, rogue, or whatever your class dictates. You know the lore, the factions, the dangers, and the people of this world. You never break character. You never reference game mechanics as mechanics. You never mention World of Warcraft, Blizzard, expansions, patches, or player concepts. Respond only as your character would.\n\nYou will be presented with a description of your character, history and current context description. Your task is to continue the conversation with the reply of your character based on chat history, current context and the event that just happened. No commentary, no meta-talk, no prefix — just the reply in one single line of plain text.\n\nFor example:\n*smiling* Hello, how are you?\n\nOr just:\nHello, how are you?"
+
+# PBC.UserPrompt
+#     Description: User prompt structure sent with every reply request.
+#                  Supports placeholders: {character_card}, {chat_history}, {relationships}, {context}, {event}.
+#     Default:     "[CHARACTER DESCRIPTION]\n{character_card}\n\n[HISTORY]\n{chat_history}\n\n[RELATIONSHIPS]\n{relationships}\n\n[CURRENT CONTEXT]\n{context}\n[CURRENT EVENT]\n{event}"
+PBC.UserPrompt = "[CHARACTER DESCRIPTION]\n{character_card}\n\n[HISTORY]\n{chat_history}\n\n[RELATIONSHIPS]\n{relationships}\n\n[CURRENT CONTEXT]\n{context}\n[CURRENT EVENT]\n{event}"
+
+# PBC.CondensationSystemPrompt
+#     Description: System prompt used when total chat history reaches PBC.MaxCtx
+#                  to summarise previous events and expand the character description.
+#     Default:
+PBC.CondensationSystemPrompt = "Summarize the HISTORY so the CHARACTER DESCRIPTION could be expanded. Only output what should be added to the character description, no additional comments, no meta talk, just plain text. Be brief, but catch important things. Individual events such as location visiting or items retrieval might not be as important, unless they lead to something in particular. In general focus on your character development instead of particular events or other characters."
+
+# PBC.CondensationUserPrompt
+#     Description: User prompt used when total chat history reaches PBC.MaxCtx
+#                  to summarise previous events and expand the character description.
+#                  Supports placeholders: {character_card}, {chat_history}.
+#     Default:     "[CHARACTER DESCRIPTION]\n{character_card}\n\n[HISTORY]\n{chat_history}"
+PBC.CondensationUserPrompt = "[CHARACTER DESCRIPTION]\n{character_card}\n\n[HISTORY]\n{chat_history}"
+
+# PBC.QuestCompletionSystemPrompt
+#     Description: System prompt used for the preliminary LLM call that summarises a
+#                  completed quest into a single narrative line. The result is then used
+#                  as the [CURRENT EVENT] for each bot's normal reply prompt.
+#     Default:
+PBC.QuestCompletionSystemPrompt = "The party has completed the following quest. Please create a short description of this quest that starts with 'The party completed a task where they', followed by a quick summary of what was done. Output only the summary in one line of plain text - no comments, no formatting, no meta.\n\nFor example:\nThe party completed a task where they slew the Defias Brotherhood leader and recovered stolen goods."
+
+# PBC.QuestCompletionUserPrompt
+#     Description: User prompt for the quest-completion summary call.
+#                  See VARS.md for available placeholders.
+#     Default:     "[TITLE]\n{quest_title}\n\n[DESCRIPTION]\n{quest_description}\n\n[COMPLETION]\n{quest_reward_text}"
+PBC.QuestCompletionUserPrompt = "[TITLE]\n{quest_title}\n\n[DESCRIPTION TEXT]\n{quest_description}\n\n[COMPLETION TEXT]\n{quest_reward_text}"
+
+# PBC.RelationshipUpdateSystemPrompt
+#     Description: System prompt for the periodic relationship update LLM call.
+#                  The model is asked to update a character's opinion of another
+#                  character based on chat history.
+#     Default:     (see below)
+PBC.RelationshipUpdateSystemPrompt = "You are a character living in the world of Azeroth during the war against the Lich King. You have no awareness of being in a game, no knowledge of the internet, game patches, developers, or anything outside this world. You speak and think as a real inhabitant of Azeroth — a warrior, mage, rogue, or whatever your class dictates. You know the lore, the factions, the dangers, and the people of this world. You never break character. You never reference game mechanics as mechanics. You never mention World of Warcraft, Blizzard, expansions, patches, or player concepts. Respond only as your character would.\n\nYou will be presented with a description of your character, your character's history and your current relationship with another character. Your task is to to update the relationship description with another character based on chat history. No commentary, no meta-talk, no prefix — just the reply in one single line of plain text.\n\nFor example:\nWilliam seems to be a decent person and a competent warrior, he's been nice to me.\n\nIf the relationship info doesn't need updating or if there is just not enough history between your character and another one, simply return the same relationship description."
+
+# PBC.RelationshipUpdateUserPrompt
+#     Description: User prompt template for the relationship update LLM call.
+#                  Supports placeholders: {character_card}, {chat_history},
+#                  {relationship_target}, {target_current_relationship}.
+#     Default:     "[CHARACTER DESCRIPTION]\n{character_card}\n\n[HISTORY]\n{chat_history}\n\n[RELATIONSHIP WITH {relationship_target}]\n{target_current_relationship}"
+PBC.RelationshipUpdateUserPrompt = "[CHARACTER DESCRIPTION]\n{character_card}\n\n[HISTORY]\n{chat_history}\n\n[RELATIONSHIP WITH {relationship_target}]\n{target_current_relationship}"
+
+# PBC.RelationshipUpdateThreshold
+#     Description: Number of new mentions of a character name in a bot's history
+#                  since the last relationship update before a new update is triggered.
+#                  For example, if set to 100, a relationship update will be triggered
+#                  every 100 new occurrences of the target's name in the bot's history.
+#                  Set to 0 to disable relationship updates entirely.
+#     Default:     100
+PBC.RelationshipUpdateThreshold = 100
+
+
+# --------------------------------------------
+# REPLY CHANCES
+# --------------------------------------------
+
+# PBC.ReplyChanceWhisper
+#     Description: The percent chance (0-100) that a character would reply to whispers.
+#     Default:     100
+PBC.ReplyChanceWhisper = 100
+
+# PBC.ReplyChanceMention
+#     Description: The percent chance (0-100) that a character would reply when mentioned.
+#     Default:     100
+PBC.ReplyChanceMention = 100
+
+# PBC.ReplyChanceQuestion
+#     Description: The base percent chance (0-100) that a character would reply to a chat (non-whisper)
+#                  message containing a question mark. The chance is multiplied by the number of '?'
+#                  characters found anywhere in the message (e.g. two question marks = chance * 2),
+#                  capped at 100%.
+#                  Priority order: Whisper, Mention, Question, Message, Other.
+#     Default:     20
+PBC.ReplyChanceQuestion = 20
+
+# PBC.ReplyChanceMessage
+#     Description: The percent chance (0-100) that a character would reply to any other messages.
+#                  Don't make it too high or the characters could enter a never-ending chatter.
+#     Default:     10
+PBC.ReplyChanceMessage = 10
+
+# PBC.ReplyChanceItem
+#     Description: The percent chance (0-100) that a character would react when a group member
+#                  (or themselves) picks up a rare (blue) or higher quality item.
+#     Default:     5
+PBC.ReplyChanceItem = 5
+
+# PBC.ReplyChanceDuel
+#     Description: The percent chance (0-100) that a character would react when a group member
+#                  (or themselves) wins a duel.
+#     Default:     5
+PBC.ReplyChanceDuel = 5
+
+# PBC.ReplyChanceLevelUp
+#     Description: The percent chance (0-100) that a character would react when a group member
+#                  (or themselves) levels up.
+#     Default:     5
+PBC.ReplyChanceLevelUp = 5
+
+# PBC.ReplyChanceLocation
+#     Description: The percent chance (0-100) that a character would react when they enter
+#                  a new area (fires after 30 seconds of stability in the new location).
+#     Default:     5
+PBC.ReplyChanceLocation = 5
+
+# PBC.ReplyChanceCombat
+#     Description: The percent chance (0-100) that a character would react when they enter
+#                  combat with an enemy. Keep this very low to avoid constant chatter during fights.
+#     Default:     1
+PBC.ReplyChanceCombat = 1
+
+# PBC.ReplyChanceQuestCompletion
+#     Description: The percent chance (0-100) that each character in the party would react
+#                  when the party leader completes a quest. The LLM first generates a short
+#                  summary of the quest, then each bot independently rolls this chance to
+#                  either use the summary as their current event (and reply) or write it
+#                  directly into their history.
+#     Default:     10
+PBC.ReplyChanceQuestCompletion = 10
+
+
+# --------------------------------------------
+# BLACKLIST
+# --------------------------------------------
+
+# PBC.Blacklist
+#     Description: A comma-separated list of prefixes that should be ignored by the characters.
+#                  If a message starts with any of these prefixes, the character will not respond.
+#                  Additionally, this message won't be added to the future context.
+#     Default:
+PBC.Blacklist = items,autogear,talents,reset botAI,summon,release,revive,leave,attack,follow,flee,stay,runaway,grind,disperse,give leader,spells,cast ,quests,accept,drop,talk,reset,ss ,trainer,rti,rtsc,do ,ll ,e ,ue ,nc ,open,destroy,s ,b ,bank,gb ,u ,co ,ELVUI_VERSIONCHK,Asked,DPSMate_,LibGroupTalents,BLT,oRA3,Skada,HealBot,hbComms,questie,pfQuest,DBMv4-Ver,BWVQ3,add,remove,reset ai,report,state,help,log,stats,tank,offtank,healer,cc ,damage,boost,passive,defensive,aggressive,stay,guard,free,follow,assist,pet,stance,formation,rpg,emote,cheer,applaud,drink,eat,dance,attackers,reset instances,home,zone,who ,who,pos ,tele,grind,loot,quest,trainer,travel,teleport,homebind,unfollow,invite,uninvite,join,leave,leader,ready,release,save,update,reset talents,gear,trade,mail,ah ,ahscan,ahbid,ahbuy,ahsell,ahcancel,bag,repair,vendor,train,spells,reset spells,learn,unlearn,cast,uncast,use ,move,go ,look,stop,turn,face,wait,party,followleader,stayleader,moveleader,info,distance,debug,reset path,reset state,reset all,reset dungeon,reset raid,zone info,LHC40,RECOUNT,GTFO_v,Altoholic,DS_,DataStore
