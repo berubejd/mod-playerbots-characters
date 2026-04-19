@@ -117,16 +117,16 @@ static std::string TimeOfDayLabel()
     struct tm* t = gmtime(&rawTime);
     int hour = t ? t->tm_hour : 12;
 
-    if (hour >= 0  && hour < 2)  return "night";
-    if (hour >= 2  && hour < 4)  return "late night";
-    if (hour >= 4  && hour < 6)  return "early morning";
-    if (hour >= 6  && hour < 8)  return "morning";
-    if (hour >= 8  && hour < 10) return "late morning";
-    if (hour >= 10 && hour < 12) return "noon";
-    if (hour >= 12 && hour < 14) return "afternoon";
-    if (hour >= 14 && hour < 16) return "late afternoon";
-    if (hour >= 16 && hour < 18) return "early evening";
-    if (hour >= 18 && hour < 20) return "evening";
+    if (hour >= 0  && hour < 2)  return "early night";
+    if (hour >= 2  && hour < 4)  return "night";
+    if (hour >= 4  && hour < 6)  return "late night";
+    if (hour >= 6  && hour < 8)  return "early morning";
+    if (hour >= 8  && hour < 10) return "morning";
+    if (hour >= 10 && hour < 12) return "late morning";
+    if (hour >= 12 && hour < 14) return "noon";
+    if (hour >= 14 && hour < 16) return "afternoon";
+    if (hour >= 16 && hour < 18) return "late afternoon";
+    if (hour >= 18 && hour < 20) return "early evening";
     if (hour >= 20 && hour < 22) return "late evening";
     return "early night";
 }
@@ -194,6 +194,54 @@ static std::string RoleStr(Player* bot)
         case CLASS_DRUID:        return "druid";
         default:                 return "adventurer";
     }
+}
+
+// ---------------------------------------------------------------------------
+// BuildGroupStatusStr  (main-thread only)
+//
+// Returns the {char_group} string for the given bot, reflecting the party
+// leader first (as "Commander") followed by the remaining members.
+// ---------------------------------------------------------------------------
+
+static std::string BuildGroupStatusStr(Player* bot)
+{
+    if (!bot) return "You are not currently in a group.";
+
+    Group* grp = bot->GetGroup();
+    if (!grp) return "You are not currently in a group.";
+
+    ObjectGuid leaderGuid = grp->GetLeaderGUID();
+
+    auto memberInfo = [](Player* member) -> std::string {
+        return member->GetName()
+             + " (" + GenderStr(member->getGender())
+             + " " + RaceStr(member->getRace())
+             + " " + ClassStr(member->getClass()) + ")";
+    };
+
+    std::string leaderStr;
+    std::string members;
+    for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || member == bot || !member->IsInWorld()) continue;
+        if (member->GetGUID() == leaderGuid)
+            leaderStr = memberInfo(member);
+        else
+        {
+            if (!members.empty()) members += ", ";
+            members += memberInfo(member);
+        }
+    }
+
+    if (leaderStr.empty() && members.empty())
+        return "You are currently in a group.";
+    if (leaderStr.empty())
+        return "You are currently in a group with the following members: " + members + ".";
+    if (members.empty())
+        return "You are currently in a group led by " + leaderStr + ".";
+    return "You are currently in a group led by " + leaderStr
+         + " with the following members: " + members + ".";
 }
 
 // ---------------------------------------------------------------------------
@@ -280,25 +328,7 @@ std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot, const std::
         Replace("combat_status", combatStr);
 
         // Group status
-        std::string groupStr = "You are not currently in a group.";
-        if (Group* grp = bot->GetGroup())
-        {
-            std::string members;
-            for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
-            {
-                Player* member = ref->GetSource();
-                if (!member || member == bot || !member->IsInWorld()) continue;
-                if (!members.empty()) members += ", ";
-                members += member->GetName()
-                         + " (" + GenderStr(member->getGender())
-                         + " " + RaceStr(member->getRace())
-                         + " " + ClassStr(member->getClass()) + ")";
-            }
-            groupStr = members.empty()
-                ? "You are currently in a group."
-                : "You are currently in a group with " + members + ".";
-        }
-        Replace("char_group", groupStr);
+        Replace("char_group", BuildGroupStatusStr(bot));
 
         auto NaturalList = [](const std::vector<std::string>& items) -> std::string
         {
@@ -526,24 +556,7 @@ PBC_BotSnapshot PBC_SnapshotBot(Player* bot)
     }
 
     // Group status
-    snap.charGroup = "You are not currently in a group.";
-    if (Group* grp = bot->GetGroup())
-    {
-        std::string members;
-        for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
-        {
-            Player* member = ref->GetSource();
-            if (!member || member == bot || !member->IsInWorld()) continue;
-            if (!members.empty()) members += ", ";
-            members += member->GetName()
-                     + " (" + (member->getGender() == GENDER_FEMALE ? "female" : "male")
-                     + " " + RaceStr(member->getRace())
-                     + " " + ClassStr(member->getClass()) + ")";
-        }
-        snap.charGroup = members.empty()
-            ? "You are currently in a group."
-            : "You are currently in a group with " + members + ".";
-    }
+    snap.charGroup = BuildGroupStatusStr(bot);
 
     // Line-of-sight
     {
