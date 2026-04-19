@@ -20,6 +20,7 @@
 extern bool     g_PBC_Enable;
 extern bool     g_PBC_DebugEnabled;
 extern bool     g_PBC_DebugShowFullPrompt;
+extern bool     g_PBC_DisplayNarratorEvents;
 
 // ---------------------------------------------------------------------------
 // LLM API connection
@@ -36,7 +37,8 @@ extern int         g_PBC_RequestTimeoutSec;
 // ---------------------------------------------------------------------------
 // Context / condensation
 // ---------------------------------------------------------------------------
-extern uint32_t    g_PBC_MaxCtx;           // token budget before condensation triggers
+extern uint32_t    g_PBC_MaxCtx;                    // token budget before condensation triggers
+extern uint32_t    g_PBC_CondensationPreservedLines; // history lines kept after condensation
 
 // ---------------------------------------------------------------------------
 // Prompt templates
@@ -73,7 +75,7 @@ extern uint32_t g_PBC_ReplyChanceItem;
 extern uint32_t g_PBC_ReplyChanceDuel;
 extern uint32_t g_PBC_ReplyChanceLevelUp;
 extern uint32_t g_PBC_ReplyChanceLocation;
-extern uint32_t g_PBC_ReplyChanceCombat;
+extern uint32_t g_PBC_ReplyChanceBossKill;
 extern uint32_t g_PBC_ReplyChanceQuestCompletion;
 
 // ---------------------------------------------------------------------------

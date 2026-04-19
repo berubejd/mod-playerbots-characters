@@ -27,6 +27,7 @@
 bool     g_PBC_Enable              = true;
 bool     g_PBC_DebugEnabled        = false;
 bool     g_PBC_DebugShowFullPrompt = false;
+bool     g_PBC_DisplayNarratorEvents = true;
 
 std::string g_PBC_BaseUrl          = "https://api.deepseek.com/v1";
 std::string g_PBC_ApiKey           = "";
@@ -37,7 +38,8 @@ double      g_PBC_FrequencyPenalty = 0.5;
 double      g_PBC_PresencePenalty  = 0.2;
 int         g_PBC_RequestTimeoutSec = 30;
 
-uint32_t    g_PBC_MaxCtx           = 32768;
+uint32_t    g_PBC_MaxCtx                    = 32768;
+uint32_t    g_PBC_CondensationPreservedLines = 50;
 
 std::string g_PBC_SystemPrompt;
 std::string g_PBC_UserPrompt;
@@ -60,7 +62,7 @@ uint32_t g_PBC_ReplyChanceItem     = 5;
 uint32_t g_PBC_ReplyChanceDuel     = 5;
 uint32_t g_PBC_ReplyChanceLevelUp  = 5;
 uint32_t g_PBC_ReplyChanceLocation        = 5;
-uint32_t g_PBC_ReplyChanceCombat          = 1;
+uint32_t g_PBC_ReplyChanceBossKill        = 35;
 uint32_t g_PBC_ReplyChanceQuestCompletion = 10;
 
 std::string g_PBC_QuestCompletionSystemPrompt;
@@ -143,7 +145,7 @@ static void PBC_CondenseInline(PBC_BotSnapshot& snap,
         LOG_INFO("server.loading", "[PBC] CondenseInline: bot={} history_lines={}", snap.botName, snap.history.size());
 
     std::string userPrompt = PBC_BuildCondensationPromptFromSnapshot(snap, userPromptTmpl);
-    PBC_LLMResult res = PBC_CallLLM(sysPrompt, userPrompt);
+    PBC_LLMResult res = PBC_CallLLM(sysPrompt, userPrompt, /*maxTokensOverride=*/-1);
 
     if (!res.success || res.text.empty())
     {
@@ -158,8 +160,8 @@ static void PBC_CondenseInline(PBC_BotSnapshot& snap,
     }
     DB_InsertCardAddition(snap.botGuidRaw, res.text);
 
-    // Keep only the last 10 lines as the tail
-    static constexpr size_t kTailLines = 10;
+    // Keep only the last N lines as the tail (configured via PBC.CondensationPreservedLines)
+    const size_t kTailLines = static_cast<size_t>(g_PBC_CondensationPreservedLines);
     std::deque<std::string> tail;
     for (size_t i = snap.history.size() > kTailLines ? snap.history.size() - kTailLines : 0;
          i < snap.history.size(); ++i)
@@ -242,34 +244,25 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     // -----------------------------------------------------------------------
     if (ev.type == PBC_EventType::Condensation)
     {
+        // Capture the full history snapshot BEFORE condensation truncates it
+        // so the relationship LLM calls have complete context.
+        std::deque<std::string> preCondensationHistory = ev.condensationBot.history;
+
         PBC_CondenseInline(ev.condensationBot, condenseSysPrompt, condenseUsrTmpl);
 
-        // After condensation, push relationship update events for party members
-        // that have reached the mention threshold in the pre-condensation history.
-        // This ensures relationship data is not lost when history is cleared.
+        // Condensation is always a trigger for relationship updates for all party
+        // members — no threshold check needed here.  The history is about to be
+        // wiped, so we must capture relationships now before that context is gone.
+        // We pass mention_count=0 to reset the baseline; the normal threshold
+        // tracking will accumulate fresh counts from the new post-condensation history.
         {
             const PBC_BotSnapshot& snap = ev.condensationBot;
-            if (g_PBC_RelationshipUpdateThreshold > 0 &&
-                !g_PBC_RelationshipUpdateSystemPrompt.empty() &&
+            if (!g_PBC_RelationshipUpdateSystemPrompt.empty() &&
                 !g_PBC_RelationshipUpdateUserPrompt.empty() &&
                 !snap.partyMemberNames.empty())
             {
                 for (const auto& memberName : snap.partyMemberNames)
                 {
-                    // Count total mentions in the snapshot history (pre-condensation).
-                    uint32_t total = 0;
-                    for (const auto& line : snap.history)
-                    {
-                        size_t pos = 0;
-                        while ((pos = line.find(memberName, pos)) != std::string::npos)
-                        {
-                            ++total;
-                            pos += memberName.size();
-                        }
-                    }
-
-                    // Read last update info from the in-memory map.
-                    uint32_t lastCount = 0;
                     std::string currentRel;
                     {
                         std::lock_guard<std::mutex> lk(g_PBC_RelationshipsMutex);
@@ -278,31 +271,32 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
                         {
                             auto tgtIt = botIt->second.find(memberName);
                             if (tgtIt != botIt->second.end())
-                            {
-                                lastCount  = tgtIt->second.mentionCountAtLastUpdate;
                                 currentRel = tgtIt->second.text;
-                            }
                         }
                     }
-
-                    if (total < lastCount) lastCount = 0;
-                    uint32_t newMentions = total - lastCount;
-                    if (newMentions < g_PBC_RelationshipUpdateThreshold) continue;
-
                     if (currentRel.empty())
                         currentRel = "I don't know much about " + memberName + ".";
 
+                    // Use the pre-condensation history so the LLM has full context.
+                    PBC_BotSnapshot relSnap = snap;
+                    relSnap.history = preCondensationHistory;
+
                     PBC_EventItem relEv;
                     relEv.type                       = PBC_EventType::RelationshipUpdate;
-                    relEv.relationshipBot            = snap;
+                    relEv.relationshipBot            = std::move(relSnap);
                     relEv.relationshipTargetName     = memberName;
-                    relEv.relationshipTargetInfo     = memberName;
+                    relEv.relationshipTargetInfo     = PBC_BuildTargetInfo(memberName);
                     relEv.relationshipCurrentText    = currentRel;
-                    relEv.relationshipMentionTotal   = total;
+                    relEv.relationshipMentionTotal   = 0; // reset baseline for post-condensation tracking
                     relEv.relationshipSystemPrompt   = g_PBC_RelationshipUpdateSystemPrompt;
                     relEv.relationshipUserPromptTmpl = g_PBC_RelationshipUpdateUserPrompt;
 
                     PBC_PushEvent(std::move(relEv));
+
+                    if (g_PBC_DebugEnabled)
+                        LOG_INFO("server.loading",
+                                 "[PBC] Condensation: queuing relationship update for bot={} target={}",
+                                 snap.botName, memberName);
                 }
             }
         }
@@ -365,7 +359,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         ReplaceInPrompt("relationship_target",         ev.relationshipTargetInfo);
         ReplaceInPrompt("target_current_relationship", ev.relationshipCurrentText);
 
-        PBC_LLMResult res = PBC_CallLLM(ev.relationshipSystemPrompt, userPrompt);
+        PBC_LLMResult res = PBC_CallLLM(ev.relationshipSystemPrompt, userPrompt, /*maxTokensOverride=*/-1);
 
         if (!res.success || res.text.empty())
         {
@@ -717,7 +711,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
                 relEv.type                       = PBC_EventType::RelationshipUpdate;
                 relEv.relationshipBot            = std::move(relSnap);
                 relEv.relationshipTargetName     = memberName;
-                relEv.relationshipTargetInfo     = memberName;
+                relEv.relationshipTargetInfo     = PBC_BuildTargetInfo(memberName);
                 relEv.relationshipCurrentText    = currentRel;
                 // Pass the current total so the handler can persist it.
                 relEv.relationshipMentionTotal   = total;
@@ -746,6 +740,7 @@ void PBC_LoadConfig()
     g_PBC_Enable              = sConfigMgr->GetOption<bool>("PBC.Enable", true);
     g_PBC_DebugEnabled        = sConfigMgr->GetOption<bool>("PBC.DebugEnabled", false);
     g_PBC_DebugShowFullPrompt = sConfigMgr->GetOption<bool>("PBC.DebugShowFullPrompt", false);
+    g_PBC_DisplayNarratorEvents = sConfigMgr->GetOption<bool>("PBC.DisplayNarratorEvents", true);
 
     g_PBC_BaseUrl             = sConfigMgr->GetOption<std::string>("PBC.BaseUrl", "https://api.deepseek.com/v1");
     g_PBC_ApiKey              = sConfigMgr->GetOption<std::string>("PBC.ApiKey", "");
@@ -756,7 +751,8 @@ void PBC_LoadConfig()
     g_PBC_PresencePenalty     = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.PresencePenalty", 0.2f)) * 100.0) / 100.0;
     g_PBC_RequestTimeoutSec   = sConfigMgr->GetOption<int>("PBC.RequestTimeoutSec", 30);
 
-    g_PBC_MaxCtx              = sConfigMgr->GetOption<uint32_t>("PBC.MaxCtx", 32768);
+    g_PBC_MaxCtx                     = sConfigMgr->GetOption<uint32_t>("PBC.MaxCtx", 32768);
+    g_PBC_CondensationPreservedLines = sConfigMgr->GetOption<uint32_t>("PBC.CondensationPreservedLines", 50);
 
     g_PBC_SystemPrompt              = sConfigMgr->GetOption<std::string>("PBC.SystemPrompt", "");
     g_PBC_UserPrompt                = sConfigMgr->GetOption<std::string>("PBC.UserPrompt", "");
@@ -776,7 +772,7 @@ void PBC_LoadConfig()
     g_PBC_ReplyChanceDuel     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceDuel", 5);
     g_PBC_ReplyChanceLevelUp  = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLevelUp", 5);
     g_PBC_ReplyChanceLocation        = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLocation", 5);
-    g_PBC_ReplyChanceCombat          = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceCombat", 1);
+    g_PBC_ReplyChanceBossKill        = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceBossKill", 35);
     g_PBC_ReplyChanceQuestCompletion = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestCompletion", 10);
 
     g_PBC_QuestCompletionSystemPrompt = sConfigMgr->GetOption<std::string>("PBC.QuestCompletionSystemPrompt", "");
@@ -792,14 +788,14 @@ void PBC_LoadConfig()
     LOG_INFO("server.loading",
         "[PBC] Config: Enable={} Model='{}' Url='{}' MaxCtx={} Timeout={}s "
         "Chances: Whisper={}% Mention={}% Question={}% Message={}% "
-        "Item={}% Duel={}% LevelUp={}% Location={}% Combat={}% QuestCompletion={}%",
+        "Item={}% Duel={}% LevelUp={}% Location={}% BossKill={}% QuestCompletion={}%",
         g_PBC_Enable, g_PBC_Model, g_PBC_BaseUrl, g_PBC_MaxCtx,
         g_PBC_RequestTimeoutSec,
         g_PBC_ReplyChanceWhisper, g_PBC_ReplyChanceMention,
         g_PBC_ReplyChanceQuestion, g_PBC_ReplyChanceMessage,
         g_PBC_ReplyChanceItem,
         g_PBC_ReplyChanceDuel, g_PBC_ReplyChanceLevelUp, g_PBC_ReplyChanceLocation,
-        g_PBC_ReplyChanceCombat, g_PBC_ReplyChanceQuestCompletion);
+        g_PBC_ReplyChanceBossKill, g_PBC_ReplyChanceQuestCompletion);
 }
 
 // ---------------------------------------------------------------------------
@@ -1251,8 +1247,27 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             g_PBC_EventThreadDone.store(false);
 
             if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type={} event=\"{}\"",
-                         static_cast<int>(nextEvent.type), nextEvent.eventLine);
+            {
+                switch (nextEvent.type)
+                {
+                    case PBC_EventType::Normal:
+                    case PBC_EventType::QuestSummarization:
+                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type={} event=\"{}\"",
+                                 static_cast<int>(nextEvent.type), nextEvent.eventLine);
+                        break;
+                    case PBC_EventType::Condensation:
+                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type=Condensation bot=\"{}\"",
+                                 nextEvent.condensationBot.botName);
+                        break;
+                    case PBC_EventType::HistoryReload:
+                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type=HistoryReload");
+                        break;
+                    case PBC_EventType::RelationshipUpdate:
+                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type=RelationshipUpdate bot=\"{}\" target=\"{}\"",
+                                 nextEvent.relationshipBot.botName, nextEvent.relationshipTargetName);
+                        break;
+                }
+            }
 
             std::thread([ev = std::move(nextEvent)]() mutable {
                 PBC_ProcessEventItem(std::move(ev));
@@ -1382,7 +1397,8 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                                 eventLine,
                                 histLine,
                                 g_PBC_ReplyChanceLocation,
-                                /*skipHistoryIfSilent=*/true);
+                                /*skipHistoryIfSilent=*/true,
+                                /*notifyRealPlayers=*/false);
                         }
                     }
                 }

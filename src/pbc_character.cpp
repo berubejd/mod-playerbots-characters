@@ -290,8 +290,7 @@ std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot, const std::
                 if (!member || member == bot || !member->IsInWorld()) continue;
                 if (!members.empty()) members += ", ";
                 members += member->GetName()
-                         + " (lvl " + std::to_string(member->GetLevel())
-                         + " " + GenderStr(member->getGender())
+                         + " (" + GenderStr(member->getGender())
                          + " " + RaceStr(member->getRace())
                          + " " + ClassStr(member->getClass()) + ")";
             }
@@ -537,8 +536,7 @@ PBC_BotSnapshot PBC_SnapshotBot(Player* bot)
             if (!member || member == bot || !member->IsInWorld()) continue;
             if (!members.empty()) members += ", ";
             members += member->GetName()
-                     + " (lvl " + std::to_string(member->GetLevel())
-                     + " " + (member->getGender() == GENDER_FEMALE ? "female" : "male")
+                     + " (" + (member->getGender() == GENDER_FEMALE ? "female" : "male")
                      + " " + RaceStr(member->getRace())
                      + " " + ClassStr(member->getClass()) + ")";
         }
@@ -636,32 +634,55 @@ PBC_BotSnapshot PBC_SnapshotBot(Player* bot)
 }
 
 // ---------------------------------------------------------------------------
+// PBC_BuildTargetInfo  (main-thread only; safe to call from event thread as
+// a read-only ObjectAccessor pass if called carefully, but here we assume
+// it is called from the event thread where we do a best-effort lookup via
+// ObjectAccessor::FindPlayerByName which is thread-safe for reads).
+//
+// Returns e.g. "JOHN, MALE TAUREN SHAMAN" if the player is online,
+// or just "JOHN" as a fallback.
+// ---------------------------------------------------------------------------
+
+std::string PBC_BuildTargetInfo(const std::string& name)
+{
+    // Upper-case the name
+    std::string upper = name;
+    std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+
+    Player* p = ObjectAccessor::FindPlayerByName(name);
+    if (!p)
+        return upper;
+
+    std::string gender = p->getGender() == GENDER_FEMALE ? "FEMALE" : "MALE";
+    std::string race   = RaceStr(p->getRace());
+    std::transform(race.begin(), race.end(), race.begin(), ::toupper);
+    std::string cls    = ClassStr(p->getClass());
+    std::transform(cls.begin(), cls.end(), cls.begin(), ::toupper);
+
+    return upper + ", " + gender + " " + race + " " + cls;
+}
+
+// ---------------------------------------------------------------------------
 // PBC_GetRelationshipsBlock  (thread-safe)
 //
 // Builds the [RELATIONSHIPS] text block for a bot's user prompt.
+// Every entry uses the format:
+//   "Your relationship with <name>: <description>"
 //
-// If the bot is NOT in a group with a real player (whisper scenario),
-// returns a single line: "You don't know much about <targetName>."
-// where targetName is the whisper partner stored in snap.whisperTargetName.
+// Two scenarios:
 //
-// If the bot IS in a group with a real player, returns one line per party
-// member (excluding the bot itself) using the stored relationship text or
-// the default "I don't know much about X." fallback.
+// 1. Bot is NOT in a group with a real player (hasRealPlayerInGroup == false):
+//    Only the whispering player's relationship line is emitted (or the
+//    fallback if they are unknown).
+//
+// 2. Bot IS in a group with a real player (hasRealPlayerInGroup == true):
+//    One line per party member (excluding this bot). If the whisper target
+//    is not already a party member (i.e. an outside player whispering in),
+//    their relationship line is appended as well.
 // ---------------------------------------------------------------------------
 
 std::string PBC_GetRelationshipsBlock(const PBC_BotSnapshot& snap)
 {
-    if (!snap.hasRealPlayerInGroup)
-    {
-        // Single-bot scenario: only mention the whisper target if known.
-        if (!snap.whisperTargetName.empty())
-            return "You don't know much about " + snap.whisperTargetName + ".";
-        return "";
-    }
-
-    if (snap.partyMemberNames.empty())
-        return "";
-
     // Read all relationship entries for this bot under a single lock.
     std::unordered_map<std::string, std::string> relTexts;
     {
@@ -674,14 +695,45 @@ std::string PBC_GetRelationshipsBlock(const PBC_BotSnapshot& snap)
         }
     }
 
+    auto emitRelationship = [&](std::ostringstream& oss, const std::string& name)
+    {
+        auto it = relTexts.find(name);
+        if (it != relTexts.end() && !it->second.empty())
+            oss << "Your relationship with " << name << ": " << it->second << "\n";
+        else
+            oss << "Your relationship with " << name << ": I don't know much about them.\n";
+    };
+
+    if (!snap.hasRealPlayerInGroup)
+    {
+        // Solo whisper: only emit the relationship with the whispering player.
+        if (snap.whisperTargetName.empty())
+            return "";
+
+        std::ostringstream oss;
+        emitRelationship(oss, snap.whisperTargetName);
+        std::string result = oss.str();
+        if (!result.empty() && result.back() == '\n')
+            result.pop_back();
+        return result;
+    }
+
+    // Group scenario: emit one line per party member.
+    if (snap.partyMemberNames.empty() && snap.whisperTargetName.empty())
+        return "";
+
     std::ostringstream oss;
     for (const auto& memberName : snap.partyMemberNames)
+        emitRelationship(oss, memberName);
+
+    // If the whisper came from a player outside the group, add them too.
+    if (!snap.whisperTargetName.empty())
     {
-        auto it = relTexts.find(memberName);
-        if (it != relTexts.end() && !it->second.empty())
-            oss << it->second << "\n";
-        else
-            oss << "I don't know much about " << memberName << ".\n";
+        bool alreadyListed = std::find(snap.partyMemberNames.begin(),
+                                       snap.partyMemberNames.end(),
+                                       snap.whisperTargetName) != snap.partyMemberNames.end();
+        if (!alreadyListed)
+            emitRelationship(oss, snap.whisperTargetName);
     }
 
     std::string result = oss.str();

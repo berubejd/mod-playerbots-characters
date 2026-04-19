@@ -15,7 +15,7 @@ These variables could be used anywhere, including character cards. It's recommen
 - `{scene}` - human-readable description of the current time of day, and weather if `mod_weather_vibe` is active, for example "It is currently evening." or "It's currently evening and it's raining lightly."
 - `{char_los}` - human-readable list of nearby characters and NPCs visible to the bot, for example "You see John, Jane and Defias Bandit nearby." or "You see Defias Bandit nearby."
 - `{combat_status}` - dynamic combat status, could be "You are not currently in combat." or "You are currently in combat.", or even "You are currently fighting Archimonde.", based on current target
-- `{char_group}` - dynamic group status, could be "You are not currently in a group." or "You are currently in a group with John (lvl 10 Tauren Druid), Jane (lvl 11 Troll Rogue) and Kevin (level 10 Blood Elf Paladin)
+- `{char_group}` - dynamic group status, could be "You are not currently in a group." or "You are currently in a group with John (male Tauren Druid), Jane (female Troll Rogue) and Kevin (male Blood Elf Paladin)."
 
 ## Special Variables
 

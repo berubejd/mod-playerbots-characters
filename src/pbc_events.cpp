@@ -5,6 +5,7 @@
 #include "Log.h"
 #include "Player.h"
 #include "Creature.h"
+#include "Map.h"
 #include "Item.h"
 #include "Group.h"
 #include "ObjectAccessor.h"
@@ -13,6 +14,8 @@
 #include "SharedDefines.h"
 #include "ObjectMgr.h"
 #include "QuestDef.h"
+#include "Chat.h"
+#include "DBCStores.h"
 
 #include <cstdlib>
 #include <algorithm>
@@ -60,6 +63,40 @@ static std::string SanitizeChatMessage(const std::string& msg)
 
 std::string PBC_MakeEventLine(const std::string& text) { return "*" + text + "*"; }
 std::string PBC_MakeHistLine(const std::string& text)  { return "Narrator: *" + text + "*"; }
+
+// ---------------------------------------------------------------------------
+// PBC_NotifyRealPlayersInGroup
+//
+// Sends the current event text as a system message to all real (non-bot)
+// players in the same group as 'anchor'.  Called at event dispatch time
+// when PBC.DisplayNarratorEvents is enabled, before bots process the event.
+// For bot anchors (e.g. location events) the function walks the bot's group
+// so real players in that group still receive the notification.
+// ---------------------------------------------------------------------------
+static void PBC_NotifyRealPlayersInGroup(Player* anchor, const std::string& eventLine)
+{
+    if (!g_PBC_DisplayNarratorEvents) return;
+    if (!PBC_PTR_VALID(anchor) || eventLine.empty()) return;
+
+    auto sendTo = [&](Player* p)
+    {
+        if (!PBC_PTR_VALID(p) || !p->IsInWorld()) return;
+        WorldSession* sess = p->GetSession();
+        if (!PBC_PTR_VALID(sess) || sess->IsBot()) return;
+        ChatHandler(sess).SendSysMessage(eventLine);
+    };
+
+    Group* grp = anchor->GetGroup();
+    if (grp)
+    {
+        for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+            sendTo(ref->GetSource());
+    }
+    else
+    {
+        sendTo(anchor);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -184,7 +221,8 @@ static PBC_EventItem BuildBotEvent(const std::vector<Player*>& bots,
 // ---------------------------------------------------------------------------
 
 void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
-                             const std::string& histLine, uint32_t chance)
+                             const std::string& histLine, uint32_t chance,
+                             bool notifyRealPlayers)
 {
     if (!PBC_PTR_VALID(anchor)) return;
 
@@ -198,6 +236,9 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
             LOG_INFO("server.loading", "[PBC] DispatchGroupEvent: skipped — no real player in group (anchor={})", anchor->GetName());
         return;
     }
+
+    if (notifyRealPlayers)
+        PBC_NotifyRealPlayersInGroup(anchor, eventLine);
 
     auto bots = FindGroupBots(anchor);
     if (bots.empty() && !anchorIsBot) return;
@@ -224,9 +265,13 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
 
 void PBC_DispatchBotEvent(Player* bot, const std::string& eventLine,
                           const std::string& histLine, uint32_t chance,
-                          bool skipHistoryIfSilent)
+                          bool skipHistoryIfSilent,
+                          bool notifyRealPlayers)
 {
     if (!PBC_PTR_VALID(bot)) return;
+
+    if (notifyRealPlayers)
+        PBC_NotifyRealPlayersInGroup(bot, eventLine);
 
     if (g_PBC_DebugEnabled)
         LOG_INFO("server.loading", "[PBC] DispatchBotEvent: bot={} chance={}% event=\"{}\"",
@@ -412,7 +457,7 @@ PBC_PlayerEvents::PBC_PlayerEvents() : PlayerScript("PBC_PlayerEvents",
     PLAYERHOOK_ON_STORE_NEW_ITEM,
     PLAYERHOOK_ON_DUEL_END,
     PLAYERHOOK_ON_LEVEL_CHANGED,
-    PLAYERHOOK_ON_PLAYER_ENTER_COMBAT,
+    PLAYERHOOK_ON_CREATURE_KILL,
     PLAYERHOOK_ON_PLAYER_COMPLETE_QUEST,
 }) {}
 
@@ -437,6 +482,68 @@ bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 la
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Item quality / weapon-type helpers (used by OnPlayerStoreNewItem)
+// ---------------------------------------------------------------------------
+
+static std::string ItemQualityStr(uint32 quality)
+{
+    switch (quality)
+    {
+        case ITEM_QUALITY_UNCOMMON: return "uncommon";
+        case ITEM_QUALITY_RARE:     return "rare";
+        case ITEM_QUALITY_EPIC:     return "epic";
+        case ITEM_QUALITY_LEGENDARY:return "legendary";
+        case ITEM_QUALITY_ARTIFACT: return "artifact";
+        case ITEM_QUALITY_HEIRLOOM: return "heirloom";
+        default:                    return "rare";
+    }
+}
+
+static std::string WeaponTypeStr(uint32 subClass)
+{
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_WEAPON_AXE:      return "one-handed axe";
+        case ITEM_SUBCLASS_WEAPON_AXE2:     return "two-handed axe";
+        case ITEM_SUBCLASS_WEAPON_BOW:      return "bow";
+        case ITEM_SUBCLASS_WEAPON_GUN:      return "gun";
+        case ITEM_SUBCLASS_WEAPON_MACE:     return "one-handed mace";
+        case ITEM_SUBCLASS_WEAPON_MACE2:    return "two-handed mace";
+        case ITEM_SUBCLASS_WEAPON_POLEARM:  return "polearm";
+        case ITEM_SUBCLASS_WEAPON_SWORD:    return "one-handed sword";
+        case ITEM_SUBCLASS_WEAPON_SWORD2:   return "two-handed sword";
+        case ITEM_SUBCLASS_WEAPON_STAFF:    return "staff";
+        case ITEM_SUBCLASS_WEAPON_FIST:     return "fist weapon";
+        case ITEM_SUBCLASS_WEAPON_DAGGER:   return "dagger";
+        case ITEM_SUBCLASS_WEAPON_THROWN:   return "thrown weapon";
+        case ITEM_SUBCLASS_WEAPON_CROSSBOW: return "crossbow";
+        case ITEM_SUBCLASS_WEAPON_WAND:     return "wand";
+        case ITEM_SUBCLASS_WEAPON_SPEAR:    return "spear";
+        default:                            return "weapon";
+    }
+}
+
+// Returns "a" or "an" based on the first character of the word that follows.
+static const char* ArticleFor(const std::string& word)
+{
+    if (word.empty()) return "a";
+    char c = static_cast<char>(std::tolower(static_cast<unsigned char>(word[0])));
+    return (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u') ? "an" : "a";
+}
+
+// Builds a phrase like "a legendary two-handed mace" or "an epic item".
+static std::string BuildItemPhrase(ItemTemplate const* tmpl)
+{
+    std::string quality = ItemQualityStr(tmpl->Quality);
+    std::string type;
+    if (tmpl->Class == ITEM_CLASS_WEAPON)
+        type = WeaponTypeStr(tmpl->SubClass);
+    else
+        type = "item";
+    return std::string(ArticleFor(quality)) + " " + quality + " " + type;
+}
+
 void PBC_PlayerEvents::OnPlayerStoreNewItem(Player* player, Item* item, uint32 /*count*/)
 {
     if (!g_PBC_Enable) return;
@@ -445,10 +552,13 @@ void PBC_PlayerEvents::OnPlayerStoreNewItem(Player* player, Item* item, uint32 /
     ItemTemplate const* tmpl = item->GetTemplate();
     if (!tmpl || tmpl->Quality < ITEM_QUALITY_RARE) return;
 
-    std::string itemName = tmpl->Name1;
+    std::string itemName  = tmpl->Name1;
+    std::string phrase    = BuildItemPhrase(tmpl);
+    std::string playerName = player->GetName();
+
     PBC_DispatchGroupEvent(player,
-        PBC_MakeEventLine(player->GetName() + " is picking up [" + itemName + "]"),
-        PBC_MakeHistLine(player->GetName() + " picked up [" + itemName + "]"),
+        PBC_MakeEventLine(playerName + " is picking up " + phrase + " called " + itemName),
+        PBC_MakeHistLine(playerName + " picked up " + phrase + " called " + itemName),
         g_PBC_ReplyChanceItem);
 }
 
@@ -495,6 +605,8 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
     std::string eventLine = PBC_MakeEventLine(name + levelUpEventPhrases[idx]);
     std::string histLine  = PBC_MakeHistLine(name + levelUpHistPhrases[idx]);
 
+    PBC_NotifyRealPlayersInGroup(player, eventLine);
+
     if (g_PBC_DebugEnabled)
         LOG_INFO("server.loading", "[PBC] OnPlayerLevelChanged: player={} level={} bots={} chance={}%",
                  player->GetName(), player->GetLevel(), bots.size(), g_PBC_ReplyChanceLevelUp);
@@ -509,34 +621,111 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
     PBC_PushEvent(std::move(ev));
 }
 
-void PBC_PlayerEvents::OnPlayerEnterCombat(Player* player, Unit* enemy)
+// ---------------------------------------------------------------------------
+// IsSignificantKill
+//
+// Returns true for dungeon/raid bosses, world bosses, and unique named
+// elites (ELITE and RAREELITE ranks).  Skips normal, rare, and unknown-rank
+// creatures.
+// ---------------------------------------------------------------------------
+static bool IsSignificantKill(const Creature* killed)
+{
+    if (!PBC_PTR_VALID(killed)) return false;
+    if (killed->IsDungeonBoss() || killed->isWorldBoss()) return true;
+    uint32 rank = killed->GetCreatureTemplate()->rank;
+    return rank == CREATURE_ELITE_ELITE || rank == CREATURE_ELITE_RAREELITE;
+}
+
+// ---------------------------------------------------------------------------
+// BuildBossLabel
+//
+// Produces a display string for the killed creature, including its subtitle
+// if it has one: "Kel'Thuzad (The Lich's Champion)" or just "Murloc Raider".
+// ---------------------------------------------------------------------------
+static std::string BuildBossLabel(const Creature* killed)
+{
+    std::string label = killed->GetName();
+    const std::string& sub = killed->GetCreatureTemplate()->SubName;
+    if (!sub.empty())
+        label += " (" + sub + ")";
+    return label;
+}
+
+void PBC_PlayerEvents::OnPlayerCreatureKill(Player* killer, Creature* killed)
 {
     if (!g_PBC_Enable) return;
-    if (!PBC_PTR_VALID(player) || !PBC_PTR_VALID(enemy)) return;
+    if (!PBC_PTR_VALID(killer) || !PBC_PTR_VALID(killed)) return;
+    if (!IsSignificantKill(killed)) return;
 
-    // Only react when the party LEADER enters combat.
-    Group* grp = player->GetGroup();
+    // Only fire when the killer is in a group that contains at least one real player.
+    Group* grp = killer->GetGroup();
     if (!grp) return;
-    if (grp->GetLeaderGUID() != player->GetGUID()) return;
 
-    WorldSession* sess = player->GetSession();
-    bool leaderIsReal = PBC_PTR_VALID(sess) && !sess->IsBot();
-    if (!leaderIsReal && !BotIsGroupedWithRealPlayer(player)) return;
+    WorldSession* killerSess = killer->GetSession();
+    bool killerIsBot = PBC_PTR_VALID(killerSess) && killerSess->IsBot();
 
-    std::string eventLine = PBC_MakeEventLine("Your party is entering combat with " + std::string(enemy->GetName()));
-    std::string histLine  = PBC_MakeHistLine("Your party fought " + std::string(enemy->GetName()));
+    if (!BotIsGroupedWithRealPlayer(killer))
+    {
+        // Also allow real players as the killer themselves.
+        if (!PBC_PTR_VALID(killerSess) || killerSess->IsBot()) return;
+    }
 
-    auto bots = FindGroupBots(player);
-    if (bots.empty()) return;
+    auto bots = FindGroupBots(killer);
+    // If killer is a bot they are excluded from FindGroupBots; still proceed so
+    // they receive the event.  If killer is a real player and no bots are in the
+    // group there is nothing to dispatch.
+    if (bots.empty() && !killerIsBot) return;
+
+    std::string bossLabel = BuildBossLabel(killed);
+
+    // Location: use party leader's zone/area for a specific location string,
+    // matching the same approach used for character location in pbc_character.cpp.
+    std::string location;
+    {
+        Player* locAnchor = killer;
+        if (Player* leader = ObjectAccessor::FindPlayer(grp->GetLeaderGUID()))
+            if (leader->IsInWorld())
+                locAnchor = leader;
+
+        uint32 areaId = locAnchor->GetAreaId();
+        uint32 zoneId = locAnchor->GetZoneId();
+        std::string areaName, zoneName;
+        if (AreaTableEntry const* a = sAreaTableStore.LookupEntry(areaId))
+            areaName = a->area_name[0];
+        if (AreaTableEntry const* z = sAreaTableStore.LookupEntry(zoneId))
+            zoneName = z->area_name[0];
+        if (!areaName.empty() && !zoneName.empty() && areaName != zoneName)
+            location = zoneName + ", " + areaName;
+        else if (!areaName.empty())
+            location = areaName;
+        else
+            location = zoneName;
+    }
+
+    std::string eventSuffix = bossLabel;
+    if (!location.empty())
+        eventSuffix += " in " + location;
+
+    std::string eventLine = PBC_MakeEventLine("The party has slain " + eventSuffix);
+    std::string histLine  = PBC_MakeHistLine("The party fought and slain " + eventSuffix);
 
     if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] OnPlayerEnterCombat: leader={} bots={} chance={}%",
-                 player->GetName(), bots.size(), g_PBC_ReplyChanceCombat);
+        LOG_INFO("server.loading", "[PBC] OnPlayerCreatureKill: killer={} boss='{}' location='{}' bots={} chance={}%",
+                 killer->GetName(), bossLabel, location, bots.size(), g_PBC_ReplyChanceBossKill);
 
-    // skipHistoryIfSilent=true: worker skips silent history if no one responds.
-    PBC_PushEvent(BuildBotEvent(bots, eventLine, histLine,
-                                g_PBC_ReplyChanceCombat, CHAT_MSG_PARTY,
-                                /*skipHistoryIfSilent=*/true, /*canCreateEvents=*/true));
+    PBC_NotifyRealPlayersInGroup(killer, eventLine);
+
+    // skipHistoryIfSilent=false: boss kills are always written to all histories.
+    PBC_EventItem ev = BuildBotEvent(bots, eventLine, histLine,
+                                     g_PBC_ReplyChanceBossKill, CHAT_MSG_PARTY,
+                                     /*skipHistoryIfSilent=*/false, /*canCreateEvents=*/true);
+
+    // If the killer is itself a bot it was excluded from FindGroupBots() but
+    // still needs to receive the event in its own history.
+    if (killerIsBot)
+        ev.silentBotGuids.push_back(killer->GetGUID().GetCounter());
+
+    PBC_PushEvent(std::move(ev));
 }
 
 // ---------------------------------------------------------------------------

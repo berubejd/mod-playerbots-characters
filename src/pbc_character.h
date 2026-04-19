@@ -67,4 +67,11 @@ void PBC_TriggerCondensation(Player* bot);
 // ---------------------------------------------------------------------------
 std::string PBC_GetRelationshipsBlock(const PBC_BotSnapshot& snap);
 
+// ---------------------------------------------------------------------------
+// Build a target info string for a named player, e.g. "DESEVEN, MALE TAUREN SHAMAN".
+// Looks up the player live (safe for read-only access from any thread).
+// Falls back to just the uppercased name if the player cannot be found.
+// ---------------------------------------------------------------------------
+std::string PBC_BuildTargetInfo(const std::string& name);
+
 #endif // MOD_PBC_CHARACTER_H

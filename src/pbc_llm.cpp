@@ -33,7 +33,8 @@ static std::string Trim(std::string s)
 // Safe to call from any thread; does not touch game objects.
 // ---------------------------------------------------------------------------
 PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
-                           const std::string& userPrompt)
+                           const std::string& userPrompt,
+                           int maxTokensOverride)
 {
     PBC_LLMResult result{ false, "", 0 };
 
@@ -47,8 +48,17 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
     body["temperature"]       = g_PBC_Temperature;
     body["frequency_penalty"] = g_PBC_FrequencyPenalty;
     body["presence_penalty"]  = g_PBC_PresencePenalty;
-    if (g_PBC_MaxResponseTokens > 0)
-        body["max_tokens"]    = g_PBC_MaxResponseTokens;
+    // maxTokensOverride == -1  → omit max_tokens (condensation / relationship calls)
+    // maxTokensOverride ==  0  → use config value
+    // maxTokensOverride  >  0  → use the override value
+    if (maxTokensOverride == -1)
+    {
+        // intentionally omitted — let the model decide when to stop
+    }
+    else if (maxTokensOverride > 0)
+        body["max_tokens"] = maxTokensOverride;
+    else if (g_PBC_MaxResponseTokens > 0)
+        body["max_tokens"] = g_PBC_MaxResponseTokens;
 
     json messages = json::array();
     if (!systemPrompt.empty())

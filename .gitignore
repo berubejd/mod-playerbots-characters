@@ -1,2 +1,4 @@
 characters/*
 !characters/Example.card.txt
+*.sql
+!data/sql/characters/base/*.sql

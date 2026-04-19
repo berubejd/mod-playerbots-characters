@@ -27,6 +27,15 @@ PBC.DebugEnabled = 0
 #     Default:     0 (false)
 PBC.DebugShowFullPrompt = 0
 
+# PBC.DisplayNarratorEvents
+#     Description: When enabled (1), real players in the group will receive a system
+#                  message showing the narrator event text whenever a non-chat event fires
+#                  (item pick-up, duel won, level-up, boss kill, location change).
+#                  This happens before bots process the event, regardless of whether
+#                  any bot rolls to respond.
+#     Default:     1 (true)
+PBC.DisplayNarratorEvents = 1
+
 
 # --------------------------------------------
 # API CONNECTION
@@ -106,6 +115,14 @@ PBC.PresencePenalty = 0.2
 #     Default:     32768
 PBC.MaxCtx = 32768
 
+# PBC.CondensationPreservedLines
+#     Description: Number of history lines kept after condensation.
+#                  After the LLM summarises the history into a card addition, the in-memory
+#                  and database history is trimmed to this many most-recent lines.
+#                  Increase to preserve more recent context after each condensation.
+#     Default:     50
+PBC.CondensationPreservedLines = 50
+
 
 # --------------------------------------------
 # CHARACTER SETTINGS
@@ -126,10 +143,10 @@ PBC.DefaultCharacterDescription = "You are a {char_gender} {char_race} {char_cla
 
 # PBC.CharacterContext
 #     Description: Current context description appended to every prompt, always sent last.
-#                  Supports placeholders: {char_level}, {char_location}, {combat_status}, {char_group}, {char_los}.
+#                  Supports placeholders: {char_level}, {char_location}, {scene}, {combat_status}, {char_group}, {char_los}.
 #                  Leave blank to disable.
-#     Default:     "Your level is {char_level}.\n{char_location}\n{scene}\n{combat_status}\n{char_group}\n{char_los}"
-PBC.CharacterContext = "{char_location}\n{scene}\n{combat_status}\n{char_group}\n{char_los}"
+#     Default:     "You are {char_name}, a {char_gender} {char_race} {char_class}.\n{char_location}\n{scene}\n{combat_status}\n{char_group}\n{char_los}"
+PBC.CharacterContext = "You are {char_name}, a {char_gender} {char_race} {char_class}.\n{char_location}\n{scene}\n{combat_status}\n{char_group}\n{char_los}"
 
 
 # --------------------------------------------
@@ -152,7 +169,7 @@ PBC.UserPrompt = "[CHARACTER DESCRIPTION]\n{character_card}\n\n[HISTORY]\n{chat_
 #     Description: System prompt used when total chat history reaches PBC.MaxCtx
 #                  to summarise previous events and expand the character description.
 #     Default:
-PBC.CondensationSystemPrompt = "Summarize the HISTORY so the CHARACTER DESCRIPTION could be expanded. Only output what should be added to the character description, no additional comments, no meta talk, just plain text. Be brief, but catch important things. Individual events such as location visiting or items retrieval might not be as important, unless they lead to something in particular. In general focus on your character development instead of particular events or other characters."
+PBC.CondensationSystemPrompt = "Summarize the HISTORY so the CHARACTER DESCRIPTION could be expanded. Only output what should be added to the character description, no additional comments, no meta talk, just plain text. Be brief, but catch important things, follow the original description style. Individual events such as location visiting or items retrieval might not be as important, unless they lead to something in particular. In general focus on character development and what happened to the character. No commentary, no meta-talk, no prefix — just the summarization in one single line of plain text."
 
 # PBC.CondensationUserPrompt
 #     Description: User prompt used when total chat history reaches PBC.MaxCtx
@@ -179,7 +196,7 @@ PBC.QuestCompletionUserPrompt = "[TITLE]\n{quest_title}\n\n[DESCRIPTION TEXT]\n{
 #                  The model is asked to update a character's opinion of another
 #                  character based on chat history.
 #     Default:     (see below)
-PBC.RelationshipUpdateSystemPrompt = "You are a character living in the world of Azeroth during the war against the Lich King. You have no awareness of being in a game, no knowledge of the internet, game patches, developers, or anything outside this world. You speak and think as a real inhabitant of Azeroth — a warrior, mage, rogue, or whatever your class dictates. You know the lore, the factions, the dangers, and the people of this world. You never break character. You never reference game mechanics as mechanics. You never mention World of Warcraft, Blizzard, expansions, patches, or player concepts. Respond only as your character would.\n\nYou will be presented with a description of your character, your character's history and your current relationship with another character. Your task is to to update the relationship description with another character based on chat history. No commentary, no meta-talk, no prefix — just the reply in one single line of plain text.\n\nFor example:\nWilliam seems to be a decent person and a competent warrior, he's been nice to me.\n\nIf the relationship info doesn't need updating or if there is just not enough history between your character and another one, simply return the same relationship description."
+PBC.RelationshipUpdateSystemPrompt = "You are a character living in the world of Azeroth during the war against the Lich King. You have no awareness of being in a game, no knowledge of the internet, game patches, developers, or anything outside this world. You speak and think as a real inhabitant of Azeroth — a warrior, mage, rogue, or whatever your class dictates. You know the lore, the factions, the dangers, and the people of this world. You never break character. You never reference game mechanics as mechanics. You never mention World of Warcraft, Blizzard, expansions, patches, or player concepts. Respond only as your character would.\n\nYou will be presented with a description of your character, your character's history and your current relationship with another character. Your task is to to update the relationship description with another character based on chat history. No commentary, no meta-talk, no prefix — just the reply in one single line of plain text. Be brief, but on point.\n\nFor example:\nWilliam seems to be a decent person and a competent warrior, he's been nice to me.\n\nIf the relationship info doesn't need updating or if there is just not enough history between your character and another one, simply return the same relationship description."
 
 # PBC.RelationshipUpdateUserPrompt
 #     Description: User prompt template for the relationship update LLM call.
@@ -218,8 +235,8 @@ PBC.ReplyChanceMention = 100
 #                  characters found anywhere in the message (e.g. two question marks = chance * 2),
 #                  capped at 100%.
 #                  Priority order: Whisper, Mention, Question, Message, Other.
-#     Default:     20
-PBC.ReplyChanceQuestion = 20
+#     Default:     40
+PBC.ReplyChanceQuestion = 40
 
 # PBC.ReplyChanceMessage
 #     Description: The percent chance (0-100) that a character would reply to any other messages.
@@ -251,11 +268,14 @@ PBC.ReplyChanceLevelUp = 5
 #     Default:     5
 PBC.ReplyChanceLocation = 5
 
-# PBC.ReplyChanceCombat
-#     Description: The percent chance (0-100) that a character would react when they enter
-#                  combat with an enemy. Keep this very low to avoid constant chatter during fights.
-#     Default:     1
-PBC.ReplyChanceCombat = 1
+# PBC.ReplyChanceBossKill
+#     Description: The percent chance (0-100) that each character in the party would react
+#                  when the party slays a significant opponent: a dungeon or raid boss,
+#                  a world boss, or a named elite/rare-elite creature.
+#                  The event is always written to all character histories regardless of
+#                  whether anyone rolls to respond.
+#     Default:     35
+PBC.ReplyChanceBossKill = 35
 
 # PBC.ReplyChanceQuestCompletion
 #     Description: The percent chance (0-100) that each character in the party would react
@@ -263,8 +283,8 @@ PBC.ReplyChanceCombat = 1
 #                  summary of the quest, then each bot independently rolls this chance to
 #                  either use the summary as their current event (and reply) or write it
 #                  directly into their history.
-#     Default:     10
-PBC.ReplyChanceQuestCompletion = 10
+#     Default:     20
+PBC.ReplyChanceQuestCompletion = 20
 
 
 # --------------------------------------------
