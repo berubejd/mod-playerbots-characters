@@ -624,16 +624,18 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
 // ---------------------------------------------------------------------------
 // IsSignificantKill
 //
-// Returns true for dungeon/raid bosses, world bosses, and unique named
-// elites (ELITE and RAREELITE ranks).  Skips normal, rare, and unknown-rank
-// creatures.
+// Returns true for dungeon/raid bosses, world bosses, and rare-elite or
+// higher-ranked creatures (unique named rares such as King Mosh).
+// Plain ELITE rank (rank 1) is intentionally excluded — there are many
+// open-world elite creatures (e.g. Plated Stegodon, Devilsaurs) that spawn
+// in packs and are not meaningful story events.
 // ---------------------------------------------------------------------------
 static bool IsSignificantKill(const Creature* killed)
 {
     if (!PBC_PTR_VALID(killed)) return false;
     if (killed->IsDungeonBoss() || killed->isWorldBoss()) return true;
     uint32 rank = killed->GetCreatureTemplate()->rank;
-    return rank == CREATURE_ELITE_ELITE || rank == CREATURE_ELITE_RAREELITE;
+    return rank >= CREATURE_ELITE_RAREELITE;
 }
 
 // ---------------------------------------------------------------------------
