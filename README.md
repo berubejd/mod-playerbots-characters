@@ -47,7 +47,7 @@ Recommended adjustments to the playerbots config (`playerbots.conf`), to make bo
 
 ## Usage
 
-Start the server, set up some altbots for yourself, write cards for them if needed. See `characters/Example.card.txt` for an example of how to write a character card. The character name in the filename must match the in-game character name exactly to be picked up.
+Start the server, set up some altbots for yourself or invite existing random bots, then write cards for them as you see fit. See `characters/Example.card.txt` for an example of how to write a character card. The character name in the filename must match the in-game character name exactly to be picked up. It is recommended to write cards in second person (using "you/your"), because default prompts and request structure follow this format.
 
 Start playing, chat with your characters, discuss anything you like, build relationships and enjoy the game.
 
@@ -83,7 +83,6 @@ List of commands that can be used by the player or in the server console.
 
 
 ## Variables
-
 
 ### General Variables
 
