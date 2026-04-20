@@ -125,4 +125,4 @@ These variables can only be used in `PBC.QuestCompletionUserPrompt`.
 
 ## Support & Contributing
 
-Contributions are welcome — feel free to open a pull request. If you need help or found a bug, [open an issue](issues/new).
+Contributions are welcome — feel free to open a pull request. If you need help or found a bug, [open an issue](https://github.com/deseven/mod-playerbots-characters/issues/new).
