@@ -1,140 +1,128 @@
-# mod-playerbots-characters
+# Playerbots Characters (PBC)
 
-A character-focused LLM integration for [AzerothCore](https://www.azerothcore.org/) playerbots.
+This is an [AzerothCore](https://www.azerothcore.org) module built around [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots), breathing new life into bots, focusing on making them into true in-game companions. Heavily inspired by [mod-ollama-chat](https://github.com/DustinHendrickson/mod-ollama-chat), but taking a different, more complex approach — focusing on the roleplaying experience rather than emulating real WoW players.
 
-Bots react to in-game chat and events using any **OpenAI-compatible API** (DeepSeek, OpenAI, local Ollama, LM Studio, etc.). Each bot can have a **character card** — a plain text file that defines their personality, backstory, and speech style. Conversation history is kept in memory, periodically saved to the database, and automatically **condensed** into the character card when the context window fills up.
 
-## Requirements
+## How It Works
 
-- AzerothCore with the [mod-playerbots](https://github.com/liyunfan1223/mod-playerbots) module.
-- An OpenAI-compatible API endpoint (local or remote).
-- C++17 compiler (for `std::filesystem`).
-- [cpp-httplib](https://github.com/yhirose/cpp-httplib) — place `httplib.h` in `src/httplib.h`. You can copy it from `mod-ollama-chat/src/httplib.h` if that module is present.
-- [nlohmann/json](https://github.com/nlohmann/json) — place `json.hpp` in `deps/nlohmann/json.hpp`, or install system-wide.
-- OpenSSL development libraries (for HTTPS): `apt install libssl-dev`.
+The module hooks into various in-game events (chat messages, item pickups, duels, level-ups, location changes, boss kills, quest completions) and dispatches them to bots in the party based on configurable reply chances. When a bot "rolls" to respond, the module builds a prompt from its character card, accumulated chat history, current relationships with other party members, live context (location, time of day, nearby characters, combat status), and the event itself. This prompt is then sent to an OpenAI-compatible LLM API, and the model's response is spoken by the bot in-game.
+
+Over time, chat history grows. When it reaches the configured token limit (`PBC.MaxCtx`), a condensation process kicks in — the LLM is asked to summarize the history, and the result is appended to the character's card as a permanent addition. The in-memory history is then trimmed, keeping only the most recent lines. This way, characters gradually develop memories and personality traits without the context growing unbounded.
+
+Relationships are tracked for each individual character in relation to other characters and real players. Every time a name is mentioned enough times in a bot's history (controlled by `PBC.RelationshipUpdateThreshold`), a relationship update LLM call is triggered, generating or updating a brief description of how the bot feels about that person. These relationship descriptions are included in future prompts, giving bots a sense of continuity with their companions.
+
+Note that this module only handles the conversational and roleplaying side of bots — it does not influence any of the bot logic that `mod-playerbots` uses to control in-game characters (combat, movement, questing and so on).
+
 
 ## Installation
 
-1. Clone or copy this module into `modules/mod-playerbots-characters/`.
-2. Copy `httplib.h` into `src/httplib.h` (see above).
-3. Run `build_server.sh` to rebuild.
-4. Source the SQL files in order:
+Since mod-playerbots is an obvious hard requirement, follow their [Installation Guide](https://github.com/mod-playerbots/mod-playerbots/wiki/Installation-Guide) until you have a working acore installation with playerbots enabled.
 
-```sql
-SOURCE modules/mod-playerbots-characters/data/sql/characters/base/2026_04_15_01_character_cards.sql;
-SOURCE modules/mod-playerbots-characters/data/sql/characters/base/2026_04_15_02_chat_history.sql;
-```
+Next, clone this repository into the `modules` directory of your acore sources and rebuild the server normally.
 
-5. Copy `conf/playerbots_characters.conf.dist` to your server's `conf/` directory as `playerbots_characters.conf` and edit it.
-6. Create character cards (see below).
-7. Restart the worldserver.
+> [!NOTE]
+> 1. Only Linux is officially supported as a build target. Technically nothing should stop you from using the module on Windows, but this is untested and unsupported.
+> 2. The module includes a bundled copy of [nlohmann/json](https://github.com/nlohmann/json) in `deps/nlohmann/json.hpp`, so no external JSON library is required. The build system will use the bundled version by default, falling back to a system-installed version if available.
 
-## Character Cards
+If [mod_weather_vibe](https://github.com/hermensbas/mod_weather_vibe) is also installed, weather states from it will be used to define the character's scene.
 
-Place `.txt` files in the directory configured by `PBC.CharacterCardsPath` (default: `modules/mod-playerbots-characters/characters/`).
-
-The filename (without extension) must match the **bot's in-game name** (case-insensitive).
-
-Examples:
-- `thrall.txt` → bot named "Thrall"
-- `sylvanas.card.txt` → bot named "Sylvanas"
-
-The file content is free-form text describing the character's personality, backstory, speech quirks, relationships, etc.
-
-### Sample card (`thrall.txt`)
-
-```
-You are Thrall, Warchief of the Horde. You carry the weight of your people's survival on your shoulders.
-You speak with calm authority, choosing words carefully. You respect strength and honour above all.
-You have a deep bond with the elements and the shamanic traditions of the Frostwolf clan.
-You distrust the Burning Legion and the undead, but you seek peace when possible.
-You speak Common with a slight Orcish directness. You do not mince words.
-```
-
-If no card file is found for a bot, `PBC.DefaultCharacterDescription` is used instead, with `{char_gender}`, `{char_race}`, and `{char_class}` substituted automatically.
 
 ## Configuration
 
-See [`conf/playerbots_characters.conf.dist`](conf/playerbots_characters.conf.dist) for all options with descriptions.
+Copy `env/dist/etc/modules/playerbots_characters.conf.dist` as `env/dist/etc/modules/playerbots_characters.conf` and adjust it as needed. As a bare minimum you will need to define `PBC.ApiKey` for DeepSeek that you can get [in their console](https://platform.deepseek.com/). Of course nothing stops you from using any other provider and any other model. However, note that due to the complexity of requests, almost any model you could run locally on your average home system will likely fail miserably and produce garbage as context size and complexity grows. DeepSeek was picked as a baseline and a reasonable cost/capabilities compromise.
 
-Key settings:
+Recommended adjustments to the playerbots config (`playerbots.conf`), to make bots less talkative outside of this module:
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `PBC.Enable` | `1` | Enable/disable the module |
-| `PBC.BaseUrl` | `https://api.deepseek.com/v1` | OpenAI-compatible API base URL |
-| `PBC.ApiKey` | *(empty)* | Bearer token; leave empty for local APIs |
-| `PBC.Model` | `deepseek-chat` | Model identifier |
-| `PBC.MaxCtx` | `32768` | Token budget per bot before condensation |
-| `PBC.MaxConcurrentRequests` | `3` | Global cap on simultaneous API calls |
-| `PBC.RequestTimeoutSec` | `30` | HTTP request timeout |
-| `PBC.HistorySaveIntervalSec` | `300` | How often history is flushed to DB (5 min) |
+| Setting | Default | Recommended | Purpose |
+|---|---|---|---|
+| `AiPlayerbot.EnableBroadcasts` | 1 | 0 | Disables loot / quest / kill broadcasts |
+| `AiPlayerbot.RandomBotTalk` | 1 | 0 | Disables random talking in say / yell / general channels |
+| `AiPlayerbot.RandomBotEmote` | 0 | 0 | Disables random emoting |
+| `AiPlayerbot.RandomBotSuggestDungeons` | 1 | 0 | Disables dungeon suggestions in chat |
+| `AiPlayerbot.EnableGreet` | 0 | 0 | Disables greeting when invited |
+| `AiPlayerbot.GuildFeedback` | 1 | 0 | Disables guild event chatting |
+| `AiPlayerbot.RandomBotSayWithoutMaster` | 0 | 0 | Disables bots talking without a master |
+| `AiPlayerbot.RPWarningCooldown` | 300 | 999999 | Increases delay between "missing reagents" messages and such |
 
-## How it works
 
-### History
+## Usage
 
-Each bot maintains a per-bot ordered list of pre-formatted lines:
+Start the server, set up some altbots for yourself, write cards for them if needed. See `characters/Example.card.txt` for an example of how to write a character card. The character name in the filename must match the in-game character name exactly to be picked up.
 
-```
-John: Hello, how are you?
-Thrall: Well met, John. The Horde endures.
-*John picked up [Thunderfury, Blessed Blade of the Windseeker]*
-*You died fighting Onyxia*
-```
+Start playing, chat with your characters, discuss anything you like, build relationships and enjoy the game.
 
-History is kept in memory and written to the `mod_pbc_chat_history` table every `HistorySaveIntervalSec` seconds and on server shutdown.
+> [!NOTE]
+> Depending on the model you are using, your mileage may vary. Do regular backups with `modules/mod-playerbots-characters/tools/pbc_backup.sh` and adjust things as needed in the database (followed by `.chars reload` command). Two other helper tools (`pbc_info.sh` and `pbc_history.sh`) may also help with tracking what's going on.
 
-### Condensation
 
-When the estimated token count of a bot's history exceeds `MaxCtx`, the module:
+## Events
 
-1. Calls the LLM with the condensation prompts to produce a summary of recent events.
-2. Appends the summary to `mod_pbc_character_card_additions` in the database.
-3. Clears the bot's current history.
+Here's the list of possible events that characters could react to.
 
-The next time a prompt is built for that bot, the summary is appended to the base character card automatically.
+- **Message received** — fires after the character receives a new message as a whisper or otherwise, for example "John tells you privately: How are you doing?" or "John says: It was a nice fight, huh?"
+- **Character got item** — fires after the character or someone else in the party gets a new item, only fires for rare (blue) items or higher tiers; the event includes the item quality and, for weapons, the weapon type, for example "John is picking up a legendary two-handed mace called Bane of the Damned"
+- **Character won duel** — fires after the character or someone else in the party wins the duel, for example "John has just won the duel against Joe"
+- **Character leveled up** — fires after the character or someone else in the party got a level up in a roleplay-friendly way, for example "John can feel their abilities growing stronger"
+- **Character changed location** — fires after the character enters a new location, for example "You have just entered Brill in Tirisfal Glades"
+- **Boss slain** — fires when any party member lands the killing blow on a significant opponent (dungeon/raid boss, world boss, or named elite), only when the group contains at least one real player; **always written to all character histories** regardless of whether anyone rolls to respond, for example: "The party has slain Kel'Thuzad (The Lich's Champion) in Naxxramas"
+- **Quest completed** — fires when the **party leader** completes a quest, only when the group contains at least one real player; a preliminary LLM call generates a one-line narrative summary of the quest, for example "The party completed a task where they slew the Defias Brotherhood leader and recovered stolen goods."
 
-### Concurrency
-
-- A global atomic counter limits simultaneous requests to `MaxConcurrentRequests`.
-- A per-bot set prevents a bot from having two overlapping requests.
-- When either limit is hit, the LLM call is skipped (the history line is still recorded).
-- Bot-to-bot reply chains use `ReplyChanceMessage` (not the higher `ReplyChanceMention`), naturally limiting cascade depth.
 
 ## Commands
 
-All commands require GM level.
+List of commands that can be used by the player or in the server console.
 
-| Command | Description |
-|---------|-------------|
-| `.chars reload` | Reload config and character cards from disk |
-| `.chars info [name]` | Show card, addition count, history stats |
-| `.chars condense [name]` | Force condensation of a bot's history |
-| `.chars reset [name]` | Clear all history and card additions for a bot |
+- `.chars reload` — reloads module config, character cards and card additions; also queues a history and relationship reload from the database that runs after all currently pending events are processed (so no in-flight history is lost)
+- `.chars condense [char_name]` — forcefully condenses current history, updates character definition and clears current history; also triggers relationship updates for party members that have enough mention data
+- `.chars info [char_name]` — prints current character card with historical condensed additions and some basic statistics (number of additions, current number of messages in history)
+- `.chars reset [char_name]` — removes all historical condensed additions, current chat history and relationship data for the character
+- `.chars reset @ALL` — removes all historical condensed additions, current chat history and relationship data for all characters, basically restoring the module to its initial state
+- `.chars history [char_name] [num=5]` — prints the last `num` entries from the character's in-memory chat history (capped at 20)
+- `.chars relationship <char_name> <target_char_name>` — outputs `char_name`'s current LLM-generated relationship description towards `target_char_name`
+- `.chars relationship_update <char_name> <target_char_name>` — forcefully queues an immediate relationship update LLM call for `char_name`'s relationship towards `target_char_name`
 
-## Events bots react to
 
-| Event | History line format |
-|-------|---------------------|
-| Chat (say/group/whisper) | `Name: message` |
-| Player killed by creature | `*Name died fighting CreatureName*` |
-| Rare+ item looted | `*Name picked up [ItemName]*` |
-| Duel won | `*Winner won the duel against Loser*` |
-| Level up | `*Name leveled up and is now level N*` |
-| Bot enters new area | `*You have just entered AreaName*` |
+## Variables
 
-## Database tables
 
-| Table | Purpose |
-|-------|---------|
-| `mod_pbc_chat_history` | Per-bot ordered chat/event history lines |
-| `mod_pbc_character_card_additions` | LLM-condensed summaries appended to character cards |
+### General Variables
 
-## Template variables
+These variables can be used in most prompts and character cards. It's recommended to only use things that change often (such as character level or character location) for `PBC.CharacterContext`.
 
-See [`VARS.md`](VARS.md) for the full list of `{variable}` placeholders available in prompts and character cards.
+- `{char_name}` — name of the character (simultaneously the bot name as well)
+- `{char_gender}` — gender of the character in game
+- `{char_race}` — race of the character in game
+- `{char_class}` — class of the character in game
+- `{char_role}` — character role
+- `{char_level}` — level of the character in game
+- `{char_gold}` — amount of character's money
+- `{char_location}` — human-readable location of the character in game, as a full sentence. For example "You are currently in Undercity." when on the ground, or "You are currently flying to Ratchet, The Barrens." when in a taxi flight.
+- `{scene}` — human-readable description of the current time of day, and weather if `mod_weather_vibe` is active, for example "It is currently evening." or "It's currently evening and it's raining lightly."
+- `{char_los}` — human-readable list of nearby characters and NPCs visible to the bot, for example "You see John, Jane and Defias Bandit nearby." or "You see Defias Bandit nearby."
+- `{combat_status}` — dynamic combat status, could be "You are not currently in combat." or "You are currently in combat.", or even "You are currently fighting Archimonde.", based on current target
+- `{char_group}` — dynamic group status, could be "You are not currently in a group." or "You are currently in a group led by John (male Tauren Druid) with the following members: Jane (female Troll Rogue) and Kevin (male Blood Elf Paladin)."
 
-See [`EVENTS.md`](EVENTS.md) for the list of events bots react to.
 
-See [`COMMANDS.md`](COMMANDS.md) for in-game command reference.
+### Main Prompt Variables
+
+These variables can only be used in `PBC.SystemPrompt` and `PBC.UserPrompt`.
+
+- `{character_card}` — current character card or generic description from `PBC.DefaultCharacterDescription` with an addition of previously condensed description
+- `{chat_history}` — current chat history, including events
+- `{relationships}` — the bot's current relationship descriptions with other party members. When the bot is not in a group with a real player (e.g. a whisper interaction), falls back to "You don't know much about <player_name>.". When in a group, lists one entry per member, e.g. "You know Luna is brave and kind." or "You don't know much about Jon." for members with no data yet. Updated automatically every `PBC.RelationshipUpdateThreshold` new mentions of a character name in history.
+- `{context}` — current context for the character, defined in `PBC.CharacterContext`
+- `{event}` — recently happened event, see the Events section above for details
+
+
+### Quest Completion Prompt Variables
+
+These variables can only be used in `PBC.QuestCompletionUserPrompt`.
+
+- `{quest_title}` — the title of the completed quest
+- `{quest_description}` — the full lore/details text of the quest (shown when accepting it)
+- `{quest_reward_text}` — the NPC's reward speech (OfferRewardText): what the quest-giver says when handing out the reward upon turn-in
+
+
+## Support & Contributing
+
+Contributions are welcome — feel free to open a pull request. If you need help or found a bug, [open an issue](issues/new).
