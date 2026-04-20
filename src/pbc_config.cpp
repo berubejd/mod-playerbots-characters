@@ -275,7 +275,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
                         }
                     }
                     if (currentRel.empty())
-                        currentRel = "I don't know much about " + memberName + ".";
+                        currentRel = "You don't know much about " + memberName + ".";
 
                     // Use the pre-condensation history so the LLM has full context.
                     PBC_BotSnapshot relSnap = snap;
@@ -699,7 +699,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
                 if (newMentions < g_PBC_RelationshipUpdateThreshold) continue;
 
                 if (currentRel.empty())
-                    currentRel = "I don't know much about " + memberName + ".";
+                    currentRel = "You don't know much about " + memberName + ".";
 
                 // Build a snapshot for the relationship event.  Use the
                 // current responding bot's snapshot but refresh its history

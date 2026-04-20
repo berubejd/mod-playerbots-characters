@@ -329,7 +329,7 @@ static bool HandleCharsRelationshipUpdate(ChatHandler* handler,
         }
     }
     if (currentRel.empty())
-        currentRel = "I don't know much about " + targetName + ".";
+        currentRel = "You don't know much about " + targetName + ".";
 
     // Count current mentions of targetName in the bot's full history
     uint32_t total = 0;

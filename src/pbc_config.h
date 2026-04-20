@@ -135,7 +135,7 @@ struct PBC_BotSnapshot
 
     // True if at least one group member is a real (non-bot) player.
     // Determines whether the [RELATIONSHIPS] block lists all party members
-    // or falls back to the "I don't know much about X" whisper default.
+    // or falls back to the "You don't know much about X" whisper default.
     bool hasRealPlayerInGroup = false;
 };
 
@@ -241,7 +241,7 @@ struct PBC_EventItem
     // e.g. "JON, MALE ORC WARRIOR".
     std::string     relationshipTargetInfo;
     // The bot's current relationship text with the target (may be the default
-    // "I don't know much about X" if no data exists yet).
+    // "You don't know much about X" if no data exists yet).
     std::string     relationshipCurrentText;
     // Total mention count in the full history at the moment this event was
     // pushed.  Stored in the DB after a successful update so server restarts

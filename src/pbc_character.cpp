@@ -714,7 +714,7 @@ std::string PBC_GetRelationshipsBlock(const PBC_BotSnapshot& snap)
         if (it != relTexts.end() && !it->second.empty())
             oss << "Your relationship with " << name << ": " << it->second << "\n";
         else
-            oss << "Your relationship with " << name << ": I don't know much about them.\n";
+            oss << "Your relationship with " << name << ": You don't know much about them.\n";
     };
 
     if (!snap.hasRealPlayerInGroup)

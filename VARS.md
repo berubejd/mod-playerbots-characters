@@ -23,7 +23,7 @@ These variables can only be used in `PBC.SystemPrompt` and `PBC.UserPrompt`.
 
 - `{character_card}` - current character card or generic description from `PBC.DefaultCharacterDescription` with an addition of previously condensed description
 - `{chat_history}` - current chat history, including events
-- `{relationships}` - the bot's current relationship descriptions with other party members. When the bot is not in a group with a real player (e.g. a whisper interaction), falls back to "You don't know much about &lt;player_name&gt;.". When in a group, lists one entry per member, e.g. "I know Luna is brave and kind." or "I don't know much about Jon." for members with no data yet. Updated automatically every `PBC.RelationshipUpdateThreshold` new mentions of a character name in history.
+- `{relationships}` - the bot's current relationship descriptions with other party members. When the bot is not in a group with a real player (e.g. a whisper interaction), falls back to "You don't know much about <player_name>.". When in a group, lists one entry per member, e.g. "You know Luna is brave and kind." or "You don't know much about Jon." for members with no data yet. Updated automatically every `PBC.RelationshipUpdateThreshold` new mentions of a character name in history.
 - `{context}` - current context for the character, defined in `PBC.CharacterContext`
 - `{event}` - recently happened event, see `EVENTS.md` for details
 

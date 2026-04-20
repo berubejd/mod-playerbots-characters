@@ -3,21 +3,7 @@
 # Usage: ./pbc_history.sh [N [CharacterName]]
 #        N             — number of messages per character (default: 5)
 #        CharacterName — optional; restrict output to this character only
-#        ./pbc_history.sh backup — dump full history to an SQL file in current dir
-
-if [[ "$1" == "backup" ]]; then
-    TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-    OUTFILE="pbc_chat_history_${TIMESTAMP}.sql"
-    mysqldump --no-tablespaces acore_characters mod_pbc_chat_history 2>/dev/null > "$OUTFILE"
-    if [[ $? -eq 0 && -s "$OUTFILE" ]]; then
-        echo "Backup saved to: $OUTFILE"
-    else
-        echo "Backup failed or table is empty."
-        rm -f "$OUTFILE"
-        exit 1
-    fi
-    exit 0
-fi
+#        For backups use pbc_backup.sh instead.
 
 N=${1:-5}
 CHAR_NAME="${2:-}"
