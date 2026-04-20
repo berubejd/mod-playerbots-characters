@@ -20,12 +20,12 @@ PBC.Enable = 1
 #     Default:     0 (false)
 PBC.DebugEnabled = 0
 
-# PBC.DebugShowFullPrompt
-#     Description: When enabled (1), logs the complete prompt sent to the API.
-#                  Only active when PBC.DebugEnabled is also enabled.
+# PBC.DebugShowFullRequest
+#     Description: When enabled (1), logs the complete request body and response body
+#                  for every LLM API call.  Only active when PBC.DebugEnabled is also enabled.
 #                  When disabled (0), only standard logging is used.
 #     Default:     0 (false)
-PBC.DebugShowFullPrompt = 0
+PBC.DebugShowFullRequest = 0
 
 # PBC.DisplayNarratorEvents
 #     Description: When enabled (1), real players in the group will receive a system
@@ -83,21 +83,16 @@ PBC.MaxResponseLength = 100
 #     Default:     1.5
 PBC.Temperature = 1.5
 
-# PBC.FrequencyPenalty
-#     Description: Number between -2.0 and 2.0.
-#                  Positive values penalize new tokens based on their existing frequency,
-#                  decreasing the model's likelihood to repeat the same line verbatim.
-#     Example:     PBC.FrequencyPenalty = 0.3
-#     Default:     0.5
-PBC.FrequencyPenalty = 0.5
-
-# PBC.PresencePenalty
-#     Description: Number between -2.0 and 2.0.
-#                  Positive values penalize new tokens based on whether they appear in the text,
-#                  increasing the model's likelihood to talk about new topics.
-#     Example:     PBC.PresencePenalty = -0.1
-#     Default:     0.2
-PBC.PresencePenalty = 0.2
+# PBC.ModelExtraParameters
+#     Description: Raw JSON fragment appended to every LLM request body.
+#                  Spliced into the JSON object before the closing '}'.
+#                  Use single quotes instead of double quotes — they are
+#                  automatically replaced with double quotes at runtime.
+#                  Leave empty for no extra parameters.
+#     Example (DeepSeek): 'frequency_penalty':0.5,'presence_penalty':0.2
+#     Example (GLM):       'thinking':{'type':'disabled'}
+#     Default:     (empty)
+PBC.ModelExtraParameters = 'frequency_penalty':0.5,'presence_penalty':0.2
 
 # PBC.MaxCtx
 #     Description: Maximum context length (in tokens) before condensation happens.
@@ -203,18 +198,21 @@ PBC.ReplyChanceWhisper = 100
 #     Default:     100
 PBC.ReplyChanceMention = 100
 
-# PBC.ReplyChanceQuestion
-#     Description: The base percent chance (0-100) that a character would reply to a chat (non-whisper)
-#                  message containing a question mark. The chance is multiplied by the number of '?'
-#                  characters found anywhere in the message (e.g. two question marks = chance * 2),
-#                  capped at 100%.
-#     Default:     40
-PBC.ReplyChanceQuestion = 40
-
 # PBC.ReplyChanceMessage
-#     Description: The percent chance (0-100) that a character would reply to any other messages.
-#     Default:     10
-PBC.ReplyChanceMessage = 10
+#     Description: The initial percent chance (0-100) that a character would reply to a chat message.
+#                  When there are no mentions, bots roll in random order. The first bot rolls at this
+#                  chance. Each subsequent bot rolls at a reduced chance (see RollPenaltyOnAnswer).
+#     Default:     100
+PBC.ReplyChanceMessage = 100
+
+# PBC.RollPenaltyOnAnswer
+#     Description: The percent penalty applied to the roll chance after a bot successfully rolls
+#                  to answer. For example, if ReplyChanceMessage is 100% and RollPenaltyOnAnswer
+#                  is 40%, the first bot rolls at 100%, the second at 60%, the third at 20%,
+#                  and the fourth at 0% (no chance). If a bot fails its roll, the next bot
+#                  rolls at the same chance without penalty.
+#     Default:     40
+PBC.RollPenaltyOnAnswer = 40
 
 # PBC.ReplyChanceItem
 #     Description: The percent chance (0-100) that a character would react when a group member

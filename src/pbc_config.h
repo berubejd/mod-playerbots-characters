@@ -19,7 +19,7 @@
 // ---------------------------------------------------------------------------
 extern bool     g_PBC_Enable;
 extern bool     g_PBC_DebugEnabled;
-extern bool     g_PBC_DebugShowFullPrompt;
+extern bool     g_PBC_DebugShowFullRequest;
 extern bool     g_PBC_DisplayNarratorEvents;
 
 // ---------------------------------------------------------------------------
@@ -30,8 +30,7 @@ extern std::string g_PBC_ApiKey;           // Bearer token (empty = no auth head
 extern std::string g_PBC_Model;
 extern int         g_PBC_MaxResponseTokens;
 extern double      g_PBC_Temperature;
-extern double      g_PBC_FrequencyPenalty;
-extern double      g_PBC_PresencePenalty;
+extern std::string g_PBC_ModelExtraParameters; // raw JSON merged into every request body
 extern int         g_PBC_RequestTimeoutSec;
 
 // ---------------------------------------------------------------------------
@@ -69,8 +68,8 @@ extern std::string g_PBC_CharacterCardsPath;
 // ---------------------------------------------------------------------------
 extern uint32_t g_PBC_ReplyChanceWhisper;
 extern uint32_t g_PBC_ReplyChanceMention;
-extern uint32_t g_PBC_ReplyChanceQuestion;  // chat (non-whisper) message ending with '?'
 extern uint32_t g_PBC_ReplyChanceMessage;
+extern uint32_t g_PBC_RollPenaltyOnAnswer;
 extern uint32_t g_PBC_ReplyChanceItem;
 extern uint32_t g_PBC_ReplyChanceDuel;
 extern uint32_t g_PBC_ReplyChanceLevelUp;

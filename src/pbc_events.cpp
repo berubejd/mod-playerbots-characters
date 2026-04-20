@@ -359,8 +359,6 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
             if (MentionsBot(msg, bot->GetName())) { anyMention = true; break; }
     }
 
-    uint32 questionCount = static_cast<uint32>(std::count(msg.begin(), msg.end(), '?'));
-
     PBC_EventItem ev;
     ev.type      = PBC_EventType::Normal;
     ev.eventLine = eventLine;
@@ -410,31 +408,46 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
     }
     else
     {
-        // No mention: all bots roll at question or message chance.
-        // Question chance scales with the number of '?' in the message, capped at 100%.
-        uint32 chance;
-        const char* chanceLabel;
-        if (questionCount > 0)
+        // No mention: randomize bot roll order, roll with penalty on success.
+        // First bot rolls at g_PBC_ReplyChanceMessage. Each time a bot rolls
+        // successfully, the chance for the next bot is reduced by
+        // g_PBC_RollPenaltyOnAnswer. If a bot fails its roll, the next bot
+        // rolls at the same chance (no penalty). Once the chance reaches 0
+        // all remaining bots are silently skipped.
+        // Fisher-Yates shuffle using std::rand() (consistent with RollChance)
+        std::vector<Player*> shuffledBots = bots;
+        for (size_t i = shuffledBots.size(); i > 1; --i)
         {
-            uint32 scaled = g_PBC_ReplyChanceQuestion * questionCount;
-            chance = scaled > 100 ? 100 : scaled;
-            chanceLabel = "question";
+            size_t j = static_cast<size_t>(std::rand() % i);
+            std::swap(shuffledBots[i - 1], shuffledBots[j]);
         }
-        else
+
+        uint32 currentChance = g_PBC_ReplyChanceMessage;
+        for (Player* bot : shuffledBots)
         {
-            chance = g_PBC_ReplyChanceMessage;
-            chanceLabel = "message";
-        }
-        for (Player* bot : bots)
-        {
-            bool rolled = RollChance(chance);
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] Roll {} bot={} chance={}% -> {}",
-                         chanceLabel, bot->GetName(), chance, rolled ? "RESPOND" : "silent");
-            if (rolled)
-                ev.respondingBots.push_back(PBC_SnapshotBot(bot));
-            else
+            if (currentChance == 0)
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] Roll message bot={} chance=0% -> silent (no chance left)",
+                             bot->GetName());
                 ev.silentBotGuids.push_back(bot->GetGUID().GetCounter());
+                continue;
+            }
+
+            bool rolled = RollChance(currentChance);
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] Roll message bot={} chance={}% -> {}",
+                         bot->GetName(), currentChance, rolled ? "RESPOND" : "silent");
+            if (rolled)
+            {
+                ev.respondingBots.push_back(PBC_SnapshotBot(bot));
+                currentChance = currentChance > g_PBC_RollPenaltyOnAnswer
+                    ? currentChance - g_PBC_RollPenaltyOnAnswer : 0;
+            }
+            else
+            {
+                ev.silentBotGuids.push_back(bot->GetGUID().GetCounter());
+            }
         }
     }
 

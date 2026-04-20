@@ -46,8 +46,6 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
     json body;
     body["model"]             = g_PBC_Model;
     body["temperature"]       = g_PBC_Temperature;
-    body["frequency_penalty"] = g_PBC_FrequencyPenalty;
-    body["presence_penalty"]  = g_PBC_PresencePenalty;
     // maxTokensOverride == -1  → omit max_tokens (condensation / relationship calls)
     // maxTokensOverride ==  0  → use config value
     // maxTokensOverride  >  0  → use the override value
@@ -68,10 +66,24 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
 
     std::string bodyStr = body.dump();
 
-    if (g_PBC_DebugEnabled && g_PBC_DebugShowFullPrompt)
+    // Append provider-specific extra parameters from config.
+    // PBC.ModelExtraParameters is a raw JSON fragment (key:value pairs) that is
+    // spliced into the request body before the closing '}'.  Single quotes in
+    // the config value are automatically replaced with double quotes, so the
+    // user does not need to escape them.
+    // Example (DeepSeek): 'frequency_penalty':0.5,'presence_penalty':0.2
+    // Example (GLM):       'frequency_penalty':0.5,'thinking':{'type':'disabled'}
+    if (!g_PBC_ModelExtraParameters.empty())
     {
-        std::string logMsg = "[PBC] LLM request:\n" + bodyStr;
-        sLog->outMessage("server.loading", LogLevel::LOG_LEVEL_INFO, "{}", logMsg);
+        std::string extra = g_PBC_ModelExtraParameters;
+        std::replace(extra.begin(), extra.end(), '\'', '"');
+        bodyStr.pop_back(); // remove trailing '}'
+        bodyStr += "," + extra + "}";
+    }
+
+    if (g_PBC_DebugEnabled && g_PBC_DebugShowFullRequest)
+    {
+        LOG_INFO("server.loading", "[PBC] LLM request body:\n{}", bodyStr);
     }
 
     constexpr int MAX_ATTEMPTS = 2;
@@ -88,6 +100,11 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
         {
             LOG_ERROR("server.loading", "[PBC] LLM: empty response from API (attempt {}/{}).", attempt, MAX_ATTEMPTS);
             continue;
+        }
+
+        if (g_PBC_DebugEnabled && g_PBC_DebugShowFullRequest)
+        {
+            LOG_INFO("server.loading", "[PBC] LLM response body:\n{}", responseBody);
         }
 
         try

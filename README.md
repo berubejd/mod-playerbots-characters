@@ -7,6 +7,8 @@ This is an [AzerothCore](https://www.azerothcore.org) module built around [mod-p
 
 The module hooks into various in-game events (chat messages, item pickups, duels, level-ups, location changes, boss kills, quest completions) and dispatches them to bots in the party based on configurable reply chances. When a bot "rolls" to respond, the module builds a prompt from its character card, accumulated chat history, current relationships with other party members, live context (location, time of day, nearby characters, combat status), and the event itself. This prompt is then sent to an OpenAI-compatible LLM API, and the model's response is spoken by the bot in-game.
 
+For regular (non-whisper, non-mention) chat messages, bots roll in a random order. The first bot rolls at `PBC.ReplyChanceMessage`. Each time a bot successfully rolls to answer, the chance for the next bot is reduced by `PBC.RollPenaltyOnAnswer`. If a bot fails its roll, the next bot rolls at the same chance (no penalty). This guarantees that with a high initial chance someone will respond, while preventing too many bots from answering at once. When a player mentions specific bots by name, only those bots roll (at `PBC.ReplyChanceMention`), independently of the penalty system.
+
 Over time, chat history grows. When it reaches the configured token limit (`PBC.MaxCtx`), a condensation process kicks in — the LLM is asked to summarize the history, and the result is appended to the character's card as a permanent addition. The in-memory history is then trimmed, keeping only the most recent lines. This way, characters gradually develop memories and personality traits without the context growing unbounded.
 
 Relationships are tracked for each individual character in relation to other characters and real players. Every time a name is mentioned enough times in a bot's history (controlled by `PBC.RelationshipUpdateThreshold`), a relationship update LLM call is triggered, generating or updating a brief description of how the bot feels about that person. These relationship descriptions are included in future prompts, giving bots a sense of continuity with their companions.
@@ -80,6 +82,14 @@ List of commands that can be used by the player or in the server console.
 - `.chars history [char_name] [num=5]` — prints the last `num` entries from the character's in-memory chat history (capped at 20)
 - `.chars relationship <char_name> <target_char_name>` — outputs `char_name`'s current LLM-generated relationship description towards `target_char_name`
 - `.chars relationship_update <char_name> <target_char_name>` — forcefully queues an immediate relationship update LLM call for `char_name`'s relationship towards `target_char_name`
+
+
+## Debugging
+
+Two config options control debug output:
+
+- `PBC.DebugEnabled` — enables general debug logging (event dispatching, roll chances, etc.)
+- `PBC.DebugShowFullRequest` — when enabled alongside `DebugEnabled`, logs the full request body and response body for every LLM API call. Useful for diagnosing issues with non-standard API providers where the response format may differ from OpenAI's.
 
 
 ## Variables

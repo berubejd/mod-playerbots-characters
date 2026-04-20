@@ -26,7 +26,7 @@
 
 bool     g_PBC_Enable              = true;
 bool     g_PBC_DebugEnabled        = false;
-bool     g_PBC_DebugShowFullPrompt = false;
+bool     g_PBC_DebugShowFullRequest = false;
 bool     g_PBC_DisplayNarratorEvents = true;
 
 std::string g_PBC_BaseUrl          = "https://api.deepseek.com/v1";
@@ -34,8 +34,7 @@ std::string g_PBC_ApiKey           = "";
 std::string g_PBC_Model            = "deepseek-chat";
 int         g_PBC_MaxResponseTokens = 100;
 double      g_PBC_Temperature      = 1.5;
-double      g_PBC_FrequencyPenalty = 0.5;
-double      g_PBC_PresencePenalty  = 0.2;
+std::string g_PBC_ModelExtraParameters;
 int         g_PBC_RequestTimeoutSec = 30;
 
 uint32_t    g_PBC_MaxCtx                    = 32768;
@@ -54,10 +53,10 @@ uint32_t    g_PBC_RelationshipUpdateThreshold = 100;
 
 std::string g_PBC_CharacterCardsPath = "../../../modules/mod-playerbots-characters/characters";
 
-uint32_t g_PBC_ReplyChanceWhisper  = 100;
-uint32_t g_PBC_ReplyChanceMention  = 100;
-uint32_t g_PBC_ReplyChanceQuestion = 20;
-uint32_t g_PBC_ReplyChanceMessage  = 10;
+uint32_t g_PBC_ReplyChanceWhisper   = 100;
+uint32_t g_PBC_ReplyChanceMention   = 100;
+uint32_t g_PBC_ReplyChanceMessage   = 100;
+uint32_t g_PBC_RollPenaltyOnAnswer  = 40;
 uint32_t g_PBC_ReplyChanceItem     = 5;
 uint32_t g_PBC_ReplyChanceDuel     = 5;
 uint32_t g_PBC_ReplyChanceLevelUp  = 5;
@@ -739,7 +738,7 @@ void PBC_LoadConfig()
 {
     g_PBC_Enable              = sConfigMgr->GetOption<bool>("PBC.Enable", true);
     g_PBC_DebugEnabled        = sConfigMgr->GetOption<bool>("PBC.DebugEnabled", false);
-    g_PBC_DebugShowFullPrompt = sConfigMgr->GetOption<bool>("PBC.DebugShowFullPrompt", false);
+    g_PBC_DebugShowFullRequest = sConfigMgr->GetOption<bool>("PBC.DebugShowFullRequest", false);
     g_PBC_DisplayNarratorEvents = sConfigMgr->GetOption<bool>("PBC.DisplayNarratorEvents", true);
 
     g_PBC_BaseUrl             = sConfigMgr->GetOption<std::string>("PBC.BaseUrl", "https://api.deepseek.com/v1");
@@ -747,8 +746,7 @@ void PBC_LoadConfig()
     g_PBC_Model               = sConfigMgr->GetOption<std::string>("PBC.Model", "deepseek-chat");
     g_PBC_MaxResponseTokens   = sConfigMgr->GetOption<int>("PBC.MaxResponseLength", 100);
     g_PBC_Temperature         = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.Temperature", 1.5f)) * 100.0) / 100.0;
-    g_PBC_FrequencyPenalty    = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.FrequencyPenalty", 0.5f)) * 100.0) / 100.0;
-    g_PBC_PresencePenalty     = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.PresencePenalty", 0.2f)) * 100.0) / 100.0;
+    g_PBC_ModelExtraParameters = sConfigMgr->GetOption<std::string>("PBC.ModelExtraParameters", "");
     g_PBC_RequestTimeoutSec   = sConfigMgr->GetOption<int>("PBC.RequestTimeoutSec", 30);
 
     g_PBC_MaxCtx                     = sConfigMgr->GetOption<uint32_t>("PBC.MaxCtx", 32768);
@@ -764,10 +762,10 @@ void PBC_LoadConfig()
     g_PBC_CharacterCardsPath  = sConfigMgr->GetOption<std::string>("PBC.CharacterCardsPath",
                                     "../../../modules/mod-playerbots-characters/characters");
 
-    g_PBC_ReplyChanceWhisper  = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceWhisper", 100);
-    g_PBC_ReplyChanceMention  = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceMention", 100);
-    g_PBC_ReplyChanceQuestion = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestion", 20);
-    g_PBC_ReplyChanceMessage  = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceMessage", 10);
+    g_PBC_ReplyChanceWhisper   = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceWhisper", 100);
+    g_PBC_ReplyChanceMention   = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceMention", 100);
+    g_PBC_ReplyChanceMessage   = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceMessage", 100);
+    g_PBC_RollPenaltyOnAnswer  = sConfigMgr->GetOption<uint32_t>("PBC.RollPenaltyOnAnswer", 40);
     g_PBC_ReplyChanceItem     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceItem", 5);
     g_PBC_ReplyChanceDuel     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceDuel", 5);
     g_PBC_ReplyChanceLevelUp  = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLevelUp", 5);
@@ -787,12 +785,12 @@ void PBC_LoadConfig()
 
     LOG_INFO("server.loading",
         "[PBC] Config: Enable={} Model='{}' Url='{}' MaxCtx={} Timeout={}s "
-        "Chances: Whisper={}% Mention={}% Question={}% Message={}% "
+        "Chances: Whisper={}% Mention={}% Message={}% RollPenalty={}% "
         "Item={}% Duel={}% LevelUp={}% Location={}% BossKill={}% QuestCompletion={}%",
         g_PBC_Enable, g_PBC_Model, g_PBC_BaseUrl, g_PBC_MaxCtx,
         g_PBC_RequestTimeoutSec,
         g_PBC_ReplyChanceWhisper, g_PBC_ReplyChanceMention,
-        g_PBC_ReplyChanceQuestion, g_PBC_ReplyChanceMessage,
+        g_PBC_ReplyChanceMessage, g_PBC_RollPenaltyOnAnswer,
         g_PBC_ReplyChanceItem,
         g_PBC_ReplyChanceDuel, g_PBC_ReplyChanceLevelUp, g_PBC_ReplyChanceLocation,
         g_PBC_ReplyChanceBossKill, g_PBC_ReplyChanceQuestCompletion);

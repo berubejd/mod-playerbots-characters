@@ -3,7 +3,6 @@
 # Usage: ./pbc_history.sh [N [CharacterName]]
 #        N             — number of messages per character (default: 5)
 #        CharacterName — optional; restrict output to this character only
-#        For backups use pbc_backup.sh instead.
 
 N=${1:-5}
 CHAR_NAME="${2:-}"
