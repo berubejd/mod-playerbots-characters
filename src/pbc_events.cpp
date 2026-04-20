@@ -21,6 +21,9 @@
 #include <algorithm>
 #include <regex>
 #include <unordered_set>
+#include <random>
+#include <chrono>
+#include <thread>
 
 // ---------------------------------------------------------------------------
 // Pointer sanity guard
@@ -110,9 +113,40 @@ static bool IsBlacklisted(const std::string& msg)
     return false;
 }
 
+// ---------------------------------------------------------------------------
+// Thread-local Mersenne Twister seeded from multiple entropy sources.
+//
+// std::random_device alone can be deterministic on some VMs without
+// hardware entropy.  We mix in the high-resolution clock, the thread ID,
+// and a stack address (ASLR provides randomness) to guarantee a unique
+// seed even in virtualised environments.
+// ---------------------------------------------------------------------------
+static std::mt19937& GetRNG()
+{
+    thread_local std::mt19937 rng([]{
+        // Use a dummy variable to get a stack address before constructing the seed.
+        // The real rng address isn't available yet, so we use this as a proxy.
+        int dummy;
+        std::seed_seq seq({
+            std::random_device{}(),
+            static_cast<uint32_t>(
+                std::chrono::high_resolution_clock::now().time_since_epoch().count()),
+            static_cast<uint32_t>(
+                std::hash<std::thread::id>{}(std::this_thread::get_id())),
+            static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&dummy))
+        });
+        std::mt19937 engine(seq);
+        engine.discard(1024);          // warm up the generator
+        return engine;
+    }());
+    return rng;
+}
+
 static bool RollChance(uint32 chance)
 {
-    return chance > 0 && (static_cast<uint32>(std::rand() % 100) < chance);
+    if (chance == 0) return false;
+    std::uniform_int_distribution<uint32_t> dist(0, 99);
+    return dist(GetRNG()) < chance;
 }
 
 static std::vector<Player*> FindNearbyBots(WorldObject* source, float range = 60.0f)
@@ -414,13 +448,8 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
         // g_PBC_RollPenaltyOnAnswer. If a bot fails its roll, the next bot
         // rolls at the same chance (no penalty). Once the chance reaches 0
         // all remaining bots are silently skipped.
-        // Fisher-Yates shuffle using std::rand() (consistent with RollChance)
         std::vector<Player*> shuffledBots = bots;
-        for (size_t i = shuffledBots.size(); i > 1; --i)
-        {
-            size_t j = static_cast<size_t>(std::rand() % i);
-            std::swap(shuffledBots[i - 1], shuffledBots[j]);
-        }
+        std::shuffle(shuffledBots.begin(), shuffledBots.end(), GetRNG());
 
         uint32 currentChance = g_PBC_ReplyChanceMessage;
         for (Player* bot : shuffledBots)
