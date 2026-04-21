@@ -269,6 +269,7 @@ struct PBC_PendingAction
     ObjectGuid  targetGuid;   // Non-empty = whisper target
     uint32_t    chatType = 0;
     std::string text;         // LLM reply text to send; empty = no-op
+    bool        isThinkNotification = false; // true = send "thinks..." narrator line instead of chat
 };
 
 extern std::queue<PBC_PendingAction> g_PBC_PendingActions;

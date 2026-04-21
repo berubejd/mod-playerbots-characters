@@ -30,10 +30,9 @@ PBC.DebugShowFullRequest = 0
 
 # PBC.DisplayNarratorEvents
 #     Description: When enabled (1), real players in the group will receive a system
-#                  message showing the narrator event text when one of the defined events fire
-#                  (applied to item pick-up, duel won, level-up, boss kill).
-#                  This happens before bots process the event, regardless of whether
-#                  any bot rolls to respond.
+#                  message showing the narrator event text when one of the defined events fire.
+#                  This happens before characters process the event, regardless of whether
+#                  any character rolls to respond.
 #     Default:     1 (true)
 PBC.DisplayNarratorEvents = 1
 
@@ -132,7 +131,8 @@ PBC.CondensationPreservedLines = 50
 # PBC.CharacterCardsPath
 #     Description: Path to the directory containing character cards.
 #                  This should be a relative path from the server's working directory.
-#                  The module will load all .card.txt files from this directory and activate the bots with matching names.
+#                  The module will load all .card.txt files from this directory and
+#                  apply them to the needed characters.
 #     Default:     ../../../modules/mod-playerbots-characters/characters
 PBC.CharacterCardsPath = ../../../modules/mod-playerbots-characters/characters
 
@@ -240,8 +240,9 @@ PBC.ReplyChanceMention = 100
 
 # PBC.ReplyChanceMessage
 #     Description: The initial percent chance (0-100) that a character would reply to a chat message.
-#                  When there are no mentions, bots roll in random order. The first bot rolls at this
-#                  chance. Each subsequent bot rolls at a reduced chance (see RollPenaltyOnAnswer).
+#                  When there are no mentions, characters roll in random order. 
+#                  The first character rolls at this chance. Each subsequent
+#                  character rolls at a reduced chance (see RollPenaltyOnAnswer).
 #     Default:     100
 PBC.ReplyChanceMessage = 100
 

@@ -421,6 +421,19 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     // next bot in the chain sees the previous reply when building its prompt.
     std::vector<std::string> completedReplyLines;
 
+    // Post deferred "thinks..." notifications to the main thread so they
+    // appear right before the LLM call starts, not at event-creation time.
+    for (const PBC_BotSnapshot& snap : ev.respondingBots)
+    {
+        PBC_PendingAction action;
+        action.botGuid             = snap.botObjGuid;
+        action.text                = PBC_MakeEventLine(snap.botName + " thinks...");
+        action.isThinkNotification = true;
+
+        std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
+        g_PBC_PendingActions.push(std::move(action));
+    }
+
     for (PBC_BotSnapshot& snap : ev.respondingBots)
     {
         // Condense inline if over token budget before building the prompt.
@@ -1109,8 +1122,6 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                         if (rolled)
                         {
                             newEv.respondingBots.push_back(PBC_SnapshotBot(bot));
-                            PBC_NotifyRealPlayersInGroup(anchor,
-                                PBC_MakeEventLine(bot->GetName() + " thinks..."));
                         }
                         else
                             newEv.silentBotGuids.push_back(bot->GetGUID().GetCounter());
@@ -1149,6 +1160,17 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             if (!action.text.empty())
             {
                 Player* bot = ObjectAccessor::FindPlayer(action.botGuid);
+
+                // "thinks..." narrator notification — send to all real players
+                // in the bot's group.  If the bot is gone, just skip it.
+                if (action.isThinkNotification)
+                {
+                    if (bot && bot->IsInWorld())
+                        PBC_NotifyRealPlayersInGroup(bot, action.text);
+                    local.pop();
+                    continue;
+                }
+
                 if (bot && bot->IsInWorld())
                 {
                     uint32_t ct = action.chatType;
