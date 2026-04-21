@@ -63,7 +63,7 @@ uint32_t g_PBC_ReplyChanceDuel     = 5;
 uint32_t g_PBC_ReplyChanceLevelUp  = 5;
 uint32_t g_PBC_ReplyChanceLocation        = 5;
 uint32_t g_PBC_ReplyChanceBossKill       = 35;
-uint32_t g_PBC_ReplyChanceQuestCompleted = 10;
+uint32_t g_PBC_ReplyChanceQuestCompleted = 20;
 uint32_t g_PBC_ReplyChanceQuestTaken     = 10;
 
 std::string g_PBC_QuestCompletedSystemPrompt;
@@ -741,7 +741,7 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_ReplyChanceLevelUp  = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLevelUp", 5);
     g_PBC_ReplyChanceLocation        = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLocation", 5);
     g_PBC_ReplyChanceBossKill       = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceBossKill", 35);
-    g_PBC_ReplyChanceQuestCompleted = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestCompleted", 10);
+    g_PBC_ReplyChanceQuestCompleted = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestCompleted", 20);
     g_PBC_ReplyChanceQuestTaken     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestTaken", 10);
 
     g_PBC_QuestCompletedSystemPrompt = sConfigMgr->GetOption<std::string>("PBC.QuestCompletedSystemPrompt", "");

@@ -292,8 +292,8 @@ PBC.ReplyChanceBossKill = 35
 #                  summary of the quest, then each bot independently rolls this chance to
 #                  either use the summary as their current event (and reply) or write it
 #                  directly into their history.
-#     Default:     10
-PBC.ReplyChanceQuestCompleted = 10
+#     Default:     20
+PBC.ReplyChanceQuestCompleted = 20
 
 # PBC.ReplyChanceQuestTaken
 #     Description: The percent chance (0-100) that each character in the party would react
