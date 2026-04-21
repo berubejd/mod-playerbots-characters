@@ -57,7 +57,7 @@ std::string g_PBC_CharacterCardsPath = "../../../modules/mod-playerbots-characte
 uint32_t g_PBC_ReplyChanceWhisper   = 100;
 uint32_t g_PBC_ReplyChanceMention   = 100;
 uint32_t g_PBC_ReplyChanceMessage   = 100;
-uint32_t g_PBC_RollPenaltyOnAnswer  = 40;
+uint32_t g_PBC_RollPenaltyOnAnswer  = 45;
 uint32_t g_PBC_ReplyChanceItem     = 5;
 uint32_t g_PBC_ReplyChanceDuel     = 5;
 uint32_t g_PBC_ReplyChanceLevelUp  = 5;
@@ -747,7 +747,7 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_ReplyChanceWhisper   = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceWhisper", 100);
     g_PBC_ReplyChanceMention   = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceMention", 100);
     g_PBC_ReplyChanceMessage   = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceMessage", 100);
-    g_PBC_RollPenaltyOnAnswer  = sConfigMgr->GetOption<uint32_t>("PBC.RollPenaltyOnAnswer", 40);
+    g_PBC_RollPenaltyOnAnswer  = sConfigMgr->GetOption<uint32_t>("PBC.RollPenaltyOnAnswer", 45);
     g_PBC_ReplyChanceItem     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceItem", 5);
     g_PBC_ReplyChanceDuel     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceDuel", 5);
     g_PBC_ReplyChanceLevelUp  = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLevelUp", 5);
@@ -1110,17 +1110,39 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                     // to receive any new replies produced by this secondary event.
                     newEv.replyOnlyBotGuids = req.originBotGuids;
 
+                    // Shuffle targets so the penalty doesn't always favour the
+                    // same character — same approach as the primary chat handler.
+                    std::shuffle(targets.begin(), targets.end(), PBC_GetRNG());
+
+                    // Apply the same penalty logic as the primary chat handler
+                    // (HandleChatMessage), but start with the penalty already applied
+                    // once — the original responder already "used" a successful roll.
+                    uint32 currentChance = g_PBC_ReplyChanceMessage > g_PBC_RollPenaltyOnAnswer
+                        ? g_PBC_ReplyChanceMessage - g_PBC_RollPenaltyOnAnswer : 0;
+
                     for (Player* bot : targets)
                     {
-                        bool rolled = PBC_RollChance(g_PBC_ReplyChanceMessage);
+                        if (currentChance == 0)
+                        {
+                            if (g_PBC_DebugEnabled)
+                                LOG_INFO("server.loading",
+                                         "[PBC] SecondaryEvent: roll bot={} chance=0% -> silent (no chance left)",
+                                         bot->GetName());
+                            newEv.silentBotGuids.push_back(bot->GetGUID().GetCounter());
+                            continue;
+                        }
+
+                        bool rolled = PBC_RollChance(currentChance);
                         if (g_PBC_DebugEnabled)
                             LOG_INFO("server.loading",
                                      "[PBC] SecondaryEvent: roll bot={} chance={}% -> {}",
-                                     bot->GetName(), g_PBC_ReplyChanceMessage,
+                                     bot->GetName(), currentChance,
                                      rolled ? "RESPOND" : "silent");
                         if (rolled)
                         {
                             newEv.respondingBots.push_back(PBC_SnapshotBot(bot));
+                            currentChance = currentChance > g_PBC_RollPenaltyOnAnswer
+                                ? currentChance - g_PBC_RollPenaltyOnAnswer : 0;
                         }
                         else
                             newEv.silentBotGuids.push_back(bot->GetGUID().GetCounter());

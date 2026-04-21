@@ -249,11 +249,11 @@ PBC.ReplyChanceMessage = 100
 # PBC.RollPenaltyOnAnswer
 #     Description: The percent penalty applied to the roll chance after a bot successfully rolls
 #                  to answer. For example, if ReplyChanceMessage is 100% and RollPenaltyOnAnswer
-#                  is 40%, the first bot rolls at 100%, the second at 60%, the third at 20%,
+#                  is 45%, the first bot rolls at 100%, the second at 55%, the third at 10%,
 #                  and the fourth at 0% (no chance). If a bot fails its roll, the next bot
 #                  rolls at the same chance without penalty.
-#     Default:     40
-PBC.RollPenaltyOnAnswer = 40
+#     Default:     45
+PBC.RollPenaltyOnAnswer = 45
 
 # PBC.ReplyChanceItem
 #     Description: The percent chance (0-100) that a character would react when the party
