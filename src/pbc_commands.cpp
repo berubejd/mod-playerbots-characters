@@ -2,6 +2,7 @@
 #include "pbc_config.h"
 #include "pbc_character.h"
 #include "pbc_database.h"
+#include "pbc_llm.h"
 #include "Chat.h"
 #include "Config.h"
 #include "Player.h"
@@ -376,6 +377,31 @@ static bool HandleCharsRelationshipUpdate(ChatHandler* handler,
 }
 
 // ---------------------------------------------------------------------------
+// .chars apitest [query=hi]
+// ---------------------------------------------------------------------------
+static bool HandleCharsApiTest(ChatHandler* handler, Optional<std::string_view> queryArg)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+
+    std::string query = (queryArg && !queryArg->empty()) ? std::string(*queryArg) : "hi";
+
+    handler->PSendSysMessage("[PBC] API test: querying with '{}'...", query);
+
+    PBC_LLMResult result = PBC_CallLLM("Answer in one single short sentence.", query);
+
+    if (result.success)
+    {
+        handler->PSendSysMessage("[PBC] API test OK ({} tokens): {}", result.tokensUsed, result.text);
+    }
+    else
+    {
+        handler->PSendSysMessage("[PBC] API test FAILED — no valid response received. Check server logs for details.");
+    }
+
+    return result.success;
+}
+
+// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -392,6 +418,7 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
         { "history",             HandleCharsHistory,            SEC_GAMEMASTER, Console::Yes },
         { "relationship",        HandleCharsRelationship,       SEC_GAMEMASTER, Console::Yes },
         { "relationship_update", HandleCharsRelationshipUpdate, SEC_GAMEMASTER, Console::Yes },
+        { "apitest",             HandleCharsApiTest,            SEC_GAMEMASTER, Console::Yes },
     };
 
     static ChatCommandTable rootTable =

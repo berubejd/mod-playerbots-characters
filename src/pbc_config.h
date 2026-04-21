@@ -25,8 +25,9 @@ extern bool     g_PBC_DisplayNarratorEvents;
 // ---------------------------------------------------------------------------
 // LLM API connection
 // ---------------------------------------------------------------------------
+extern std::string g_PBC_APIType;          // "openai" or "anthropic"
 extern std::string g_PBC_BaseUrl;          // e.g. https://api.deepseek.com/v1
-extern std::string g_PBC_ApiKey;           // Bearer token (empty = no auth header)
+extern std::string g_PBC_ApiKey;           // Bearer token / x-api-key (empty = no auth header)
 extern std::string g_PBC_Model;
 extern int         g_PBC_MaxResponseTokens;
 extern double      g_PBC_Temperature;

@@ -30,6 +30,7 @@ bool     g_PBC_DebugEnabled        = false;
 bool     g_PBC_DebugShowFullRequest = false;
 bool     g_PBC_DisplayNarratorEvents = true;
 
+std::string g_PBC_APIType          = "openai";
 std::string g_PBC_BaseUrl          = "";
 std::string g_PBC_ApiKey           = "";
 std::string g_PBC_Model            = "";
@@ -742,8 +743,9 @@ void PBC_LoadConfig(bool isStartup)
     g_PBC_DebugShowFullRequest = sConfigMgr->GetOption<bool>("PBC.DebugShowFullRequest", false);
     g_PBC_DisplayNarratorEvents = sConfigMgr->GetOption<bool>("PBC.DisplayNarratorEvents", true);
 
-    g_PBC_BaseUrl             = sConfigMgr->GetOption<std::string>("PBC.BaseUrl", "");
-    g_PBC_ApiKey              = sConfigMgr->GetOption<std::string>("PBC.ApiKey", "");
+    g_PBC_APIType              = sConfigMgr->GetOption<std::string>("PBC.APIType", "openai");
+    g_PBC_BaseUrl              = sConfigMgr->GetOption<std::string>("PBC.BaseUrl", "");
+    g_PBC_ApiKey               = sConfigMgr->GetOption<std::string>("PBC.ApiKey", "");
     g_PBC_Model               = sConfigMgr->GetOption<std::string>("PBC.Model", "");
     g_PBC_MaxResponseTokens   = sConfigMgr->GetOption<int>("PBC.MaxResponseLength", 100);
     g_PBC_Temperature         = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.Temperature", 1.0f)) * 100.0) / 100.0;
@@ -824,10 +826,10 @@ void PBC_LoadConfig(bool isStartup)
     }
 
     LOG_INFO("server.loading",
-        "[PBC] Config: Enable={} Model='{}' Url='{}' MaxCtx={} Timeout={}s "
+        "[PBC] Config: Enable={} APIType='{}' Model='{}' Url='{}' MaxCtx={} Timeout={}s "
         "Chances: Whisper={}% Mention={}% Message={}% RollPenalty={}% "
         "Item={}% Duel={}% LevelUp={}% Location={}% BossKill={}% QuestCompletion={}%",
-        g_PBC_Enable, g_PBC_Model, g_PBC_BaseUrl, g_PBC_MaxCtx,
+        g_PBC_Enable, g_PBC_APIType, g_PBC_Model, g_PBC_BaseUrl, g_PBC_MaxCtx,
         g_PBC_RequestTimeoutSec,
         g_PBC_ReplyChanceWhisper, g_PBC_ReplyChanceMention,
         g_PBC_ReplyChanceMessage, g_PBC_RollPenaltyOnAnswer,

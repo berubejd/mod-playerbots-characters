@@ -15,7 +15,7 @@ void PBC_HttpClient::SetTimeoutSeconds(int seconds)
 
 std::string PBC_HttpClient::Post(const std::string& url,
                                  const std::string& jsonData,
-                                 const std::string& apiKey)
+                                 const std::vector<std::pair<std::string, std::string>>& extraHeaders)
 {
     try
     {
@@ -42,8 +42,8 @@ std::string PBC_HttpClient::Post(const std::string& url,
             {"Accept",       "application/json"},
             {"User-Agent",   "AzerothCore-PBC/1.0"}
         };
-        if (!apiKey.empty())
-            headers.emplace("Authorization", "Bearer " + apiKey);
+        for (const auto& hdr : extraHeaders)
+            headers.emplace(hdr.first, hdr.second);
 
         httplib::Result res;
 

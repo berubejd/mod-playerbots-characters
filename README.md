@@ -37,7 +37,12 @@ Copy `env/dist/etc/modules/playerbots_characters.conf.dist` as `env/dist/etc/mod
 
 ### Model Connection Setup
 
-The module communicates with an OpenAI-compatible chat completions API. You need to configure at least `PBC.BaseUrl`, `PBC.Model` and `PBC.ApiKey` before the module can generate responses. The relevant config options are in the **API CONNECTION** and **MODEL PARAMETERS** sections of the config file.
+The module supports two API formats, controlled by `PBC.APIType`:
+
+- **`openai`** (default) — OpenAI-compatible `/chat/completions` endpoint. The module appends `/chat/completions` to `PBC.BaseUrl` and sends the API key via `Authorization: Bearer` header.
+- **`anthropic`** — Anthropic Messages API `/messages` endpoint. The module appends `/messages` to `PBC.BaseUrl` and sends the API key via `x-api-key` header with the `anthropic-version: 2023-06-01` header.
+
+You need to configure at least `PBC.BaseUrl`, `PBC.Model` and `PBC.ApiKey` before the module can generate responses. The relevant config options are in the **API CONNECTION** and **MODEL PARAMETERS** sections of the config file. After configuring, you can use `.chars apitest` to quickly verify that the connection is working.
 
 Due to the complexity and length of the prompts, locally-run models on average home hardware will generally struggle and produce low-quality output as context grows. A cloud-based model with a large context window is recommended. Make sure to also adjust `PBC.MaxCtx` accordingly — a good starting point is around 25% of the model's total context window. Aim for at least 32k in general, anything less could lead to poor efficiency of character relationship tracking and card additions.
 
@@ -47,6 +52,7 @@ Choosing the right model can be tricky. Two tested configurations are listed bel
 
 | Setting | Value |
 |---|---|
+| `PBC.APIType` | `openai` |
 | `PBC.BaseUrl` | `https://api.deepseek.com/v1` |
 | `PBC.Model` | `deepseek-chat` |
 | `PBC.Temperature` | `1.6` |
@@ -60,6 +66,7 @@ DeepSeek offers a reasonable cost/capabilities compromise and can be considered 
 
 | Setting | Value |
 |---|---|
+| `PBC.APIType` | `openai` |
 | `PBC.BaseUrl` | `https://api.z.ai/api/paas/v4` |
 | `PBC.Model` | `glm-5.1` |
 | `PBC.Temperature` | `1.0` |
@@ -71,9 +78,9 @@ GLM 5.1 has a built-in "thinking" mode that is incompatible with the module's pr
 
 #### Other Models
 
-Any OpenAI-compatible API should work — just set `PBC.BaseUrl` to the endpoint (the module appends `/chat/completions` automatically), `PBC.Model` to the model identifier, and `PBC.ApiKey` to your bearer token. If the endpoint doesn't require authentication (e.g. a local Ollama or LM Studio instance), leave `PBC.ApiKey` empty.
+Any OpenAI-compatible API should work with `PBC.APIType = openai` — just set `PBC.BaseUrl` to the endpoint (the module appends `/chat/completions` automatically), `PBC.Model` to the model identifier, and `PBC.ApiKey` to your bearer token. If the endpoint doesn't require authentication (e.g. a local Ollama or LM Studio instance), leave `PBC.ApiKey` empty.
 
-Use `PBC.ModelExtraParameters` to inject provider-specific JSON into the request body. Single quotes are used instead of double quotes and are automatically replaced at runtime:
+Use `PBC.ModelExtraParameters` to inject provider-specific JSON into the request body — this works the same way for both `openai` and `anthropic` API types. Make sure to use parameter names that are valid for your chosen API type (e.g. `top_p` and `top_k` for Anthropic, `frequency_penalty` and `presence_penalty` for OpenAI-compatible providers). Single quotes are used instead of double quotes and are automatically replaced at runtime:
 
 ```
 PBC.ModelExtraParameters = 'frequency_penalty':0.5,'presence_penalty':0.2
@@ -129,11 +136,12 @@ List of commands that can be used by the player or in the server console.
 - `.chars reload` — reloads module config, character cards and card additions; also queues a history and relationship reload from the database that runs after all currently pending events are processed (so no in-flight history is lost)
 - `.chars condense [char_name]` — forcefully condenses current history, updates character definition and clears current history; also triggers relationship updates for party members that have enough mention data
 - `.chars info [char_name]` — prints current character card with historical condensed additions and some basic statistics (number of additions, current number of messages in history)
-- `.chars reset [char_name]` — removes all historical condensed additions, current chat history and relationship data for the character
+- `.chars reset [char_name]` — removes all historical condensed additions, current chat history and relationship data for the `char_name` character
 - `.chars reset @ALL` — removes all historical condensed additions, current chat history and relationship data for all characters, basically restoring the module to its initial state
 - `.chars history [char_name] [num=5]` — prints the last `num` entries from the character's in-memory chat history (capped at 20)
-- `.chars relationship <char_name> <target_char_name>` — outputs `char_name`'s current LLM-generated relationship description towards `target_char_name`
-- `.chars relationship_update <char_name> <target_char_name>` — forcefully queues an immediate relationship update LLM call for `char_name`'s relationship towards `target_char_name`
+- `.chars relationship [char_name] [target_char_name]` — outputs `char_name`'s current LLM-generated relationship description towards `target_char_name`
+- `.chars relationship_update [char_name] [target_char_name]` — forcefully queues an immediate relationship update LLM call for `char_name`'s relationship towards `target_char_name`
+- `.chars apitest [query=hi]` — sends a quick test request to the configured LLM API with the system prompt "Answer in one single short sentence." and prints the response (or an error message if the request fails)
 
 
 ## Debugging

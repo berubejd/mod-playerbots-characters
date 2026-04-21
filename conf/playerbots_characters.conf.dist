@@ -41,9 +41,20 @@ PBC.DisplayNarratorEvents = 1
 # API CONNECTION
 # --------------------------------------------
 
+# PBC.APIType
+#     Description: The type of LLM API to use.
+#                  "openai"     — OpenAI-compatible /chat/completions endpoint (default).
+#                                 The module appends /chat/completions to PBC.BaseUrl.
+#                  "anthropic"  — Anthropic Messages API /messages endpoint.
+#                                 The module appends /messages to PBC.BaseUrl.
+#                                 Uses x-api-key header and anthropic-version header.
+#     Default:     openai
+PBC.APIType = openai
+
 # PBC.BaseUrl
-#     Description: The base URL of the OpenAI-compatible API.
-#                  The module appends /chat/completions to this URL.
+#     Description: The base URL of the LLM API.
+#                  When PBC.APIType = openai:     the module appends /chat/completions to this URL.
+#                  When PBC.APIType = anthropic:  the module appends /messages to this URL.
 #                  REQUIRED when PBC.Enable = 1. The server will not start without it.
 #     Default:     (empty)
 PBC.BaseUrl =
