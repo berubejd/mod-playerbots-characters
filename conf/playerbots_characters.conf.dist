@@ -229,8 +229,8 @@ PBC.ReplyChanceMessage = 100
 PBC.RollPenaltyOnAnswer = 40
 
 # PBC.ReplyChanceItem
-#     Description: The percent chance (0-100) that a character would react when a group member
-#                  (or themselves) picks up a rare (blue) or higher quality item.
+#     Description: The percent chance (0-100) that a character would react when the party
+#                  finds a rare (blue) or higher quality weapon or armor item.
 #     Default:     5
 PBC.ReplyChanceItem = 5
 

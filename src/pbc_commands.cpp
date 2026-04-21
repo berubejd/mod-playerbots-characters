@@ -3,6 +3,7 @@
 #include "pbc_character.h"
 #include "pbc_database.h"
 #include "pbc_llm.h"
+#include "pbc_utils.h"
 #include "Chat.h"
 #include "Config.h"
 #include "Player.h"
@@ -336,7 +337,7 @@ static bool HandleCharsRelationshipUpdate(ChatHandler* handler,
         }
     }
     if (currentRel.empty())
-        currentRel = "You don't know much about " + targetName + ".";
+        currentRel = PBC_DefaultRelationshipText(targetName);
 
     // Count current mentions of targetName in the bot's full history
     uint32_t total = 0;
@@ -344,17 +345,7 @@ static bool HandleCharsRelationshipUpdate(ChatHandler* handler,
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
         auto hIt = g_PBC_ChatHistory.find(botGuid);
         if (hIt != g_PBC_ChatHistory.end())
-        {
-            for (const auto& line : hIt->second)
-            {
-                size_t pos = 0;
-                while ((pos = line.find(targetName, pos)) != std::string::npos)
-                {
-                    ++total;
-                    pos += targetName.size();
-                }
-            }
-        }
+            total = PBC_CountMentions(hIt->second, targetName);
     }
 
     PBC_BotSnapshot snap = PBC_SnapshotBot(bot);

@@ -121,7 +121,7 @@ Start playing, chat with your characters, discuss anything you like, build relat
 Here's the list of possible events that characters could react to.
 
 - **Message received** — fires after the character receives a new message as a whisper or otherwise, for example "John tells you privately: How are you doing?" or "John says: It was a nice fight, huh?"
-- **Character got item** — fires after the character or someone else in the party gets a new item, only fires for rare (blue) items or higher tiers; the event includes the item quality and, for weapons, the weapon type, for example "John is picking up a legendary two-handed mace called Bane of the Damned"
+- **Party found item** — fires when any party member picks up a new item, only for rare (blue) items or higher tiers, for example "The party has found a legendary two-handed mace named Bane of the Damned" or "The party acquired an epic cloth robe named Robes of the Great Arcanist"
 - **Character won duel** — fires after the character or someone else in the party wins the duel, for example "John has just won the duel against Joe"
 - **Character leveled up** — fires after the character or someone else in the party got a level up in a roleplay-friendly way, for example "John can feel their abilities growing stronger"
 - **Character changed location** — fires after the character enters a new location, for example "You have just entered Brill in Tirisfal Glades"

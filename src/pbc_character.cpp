@@ -1,6 +1,7 @@
 #include "pbc_character.h"
 #include "pbc_config.h"
 #include "pbc_database.h"
+#include "pbc_utils.h"
 #include "Log.h"
 #include "DatabaseEnv.h"
 #include "Player.h"
@@ -18,6 +19,7 @@
 #include <sstream>
 #include <mutex>
 #include <ctime>
+#include <algorithm>
 
 // ---------------------------------------------------------------------------
 // PBC_TriggerCondensation  (main-thread only)
@@ -87,16 +89,27 @@ static std::string GenderStr(uint8_t gender)
 }
 
 // ---------------------------------------------------------------------------
-// BuildFlightLocationString
-//
-// Returns a human-readable string describing the bot's current taxi flight.
-// If the final taxi destination node is known, returns e.g.
-//   "You are currently flying to Tanaris."
-// Otherwise returns the generic fallback.
+// Game-object-dependent location helpers (main-thread only)
 // ---------------------------------------------------------------------------
-static std::string BuildFlightLocationString(Player* bot)
+
+std::string PBC_BuildPlaceName(Player* player)
 {
-    // Walk the taxi destination list to find the last node (final destination).
+    uint32_t areaId = player->GetAreaId();
+    uint32_t zoneId = player->GetZoneId();
+    std::string areaName, zoneName;
+    if (AreaTableEntry const* a = sAreaTableStore.LookupEntry(areaId))
+        areaName = a->area_name[0];
+    if (AreaTableEntry const* z = sAreaTableStore.LookupEntry(zoneId))
+        zoneName = z->area_name[0];
+    if (!areaName.empty() && !zoneName.empty() && areaName != zoneName)
+        return zoneName + ", " + areaName;
+    if (!areaName.empty())
+        return areaName;
+    return zoneName;
+}
+
+std::string PBC_BuildFlightDestination(Player* bot)
+{
     const std::deque<uint32>& path = bot->m_taxi.GetPath();
     if (!path.empty())
     {
@@ -104,11 +117,66 @@ static std::string BuildFlightLocationString(Player* bot)
         if (TaxiNodesEntry const* node = sTaxiNodesStore.LookupEntry(finalNodeId))
         {
             if (node->name[0] && node->name[0][0] != '\0')
-                return std::string("You are currently flying to ") + node->name[0] + ".";
+                return node->name[0];
         }
     }
+    return {};
+}
+
+std::string PBC_BuildFlightLocationString(Player* bot)
+{
+    std::string dest = PBC_BuildFlightDestination(bot);
+    if (!dest.empty())
+        return "You are currently flying to " + dest + ".";
     return "You are currently flying.";
 }
+
+std::string PBC_BuildCombatStatusStr(Player* bot)
+{
+    if (!bot->IsInCombat())
+        return "You are not currently in combat.";
+    if (Unit* victim = bot->GetVictim())
+        return "You are currently fighting " + std::string(victim->GetName()) + ".";
+    return "You are currently in combat.";
+}
+
+std::string PBC_BuildLosStr(Player* bot)
+{
+    constexpr float kLosRadius = 40.0f;
+    std::vector<std::string> entries;
+
+    for (auto const& pair : ObjectAccessor::GetPlayers())
+    {
+        Player* p = pair.second;
+        if (!p || p == bot) continue;
+        if (!p->IsInWorld() || p->IsGameMaster()) continue;
+        if (p->GetMap() != bot->GetMap()) continue;
+        if (!bot->IsWithinDistInMap(p, kLosRadius)) continue;
+        if (!bot->IsWithinLOS(p->GetPositionX(), p->GetPositionY(), p->GetPositionZ())) continue;
+        entries.push_back(std::string(p->GetName()));
+    }
+
+    Map* map = bot->GetMap();
+    if (map)
+    {
+        for (auto const& pair : map->GetCreatureBySpawnIdStore())
+        {
+            Creature* c = pair.second;
+            if (!c) continue;
+            if (c->GetGUID() == bot->GetGUID()) continue;
+            if (!bot->IsWithinDistInMap(c, kLosRadius)) continue;
+            if (!bot->IsWithinLOS(c->GetPositionX(), c->GetPositionY(), c->GetPositionZ())) continue;
+            if (c->IsPet() || c->IsTotem()) continue;
+            entries.push_back(std::string(c->GetName()));
+        }
+    }
+
+    return PBC_NaturalList(entries);
+}
+
+// ---------------------------------------------------------------------------
+// Scene helpers
+// ---------------------------------------------------------------------------
 
 static std::string TimeOfDayLabel()
 {
@@ -258,151 +326,49 @@ std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot, const std::
                                 bool expandComposites)
 {
     std::string out = tmpl;
-
-    // Replace literal \n escape sequences with real newlines
-    {
-        size_t pos = 0;
-        while ((pos = out.find("\\n", pos)) != std::string::npos)
-        {
-            out.replace(pos, 2, "\n");
-            pos += 1;
-        }
-    }
-
-    auto Replace = [&](const std::string& key, const std::string& value)
-    {
-        std::string token = "{" + key + "}";
-        size_t pos = 0;
-        while ((pos = out.find(token, pos)) != std::string::npos)
-        {
-            out.replace(pos, token.size(), value);
-            pos += value.size();
-        }
-    };
+    PBC_ExpandNewlineEscapes(out);
 
     if (bot)
     {
-        Replace("char_name",   bot->GetName());
-        Replace("char_gender", GenderStr(bot->getGender()));
-        Replace("char_race",   RaceStr(bot->getRace()));
-        Replace("char_class",  ClassStr(bot->getClass()));
-        Replace("char_role",   RoleStr(bot));
-        Replace("char_level",  std::to_string(bot->GetLevel()));
-
-        uint32_t gold   = bot->GetMoney() / 10000;
-        uint32_t silver = (bot->GetMoney() % 10000) / 100;
-        Replace("char_gold", std::to_string(gold) + "g " + std::to_string(silver) + "s");
+        PBC_ReplaceToken(out, "char_name",   bot->GetName());
+        PBC_ReplaceToken(out, "char_gender", GenderStr(bot->getGender()));
+        PBC_ReplaceToken(out, "char_race",   RaceStr(bot->getRace()));
+        PBC_ReplaceToken(out, "char_class",  ClassStr(bot->getClass()));
+        PBC_ReplaceToken(out, "char_role",   RoleStr(bot));
+        PBC_ReplaceToken(out, "char_level",  std::to_string(bot->GetLevel()));
+        { uint32 m = bot->GetMoney(); PBC_ReplaceToken(out, "char_gold", std::to_string(m / 10000) + "g " + std::to_string((m % 10000) / 100) + "s"); }
 
         // Location
         std::string location;
         if (bot->IsInFlight())
-        {
-            location = BuildFlightLocationString(bot);
-        }
+            location = PBC_BuildFlightLocationString(bot);
         else
-        {
-            uint32_t areaId = bot->GetAreaId();
-            uint32_t zoneId = bot->GetZoneId();
-            std::string areaName, zoneName;
-            if (AreaTableEntry const* a = sAreaTableStore.LookupEntry(areaId))
-                areaName = a->area_name[0];
-            if (AreaTableEntry const* z = sAreaTableStore.LookupEntry(zoneId))
-                zoneName = z->area_name[0];
-            std::string place;
-            if (!areaName.empty() && !zoneName.empty() && areaName != zoneName)
-                place = zoneName + ", " + areaName;
-            else if (!areaName.empty())
-                place = areaName;
-            else
-                place = zoneName;
-            location = "You are currently in " + place + ".";
-        }
-        Replace("char_location", location);
+            location = "You are currently in " + PBC_BuildPlaceName(bot) + ".";
+        PBC_ReplaceToken(out, "char_location", location);
 
         // Scene (time of day + optional weather)
-        Replace("scene", BuildSceneStr(bot));
+        PBC_ReplaceToken(out, "scene", BuildSceneStr(bot));
 
         // Combat status
-        std::string combatStr = "You are not currently in combat.";
-        if (bot->IsInCombat())
-        {
-            if (Unit* victim = bot->GetVictim())
-                combatStr = "You are currently fighting " + std::string(victim->GetName()) + ".";
-            else
-                combatStr = "You are currently in combat.";
-        }
-        Replace("combat_status", combatStr);
+        PBC_ReplaceToken(out, "combat_status", PBC_BuildCombatStatusStr(bot));
 
         // Group status
-        Replace("char_group", BuildGroupStatusStr(bot));
+        PBC_ReplaceToken(out, "char_group", BuildGroupStatusStr(bot));
 
-        auto NaturalList = [](const std::vector<std::string>& items) -> std::string
-        {
-            if (items.empty()) return "";
-            std::string s = "You see ";
-            if (items.size() == 1)
-            {
-                s += items[0];
-            }
-            else
-            {
-                for (size_t i = 0; i < items.size(); ++i)
-                {
-                    if (i > 0 && i == items.size() - 1)
-                        s += " and ";
-                    else if (i > 0)
-                        s += ", ";
-                    s += items[i];
-                }
-            }
-            s += " nearby.";
-            return s;
-        };
+        // Line-of-sight
+        PBC_ReplaceToken(out, "char_los", PBC_BuildLosStr(bot));
 
-        {
-            std::vector<std::string> entries;
-            constexpr float kLosRadius = 40.0f;
-
-            for (auto const& pair : ObjectAccessor::GetPlayers())
-            {
-                Player* p = pair.second;
-                if (!p || p == bot) continue;
-                if (!p->IsInWorld() || p->IsGameMaster()) continue;
-                if (p->GetMap() != bot->GetMap()) continue;
-                if (!bot->IsWithinDistInMap(p, kLosRadius)) continue;
-                if (!bot->IsWithinLOS(p->GetPositionX(), p->GetPositionY(), p->GetPositionZ())) continue;
-                entries.push_back(std::string(p->GetName()));
-            }
-
-            Map* map = bot->GetMap();
-            if (map)
-            {
-                for (auto const& pair : map->GetCreatureBySpawnIdStore())
-                {
-                    Creature* c = pair.second;
-                    if (!c) continue;
-                    if (c->GetGUID() == bot->GetGUID()) continue;
-                    if (!bot->IsWithinDistInMap(c, kLosRadius)) continue;
-                    if (!bot->IsWithinLOS(c->GetPositionX(), c->GetPositionY(), c->GetPositionZ())) continue;
-                    if (c->IsPet() || c->IsTotem()) continue;
-                    entries.push_back(std::string(c->GetName()));
-                }
-            }
-
-            Replace("char_los", NaturalList(entries));
-        }
-
-        Replace("nearby_chars", "");
+        PBC_ReplaceToken(out, "nearby_chars", "");
 
         if (expandComposites)
         {
-            Replace("character_card", PBC_GetCharacterCard(bot));
-            Replace("chat_history",   PBC_GetChatHistory(bot->GetGUID().GetCounter()));
-            Replace("context",        PBC_GetCharacterContext(bot));
+            PBC_ReplaceToken(out, "character_card", PBC_GetCharacterCard(bot));
+            PBC_ReplaceToken(out, "chat_history",   PBC_GetChatHistory(bot->GetGUID().GetCounter()));
+            PBC_ReplaceToken(out, "context",        PBC_GetCharacterContext(bot));
         }
     }
 
-    Replace("event", event);
+    PBC_ReplaceToken(out, "event", event);
     return out;
 }
 
@@ -495,6 +461,41 @@ int PBC_EstimateHistoryTokens(uint64_t botGuid)
 }
 
 // ---------------------------------------------------------------------------
+// Snapshot var substitution helper (thread-safe, uses snapshot only)
+//
+// Replaces all snapshot-based template variables in the given string.
+// Used by both PBC_BuildUserPromptFromSnapshot and
+// PBC_BuildCondensationPromptFromSnapshot to avoid duplicating the
+// variable list.
+// ---------------------------------------------------------------------------
+static void ReplaceSnapshotVars(std::string& out, const PBC_BotSnapshot& snap,
+                                const std::string& eventLine)
+{
+    // Composite vars
+    PBC_ReplaceToken(out, "character_card", snap.characterCard);
+    PBC_ReplaceToken(out, "context",        snap.context);
+
+    // Chat history from the snapshot's local (thread-local) copy
+    { std::ostringstream histOss; for (const auto& line : snap.history) histOss << line << "\n"; PBC_ReplaceToken(out, "chat_history", histOss.str()); }
+
+    // Basic vars
+    PBC_ReplaceToken(out, "char_name",     snap.botName);
+    PBC_ReplaceToken(out, "char_gender",   snap.charGender);
+    PBC_ReplaceToken(out, "char_race",     snap.charRace);
+    PBC_ReplaceToken(out, "char_class",    snap.charClass);
+    PBC_ReplaceToken(out, "char_role",     snap.charRole);
+    PBC_ReplaceToken(out, "char_level",    snap.charLevel);
+    PBC_ReplaceToken(out, "char_gold",     snap.charGold);
+    PBC_ReplaceToken(out, "char_location", snap.charLocation);
+    PBC_ReplaceToken(out, "scene",         snap.scene);
+    PBC_ReplaceToken(out, "char_group",    snap.charGroup);
+    PBC_ReplaceToken(out, "char_los",      snap.charLos);
+    PBC_ReplaceToken(out, "combat_status", snap.combatStatus);
+    PBC_ReplaceToken(out, "nearby_chars",  "");  // deprecated, keep for template compat
+    PBC_ReplaceToken(out, "event",         eventLine);
+}
+
+// ---------------------------------------------------------------------------
 // PBC_SnapshotBot  (main-thread only)
 //
 // Captures all live Player* data into a PBC_BotSnapshot.  The result is safe
@@ -514,110 +515,30 @@ PBC_BotSnapshot PBC_SnapshotBot(Player* bot)
     snap.context       = PBC_GetCharacterContext(bot);
 
     // Capture raw template variables
-    snap.charGender   = bot->getGender() == GENDER_FEMALE ? "female" : "male";
+    snap.charGender   = GenderStr(bot->getGender());
     snap.charRace     = RaceStr(bot->getRace());
     snap.charClass    = ClassStr(bot->getClass());
     snap.charRole     = RoleStr(bot);
     snap.charLevel    = std::to_string(bot->GetLevel());
-
-    uint32_t gold   = bot->GetMoney() / 10000;
-    uint32_t silver = (bot->GetMoney() % 10000) / 100;
-    snap.charGold   = std::to_string(gold) + "g " + std::to_string(silver) + "s";
+    { uint32 m = bot->GetMoney(); snap.charGold = std::to_string(m / 10000) + "g " + std::to_string((m % 10000) / 100) + "s"; }
 
     // Scene (time of day + optional weather)
     snap.scene = BuildSceneStr(bot);
 
     // Location
     if (bot->IsInFlight())
-    {
-        snap.charLocation = BuildFlightLocationString(bot);
-    }
+        snap.charLocation = PBC_BuildFlightLocationString(bot);
     else
-    {
-        uint32_t areaId = bot->GetAreaId();
-        uint32_t zoneId = bot->GetZoneId();
-        std::string areaName, zoneName;
-        if (AreaTableEntry const* a = sAreaTableStore.LookupEntry(areaId))
-            areaName = a->area_name[0];
-        if (AreaTableEntry const* z = sAreaTableStore.LookupEntry(zoneId))
-            zoneName = z->area_name[0];
-        std::string place;
-        if (!areaName.empty() && !zoneName.empty() && areaName != zoneName)
-            place = zoneName + ", " + areaName;
-        else if (!areaName.empty())
-            place = areaName;
-        else
-            place = zoneName;
-        snap.charLocation = "You are currently in " + place + ".";
-    }
+        snap.charLocation = "You are currently in " + PBC_BuildPlaceName(bot) + ".";
 
     // Combat status
-    snap.combatStatus = "You are not currently in combat.";
-    if (bot->IsInCombat())
-    {
-        if (Unit* victim = bot->GetVictim())
-            snap.combatStatus = "You are currently fighting " + std::string(victim->GetName()) + ".";
-        else
-            snap.combatStatus = "You are currently in combat.";
-    }
+    snap.combatStatus = PBC_BuildCombatStatusStr(bot);
 
     // Group status
     snap.charGroup = BuildGroupStatusStr(bot);
 
     // Line-of-sight
-    {
-        constexpr float kLosRadius = 40.0f;
-        std::vector<std::string> entries;
-
-        for (auto const& pair : ObjectAccessor::GetPlayers())
-        {
-            Player* p = pair.second;
-            if (!p || p == bot) continue;
-            if (!p->IsInWorld() || p->IsGameMaster()) continue;
-            if (p->GetMap() != bot->GetMap()) continue;
-            if (!bot->IsWithinDistInMap(p, kLosRadius)) continue;
-            if (!bot->IsWithinLOS(p->GetPositionX(), p->GetPositionY(), p->GetPositionZ())) continue;
-            entries.push_back(std::string(p->GetName()));
-        }
-
-        Map* map = bot->GetMap();
-        if (map)
-        {
-            for (auto const& pair : map->GetCreatureBySpawnIdStore())
-            {
-                Creature* c = pair.second;
-                if (!c) continue;
-                if (c->GetGUID() == bot->GetGUID()) continue;
-                if (!bot->IsWithinDistInMap(c, kLosRadius)) continue;
-                if (!bot->IsWithinLOS(c->GetPositionX(), c->GetPositionY(), c->GetPositionZ())) continue;
-                if (c->IsPet() || c->IsTotem()) continue;
-                entries.push_back(std::string(c->GetName()));
-            }
-        }
-
-        if (entries.empty())
-        {
-            snap.charLos = "";
-        }
-        else if (entries.size() == 1)
-        {
-            snap.charLos = "You see " + entries[0] + " nearby.";
-        }
-        else
-        {
-            std::string s = "You see ";
-            for (size_t i = 0; i < entries.size(); ++i)
-            {
-                if (i > 0 && i == entries.size() - 1)
-                    s += " and ";
-                else if (i > 0)
-                    s += ", ";
-                s += entries[i];
-            }
-            s += " nearby.";
-            snap.charLos = s;
-        }
-    }
+    snap.charLos = PBC_BuildLosStr(bot);
 
     // Capture the current global history into the snapshot's local copy.
     {
@@ -720,7 +641,7 @@ std::string PBC_GetRelationshipsBlock(const PBC_BotSnapshot& snap)
         if (it != relTexts.end() && !it->second.empty())
             oss << "Your relationship with " << name << ": " << it->second << "\n";
         else
-            oss << "Your relationship with " << name << ": You don't know much about them.\n";
+            oss << "Your relationship with " << name << ": " << PBC_DefaultRelationshipText(name) << "\n";
     };
 
     if (!snap.hasRealPlayerInGroup)
@@ -774,58 +695,13 @@ std::string PBC_BuildUserPromptFromSnapshot(const PBC_BotSnapshot& snap,
                                              const std::string& eventLine)
 {
     std::string out = g_PBC_UserPrompt;
+    PBC_ExpandNewlineEscapes(out);
 
-    // Expand literal \n escape sequences
-    {
-        size_t pos = 0;
-        while ((pos = out.find("\\n", pos)) != std::string::npos)
-        {
-            out.replace(pos, 2, "\n");
-            pos += 1;
-        }
-    }
+    // Substitute all snapshot vars (composites, basic vars, event)
+    ReplaceSnapshotVars(out, snap, eventLine);
 
-    auto Replace = [&](const std::string& key, const std::string& value)
-    {
-        std::string token = "{" + key + "}";
-        size_t pos = 0;
-        while ((pos = out.find(token, pos)) != std::string::npos)
-        {
-            out.replace(pos, token.size(), value);
-            pos += value.size();
-        }
-    };
-
-    // Composite vars
-    Replace("character_card", snap.characterCard);
-    Replace("context",        snap.context);
-
-    // Chat history from the snapshot's local (thread-local) copy
-    {
-        std::ostringstream oss;
-        for (const auto& line : snap.history)
-            oss << line << "\n";
-        Replace("chat_history", oss.str());
-    }
-
-    // Relationships block
-    Replace("relationships", PBC_GetRelationshipsBlock(snap));
-
-    // Basic vars
-    Replace("char_name",     snap.botName);
-    Replace("char_gender",   snap.charGender);
-    Replace("char_race",     snap.charRace);
-    Replace("char_class",    snap.charClass);
-    Replace("char_role",     snap.charRole);
-    Replace("char_level",    snap.charLevel);
-    Replace("char_gold",     snap.charGold);
-    Replace("char_location", snap.charLocation);
-    Replace("scene",         snap.scene);
-    Replace("char_group",    snap.charGroup);
-    Replace("char_los",      snap.charLos);
-    Replace("combat_status", snap.combatStatus);
-    Replace("nearby_chars",  "");  // deprecated, keep for template compat
-    Replace("event",         eventLine);
+    // Relationships block (only in the main user prompt, not condensation)
+    PBC_ReplaceToken(out, "relationships", PBC_GetRelationshipsBlock(snap));
 
     return out;
 }
@@ -842,52 +718,10 @@ std::string PBC_BuildCondensationPromptFromSnapshot(const PBC_BotSnapshot& snap,
                                                      const std::string& tmpl)
 {
     std::string out = tmpl;
+    PBC_ExpandNewlineEscapes(out);
 
-    // Expand literal \n escape sequences
-    {
-        size_t pos = 0;
-        while ((pos = out.find("\\n", pos)) != std::string::npos)
-        {
-            out.replace(pos, 2, "\n");
-            pos += 1;
-        }
-    }
-
-    auto Replace = [&](const std::string& key, const std::string& value)
-    {
-        std::string token = "{" + key + "}";
-        size_t pos = 0;
-        while ((pos = out.find(token, pos)) != std::string::npos)
-        {
-            out.replace(pos, token.size(), value);
-            pos += value.size();
-        }
-    };
-
-    // The condensation prompt typically uses {chat_history}, {char_name}, etc.
-    {
-        std::ostringstream oss;
-        for (const auto& line : snap.history)
-            oss << line << "\n";
-        Replace("chat_history", oss.str());
-    }
-
-    Replace("character_card", snap.characterCard);
-    Replace("context",        snap.context);
-    Replace("char_name",      snap.botName);
-    Replace("char_gender",    snap.charGender);
-    Replace("char_race",      snap.charRace);
-    Replace("char_class",     snap.charClass);
-    Replace("char_role",      snap.charRole);
-    Replace("char_level",     snap.charLevel);
-    Replace("char_gold",      snap.charGold);
-    Replace("char_location",  snap.charLocation);
-    Replace("scene",          snap.scene);
-    Replace("char_group",     snap.charGroup);
-    Replace("char_los",       snap.charLos);
-    Replace("combat_status",  snap.combatStatus);
-    Replace("nearby_chars",   "");
-    Replace("event",          "");
+    // Substitute all snapshot vars with empty event
+    ReplaceSnapshotVars(out, snap, "");
 
     return out;
 }

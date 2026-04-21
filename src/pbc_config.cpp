@@ -3,6 +3,7 @@
 #include "pbc_database.h"
 #include "pbc_llm.h"
 #include "pbc_events.h"
+#include "pbc_utils.h"
 #include "Config.h"
 #include "Log.h"
 #include "World.h"
@@ -12,7 +13,6 @@
 #include "Chat.h"
 #include "Group.h"
 #include "SharedDefines.h"
-#include "DBCStores.h"
 
 #include <sstream>
 #include <fstream>
@@ -276,7 +276,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
                         }
                     }
                     if (currentRel.empty())
-                        currentRel = "You don't know much about " + memberName + ".";
+                        currentRel = PBC_DefaultRelationshipText(memberName);
 
                     // Use the pre-condensation history so the LLM has full context.
                     PBC_BotSnapshot relSnap = snap;
@@ -327,38 +327,12 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         // Build the user prompt: substitute {character_card}, {chat_history},
         // {relationship_target}, {target_current_relationship}.
         std::string userPrompt = ev.relationshipUserPromptTmpl;
+        PBC_ExpandNewlineEscapes(userPrompt);
 
-        // Expand \n escapes
-        {
-            size_t pos = 0;
-            while ((pos = userPrompt.find("\\n", pos)) != std::string::npos)
-            {
-                userPrompt.replace(pos, 2, "\n");
-                pos += 1;
-            }
-        }
-
-        auto ReplaceInPrompt = [&](const std::string& key, const std::string& value)
-        {
-            std::string token = "{" + key + "}";
-            size_t pos = 0;
-            while ((pos = userPrompt.find(token, pos)) != std::string::npos)
-            {
-                userPrompt.replace(pos, token.size(), value);
-                pos += value.size();
-            }
-        };
-
-        ReplaceInPrompt("character_card",           ev.relationshipBot.characterCard);
-        // Build chat history from the bot snapshot.
-        {
-            std::ostringstream oss;
-            for (const auto& line : ev.relationshipBot.history)
-                oss << line << "\n";
-            ReplaceInPrompt("chat_history", oss.str());
-        }
-        ReplaceInPrompt("relationship_target",         ev.relationshipTargetInfo);
-        ReplaceInPrompt("target_current_relationship", ev.relationshipCurrentText);
+        PBC_ReplaceToken(userPrompt, "character_card",           ev.relationshipBot.characterCard);
+        { std::ostringstream histOss; for (const auto& line : ev.relationshipBot.history) histOss << line << "\n"; PBC_ReplaceToken(userPrompt, "chat_history", histOss.str()); }
+        PBC_ReplaceToken(userPrompt, "relationship_target",      ev.relationshipTargetInfo);
+        PBC_ReplaceToken(userPrompt, "target_current_relationship", ev.relationshipCurrentText);
 
         PBC_LLMResult res = PBC_CallLLM(ev.relationshipSystemPrompt, userPrompt, /*maxTokensOverride=*/-1);
 
@@ -665,16 +639,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
             for (const auto& memberName : snap.partyMemberNames)
             {
                 // Count total occurrences of memberName in the full history.
-                uint32_t total = 0;
-                for (const auto& line : fullHistory)
-                {
-                    size_t pos = 0;
-                    while ((pos = line.find(memberName, pos)) != std::string::npos)
-                    {
-                        ++total;
-                        pos += memberName.size();
-                    }
-                }
+                uint32_t total = PBC_CountMentions(fullHistory, memberName);
 
                 // Read the mention count recorded at the last update.
                 uint32_t lastCount = 0;
@@ -700,7 +665,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
                 if (newMentions < g_PBC_RelationshipUpdateThreshold) continue;
 
                 if (currentRel.empty())
-                    currentRel = "You don't know much about " + memberName + ".";
+                    currentRel = PBC_DefaultRelationshipText(memberName);
 
                 // Build a snapshot for the relationship event.  Use the
                 // current responding bot's snapshot but refresh its history
@@ -1017,60 +982,6 @@ void PBC_WorldScript::OnShutdown()
     LOG_INFO("server.loading", "[PBC] Module shutdown.");
 }
 
-// ---------------------------------------------------------------------------
-// BuildLocationString / BuildFlightLocationString  (main-thread helpers)
-// ---------------------------------------------------------------------------
-// RollChance  (local copy — the canonical one lives in pbc_events.cpp as static)
-// ---------------------------------------------------------------------------
-static bool RollChance(uint32_t chance)
-{
-    return chance > 0 && (static_cast<uint32_t>(std::rand() % 100) < chance);
-}
-
-// ---------------------------------------------------------------------------
-// Returns the taxi destination name for a bot currently on a taxi flight,
-// e.g. "Tanaris" or empty string if the destination is unknown.
-// ---------------------------------------------------------------------------
-static std::string BuildFlightDestination(Player* bot)
-{
-    const std::deque<uint32>& path = bot->m_taxi.GetPath();
-    if (!path.empty())
-    {
-        uint32 finalNodeId = path.back();
-        if (TaxiNodesEntry const* node = sTaxiNodesStore.LookupEntry(finalNodeId))
-        {
-            if (node->name[0] && node->name[0][0] != '\0')
-                return node->name[0];
-        }
-    }
-    return {};
-}
-
-// ---------------------------------------------------------------------------
-static std::string BuildLocationString(Player* player)
-{
-    uint32_t newArea = player->GetAreaId();
-    uint32_t zoneId  = player->GetZoneId();
-    std::string areaName, zoneName;
-    if (AreaTableEntry const* entry = sAreaTableStore.LookupEntry(newArea))
-    {
-        areaName = entry->area_name[0];
-        uint32_t parentZone = entry->zone ? entry->zone : zoneId;
-        if (AreaTableEntry const* zentry = sAreaTableStore.LookupEntry(parentZone))
-            zoneName = zentry->area_name[0];
-    }
-    if (zoneName.empty())
-    {
-        if (AreaTableEntry const* zentry = sAreaTableStore.LookupEntry(zoneId))
-            zoneName = zentry->area_name[0];
-    }
-
-    if (!areaName.empty() && !zoneName.empty() && areaName != zoneName)
-        return areaName + " in " + zoneName;
-    if (!areaName.empty())
-        return areaName;
-    return zoneName;
-}
 
 void PBC_WorldScript::OnUpdate(uint32_t diff)
 {
@@ -1167,7 +1078,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
                     for (Player* bot : targets)
                     {
-                        bool rolled = RollChance(g_PBC_ReplyChanceMessage);
+                        bool rolled = PBC_RollChance(g_PBC_ReplyChanceMessage);
                         if (g_PBC_DebugEnabled)
                             LOG_INFO("server.loading",
                                      "[PBC] SecondaryEvent: roll bot={} chance={}% -> {}",
@@ -1366,14 +1277,14 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 std::string location;
                 if (inFlight)
                 {
-                    flightDest = BuildFlightDestination(member);
+                    flightDest = PBC_BuildFlightDestination(member);
                     if (flightDest.empty()) continue; // destination unknown — skip
-                    groundZone = BuildLocationString(member); // may be empty
+                    groundZone = PBC_BuildPlaceName(member); // may be empty
                     location = "flying to " + flightDest;
                 }
                 else
                 {
-                    location = BuildLocationString(member);
+                    location = PBC_BuildPlaceName(member);
                     if (location.empty()) continue;
                 }
 

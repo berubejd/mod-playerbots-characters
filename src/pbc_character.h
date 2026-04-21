@@ -74,4 +74,26 @@ std::string PBC_GetRelationshipsBlock(const PBC_BotSnapshot& snap);
 // ---------------------------------------------------------------------------
 std::string PBC_BuildTargetInfo(const std::string& name);
 
+// ---------------------------------------------------------------------------
+// Shared game-object-dependent helpers (main-thread only)
+// ---------------------------------------------------------------------------
+
+// Returns the place name for a player's current ground location,
+// e.g. "Goldshire in Elwynn Forest" or just "Elwynn Forest".
+std::string PBC_BuildPlaceName(Player* player);
+
+// Returns the taxi destination name for a flying player, or empty string.
+std::string PBC_BuildFlightDestination(Player* bot);
+
+// Returns the full flight location string, e.g.
+// "You are currently flying to Tanaris." or "You are currently flying."
+std::string PBC_BuildFlightLocationString(Player* bot);
+
+// Returns combat status string, e.g. "You are not currently in combat."
+// or "You are currently fighting Onyxia."
+std::string PBC_BuildCombatStatusStr(Player* bot);
+
+// Returns the LOS entity list string, e.g. "You see John and Defias Bandit nearby."
+std::string PBC_BuildLosStr(Player* bot);
+
 #endif // MOD_PBC_CHARACTER_H

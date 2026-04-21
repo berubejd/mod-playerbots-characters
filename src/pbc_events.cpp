@@ -2,6 +2,7 @@
 #include "pbc_config.h"
 #include "pbc_character.h"
 #include "pbc_llm.h"
+#include "pbc_utils.h"
 #include "Log.h"
 #include "Player.h"
 #include "Creature.h"
@@ -17,13 +18,10 @@
 #include "Chat.h"
 #include "DBCStores.h"
 
-#include <cstdlib>
 #include <algorithm>
 #include <regex>
 #include <unordered_set>
 #include <random>
-#include <chrono>
-#include <thread>
 
 // ---------------------------------------------------------------------------
 // Pointer sanity guard
@@ -113,41 +111,6 @@ static bool IsBlacklisted(const std::string& msg)
     return false;
 }
 
-// ---------------------------------------------------------------------------
-// Thread-local Mersenne Twister seeded from multiple entropy sources.
-//
-// std::random_device alone can be deterministic on some VMs without
-// hardware entropy.  We mix in the high-resolution clock, the thread ID,
-// and a stack address (ASLR provides randomness) to guarantee a unique
-// seed even in virtualised environments.
-// ---------------------------------------------------------------------------
-static std::mt19937& GetRNG()
-{
-    thread_local std::mt19937 rng([]{
-        // Use a dummy variable to get a stack address before constructing the seed.
-        // The real rng address isn't available yet, so we use this as a proxy.
-        int dummy;
-        std::seed_seq seq({
-            std::random_device{}(),
-            static_cast<uint32_t>(
-                std::chrono::high_resolution_clock::now().time_since_epoch().count()),
-            static_cast<uint32_t>(
-                std::hash<std::thread::id>{}(std::this_thread::get_id())),
-            static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&dummy))
-        });
-        std::mt19937 engine(seq);
-        engine.discard(1024);          // warm up the generator
-        return engine;
-    }());
-    return rng;
-}
-
-static bool RollChance(uint32 chance)
-{
-    if (chance == 0) return false;
-    std::uniform_int_distribution<uint32_t> dist(0, 99);
-    return dist(GetRNG()) < chance;
-}
 
 static std::vector<Player*> FindNearbyBots(WorldObject* source, float range = 60.0f)
 {
@@ -237,7 +200,7 @@ static PBC_EventItem BuildBotEvent(const std::vector<Player*>& bots,
 
     for (Player* bot : bots)
     {
-        bool rolled = RollChance(chance);
+        bool rolled = PBC_RollChance(chance);
         if (g_PBC_DebugEnabled)
             LOG_INFO("server.loading", "[PBC] Roll event bot={} chance={}% -> {}",
                      bot->GetName(), chance, rolled ? "RESPOND" : "silent");
@@ -351,7 +314,7 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
         ev.histLine  = historyLine;
         ev.chatType  = CHAT_MSG_WHISPER;
 
-        if (RollChance(g_PBC_ReplyChanceWhisper))
+        if (PBC_RollChance(g_PBC_ReplyChanceWhisper))
         {
             PBC_BotSnapshot snap = PBC_SnapshotBot(whisperTarget);
             snap.whisperTargetGuid = sender->GetGUID();
@@ -423,7 +386,7 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
         for (auto& [pos, bot] : positions)
         {
             mentionedGuids.insert(bot->GetGUID().GetCounter());
-            bool rolled = RollChance(g_PBC_ReplyChanceMention);
+            bool rolled = PBC_RollChance(g_PBC_ReplyChanceMention);
             if (g_PBC_DebugEnabled)
                 LOG_INFO("server.loading", "[PBC] Roll mention bot={} chance={}% -> {}",
                          bot->GetName(), g_PBC_ReplyChanceMention, rolled ? "RESPOND" : "silent");
@@ -449,7 +412,7 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
         // rolls at the same chance (no penalty). Once the chance reaches 0
         // all remaining bots are silently skipped.
         std::vector<Player*> shuffledBots = bots;
-        std::shuffle(shuffledBots.begin(), shuffledBots.end(), GetRNG());
+        std::shuffle(shuffledBots.begin(), shuffledBots.end(), PBC_GetRNG());
 
         uint32 currentChance = g_PBC_ReplyChanceMessage;
         for (Player* bot : shuffledBots)
@@ -463,7 +426,7 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
                 continue;
             }
 
-            bool rolled = RollChance(currentChance);
+            bool rolled = PBC_RollChance(currentChance);
             if (g_PBC_DebugEnabled)
                 LOG_INFO("server.loading", "[PBC] Roll message bot={} chance={}% -> {}",
                          bot->GetName(), currentChance, rolled ? "RESPOND" : "silent");
@@ -525,7 +488,7 @@ bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 la
 }
 
 // ---------------------------------------------------------------------------
-// Item quality / weapon-type helpers (used by OnPlayerStoreNewItem)
+// Item quality / type helpers (used by OnPlayerStoreNewItem)
 // ---------------------------------------------------------------------------
 
 static std::string ItemQualityStr(uint32 quality)
@@ -566,6 +529,201 @@ static std::string WeaponTypeStr(uint32 subClass)
     }
 }
 
+// Returns a human-readable armor slot name from the item's InventoryType.
+static std::string ArmorSlotStr(uint32 inventoryType)
+{
+    switch (inventoryType)
+    {
+        case INVTYPE_HEAD:       return "helm";
+        case INVTYPE_NECK:       return "necklace";
+        case INVTYPE_SHOULDERS:  return "shoulders";
+        case INVTYPE_BODY:       return "shirt";
+        case INVTYPE_CHEST:      return "chest armor";
+        case INVTYPE_WAIST:      return "belt";
+        case INVTYPE_LEGS:       return "legguards";
+        case INVTYPE_FEET:       return "boots";
+        case INVTYPE_WRISTS:     return "bracers";
+        case INVTYPE_HANDS:      return "gloves";
+        case INVTYPE_FINGER:     return "ring";
+        case INVTYPE_TRINKET:    return "trinket";
+        case INVTYPE_CLOAK:      return "cloak";
+        case INVTYPE_TABARD:     return "tabard";
+        case INVTYPE_ROBE:       return "robe";
+        case INVTYPE_HOLDABLE:   return "off-hand item";
+        case INVTYPE_SHIELD:     return "shield";
+        case INVTYPE_RELIC:      return "relic";
+        default:                 return "armor";
+    }
+}
+
+// Builds a descriptive armor type string combining material and slot,
+// e.g. "cloth robe", "plate helm", "leather legguards", "mail boots".
+// For shields, bucklers and relics the subclass alone is descriptive enough.
+// For misc subclass (rings, trinkets, cloaks, etc.) the slot name is used.
+static std::string BuildArmorTypeStr(uint32 subClass, uint32 inventoryType)
+{
+    // Shields, bucklers and relics have their own distinct names
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_ARMOR_SHIELD:  return "shield";
+        case ITEM_SUBCLASS_ARMOR_BUCKLER: return "buckler";
+        case ITEM_SUBCLASS_ARMOR_LIBRAM:  return "libram";
+        case ITEM_SUBCLASS_ARMOR_IDOL:    return "idol";
+        case ITEM_SUBCLASS_ARMOR_TOTEM:   return "totem";
+        case ITEM_SUBCLASS_ARMOR_SIGIL:   return "sigil";
+        default: break;
+    }
+
+    // Get the slot name from inventory type
+    std::string slot = ArmorSlotStr(inventoryType);
+
+    // Cloth / leather / mail / plate: combine material + slot
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_ARMOR_CLOTH:   return "cloth " + slot;
+        case ITEM_SUBCLASS_ARMOR_LEATHER: return "leather " + slot;
+        case ITEM_SUBCLASS_ARMOR_MAIL:    return "mail " + slot;
+        case ITEM_SUBCLASS_ARMOR_PLATE:   return "plate " + slot;
+        default: break;
+    }
+
+    // Misc subclass: just use the slot name (rings, trinkets, cloaks, etc.)
+    return slot;
+}
+
+static std::string ConsumableTypeStr(uint32 subClass)
+{
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_POTION:           return "potion";
+        case ITEM_SUBCLASS_ELIXIR:           return "elixir";
+        case ITEM_SUBCLASS_FLASK:            return "flask";
+        case ITEM_SUBCLASS_SCROLL:           return "scroll";
+        case ITEM_SUBCLASS_FOOD:             return "food";
+        case ITEM_SUBCLASS_ITEM_ENHANCEMENT: return "item enhancement";
+        case ITEM_SUBCLASS_BANDAGE:          return "bandage";
+        default:                             return "consumable";
+    }
+}
+
+static std::string GemTypeStr(uint32 subClass)
+{
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_GEM_RED:       return "red gem";
+        case ITEM_SUBCLASS_GEM_BLUE:      return "blue gem";
+        case ITEM_SUBCLASS_GEM_YELLOW:    return "yellow gem";
+        case ITEM_SUBCLASS_GEM_PURPLE:    return "purple gem";
+        case ITEM_SUBCLASS_GEM_GREEN:     return "green gem";
+        case ITEM_SUBCLASS_GEM_ORANGE:    return "orange gem";
+        case ITEM_SUBCLASS_GEM_META:      return "meta gem";
+        case ITEM_SUBCLASS_GEM_PRISMATIC: return "prismatic gem";
+        default:                          return "gem";
+    }
+}
+
+static std::string RecipeTypeStr(uint32 subClass)
+{
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_BOOK:                   return "book";
+        case ITEM_SUBCLASS_LEATHERWORKING_PATTERN: return "leatherworking pattern";
+        case ITEM_SUBCLASS_TAILORING_PATTERN:      return "tailoring pattern";
+        case ITEM_SUBCLASS_ENGINEERING_SCHEMATIC:  return "engineering schematic";
+        case ITEM_SUBCLASS_BLACKSMITHING:          return "blacksmithing plans";
+        case ITEM_SUBCLASS_COOKING_RECIPE:         return "cooking recipe";
+        case ITEM_SUBCLASS_ALCHEMY_RECIPE:         return "alchemy recipe";
+        case ITEM_SUBCLASS_FIRST_AID_MANUAL:       return "first aid manual";
+        case ITEM_SUBCLASS_ENCHANTING_FORMULA:     return "enchanting formula";
+        case ITEM_SUBCLASS_FISHING_MANUAL:         return "fishing manual";
+        case ITEM_SUBCLASS_JEWELCRAFTING_RECIPE:   return "jewelcrafting recipe";
+        default:                                   return "recipe";
+    }
+}
+
+static std::string TradeGoodsTypeStr(uint32 subClass)
+{
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_TRADE_GOODS:       return "trade goods";
+        case ITEM_SUBCLASS_PARTS:             return "engineering parts";
+        case ITEM_SUBCLASS_EXPLOSIVES:        return "explosives";
+        case ITEM_SUBCLASS_DEVICES:           return "device";
+        case ITEM_SUBCLASS_JEWELCRAFTING:     return "jewelcrafting material";
+        case ITEM_SUBCLASS_CLOTH:             return "cloth";
+        case ITEM_SUBCLASS_LEATHER:           return "leather";
+        case ITEM_SUBCLASS_METAL_STONE:       return "metal and stone";
+        case ITEM_SUBCLASS_MEAT:              return "meat";
+        case ITEM_SUBCLASS_HERB:              return "herb";
+        case ITEM_SUBCLASS_ELEMENTAL:         return "elemental item";
+        case ITEM_SUBCLASS_TRADE_GOODS_OTHER: return "trade goods";
+        case ITEM_SUBCLASS_ENCHANTING:        return "enchanting material";
+        case ITEM_SUBCLASS_MATERIAL:          return "material";
+        default:                              return "trade goods";
+    }
+}
+
+static std::string ProjectileTypeStr(uint32 subClass)
+{
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_ARROW:  return "arrow";
+        case ITEM_SUBCLASS_BULLET: return "bullet";
+        default:                   return "ammunition";
+    }
+}
+
+static std::string ContainerTypeStr(uint32 subClass)
+{
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_CONTAINER:               return "bag";
+        case ITEM_SUBCLASS_SOUL_CONTAINER:          return "soul bag";
+        case ITEM_SUBCLASS_HERB_CONTAINER:          return "herb bag";
+        case ITEM_SUBCLASS_ENCHANTING_CONTAINER:    return "enchanting bag";
+        case ITEM_SUBCLASS_ENGINEERING_CONTAINER:   return "engineering bag";
+        case ITEM_SUBCLASS_GEM_CONTAINER:           return "gem bag";
+        case ITEM_SUBCLASS_MINING_CONTAINER:        return "mining bag";
+        case ITEM_SUBCLASS_LEATHERWORKING_CONTAINER:return "leatherworking bag";
+        case ITEM_SUBCLASS_INSCRIPTION_CONTAINER:   return "inscription bag";
+        default:                                    return "bag";
+    }
+}
+
+static std::string KeyTypeStr(uint32 subClass)
+{
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_KEY:      return "key";
+        case ITEM_SUBCLASS_LOCKPICK: return "lockpick";
+        default:                     return "key";
+    }
+}
+
+static std::string QuiverTypeStr(uint32 subClass)
+{
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_QUIVER:     return "quiver";
+        case ITEM_SUBCLASS_AMMO_POUCH: return "ammo pouch";
+        default:                       return "quiver";
+    }
+}
+
+static std::string MiscTypeStr(uint32 subClass)
+{
+    switch (subClass)
+    {
+        case ITEM_SUBCLASS_JUNK:          return "junk item";
+        case ITEM_SUBCLASS_JUNK_REAGENT:  return "reagent";
+        case ITEM_SUBCLASS_JUNK_PET:      return "pet";
+        case ITEM_SUBCLASS_JUNK_HOLIDAY:  return "holiday item";
+        case ITEM_SUBCLASS_JUNK_OTHER:    return "miscellaneous item";
+        case ITEM_SUBCLASS_JUNK_MOUNT:    return "mount";
+        default:                          return "item";
+    }
+}
+
 // Returns "a" or "an" based on the first character of the word that follows.
 static const char* ArticleFor(const std::string& word)
 {
@@ -574,17 +732,41 @@ static const char* ArticleFor(const std::string& word)
     return (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u') ? "an" : "a";
 }
 
-// Builds a phrase like "a legendary two-handed mace" or "an epic item".
+// Builds a phrase like "a legendary two-handed mace", "an epic cloth robe",
+// "a rare ring", "an uncommon potion", etc.
 static std::string BuildItemPhrase(ItemTemplate const* tmpl)
 {
     std::string quality = ItemQualityStr(tmpl->Quality);
     std::string type;
-    if (tmpl->Class == ITEM_CLASS_WEAPON)
-        type = WeaponTypeStr(tmpl->SubClass);
-    else
-        type = "item";
+
+    switch (tmpl->Class)
+    {
+        case ITEM_CLASS_WEAPON:      type = WeaponTypeStr(tmpl->SubClass); break;
+        case ITEM_CLASS_ARMOR:       type = BuildArmorTypeStr(tmpl->SubClass, tmpl->InventoryType); break;
+        case ITEM_CLASS_CONSUMABLE:  type = ConsumableTypeStr(tmpl->SubClass); break;
+        case ITEM_CLASS_GEM:         type = GemTypeStr(tmpl->SubClass); break;
+        case ITEM_CLASS_RECIPE:      type = RecipeTypeStr(tmpl->SubClass); break;
+        case ITEM_CLASS_TRADE_GOODS: type = TradeGoodsTypeStr(tmpl->SubClass); break;
+        case ITEM_CLASS_PROJECTILE:  type = ProjectileTypeStr(tmpl->SubClass); break;
+        case ITEM_CLASS_CONTAINER:   type = ContainerTypeStr(tmpl->SubClass); break;
+        case ITEM_CLASS_KEY:         type = KeyTypeStr(tmpl->SubClass); break;
+        case ITEM_CLASS_QUIVER:      type = QuiverTypeStr(tmpl->SubClass); break;
+        case ITEM_CLASS_MISC:        type = MiscTypeStr(tmpl->SubClass); break;
+        case ITEM_CLASS_QUEST:       type = "quest item"; break;
+        case ITEM_CLASS_REAGENT:     type = "reagent"; break;
+        case ITEM_CLASS_GLYPH:       type = "glyph"; break;
+        default:                     type = "item"; break;
+    }
+
     return std::string(ArticleFor(quality)) + " " + quality + " " + type;
 }
+
+// ---------------------------------------------------------------------------
+// Bitmask of item classes that trigger loot events.
+// Only weapons and armor by default — add more ITEM_CLASS_* values to enable
+// additional item types (e.g. | (1u << ITEM_CLASS_CONSUMABLE)).
+// ---------------------------------------------------------------------------
+#define PBC_LOOT_EVENT_ITEM_CLASSES  ((1u << ITEM_CLASS_WEAPON) | (1u << ITEM_CLASS_ARMOR))
 
 void PBC_PlayerEvents::OnPlayerStoreNewItem(Player* player, Item* item, uint32 /*count*/)
 {
@@ -593,14 +775,14 @@ void PBC_PlayerEvents::OnPlayerStoreNewItem(Player* player, Item* item, uint32 /
 
     ItemTemplate const* tmpl = item->GetTemplate();
     if (!tmpl || tmpl->Quality < ITEM_QUALITY_RARE) return;
+    if (!(PBC_LOOT_EVENT_ITEM_CLASSES & (1u << tmpl->Class))) return;
 
-    std::string itemName  = tmpl->Name1;
-    std::string phrase    = BuildItemPhrase(tmpl);
-    std::string playerName = player->GetName();
+    std::string itemName = tmpl->Name1;
+    std::string phrase   = BuildItemPhrase(tmpl);
 
     PBC_DispatchGroupEvent(player,
-        PBC_MakeEventLine(playerName + " is picking up " + phrase + " called " + itemName),
-        PBC_MakeHistLine(playerName + " picked up " + phrase + " called " + itemName),
+        PBC_MakeEventLine("The party has found " + phrase + " named " + itemName),
+        PBC_MakeHistLine("The party acquired " + phrase + " named " + itemName),
         g_PBC_ReplyChanceItem);
 }
 
@@ -643,7 +825,7 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
     };
 
     const std::string& name = player->GetName();
-    int idx = std::rand() % 5;
+    int idx = std::uniform_int_distribution<int>(0, 4)(PBC_GetRNG());
     std::string eventLine = PBC_MakeEventLine(name + levelUpEventPhrases[idx]);
     std::string histLine  = PBC_MakeHistLine(name + levelUpHistPhrases[idx]);
 
@@ -731,19 +913,7 @@ void PBC_PlayerEvents::OnPlayerCreatureKill(Player* killer, Creature* killed)
             if (leader->IsInWorld())
                 locAnchor = leader;
 
-        uint32 areaId = locAnchor->GetAreaId();
-        uint32 zoneId = locAnchor->GetZoneId();
-        std::string areaName, zoneName;
-        if (AreaTableEntry const* a = sAreaTableStore.LookupEntry(areaId))
-            areaName = a->area_name[0];
-        if (AreaTableEntry const* z = sAreaTableStore.LookupEntry(zoneId))
-            zoneName = z->area_name[0];
-        if (!areaName.empty() && !zoneName.empty() && areaName != zoneName)
-            location = zoneName + ", " + areaName;
-        else if (!areaName.empty())
-            location = areaName;
-        else
-            location = zoneName;
+        location = PBC_BuildPlaceName(locAnchor);
     }
 
     std::string eventSuffix = bossLabel;
@@ -826,21 +996,10 @@ static std::string SubstituteQuestVars(const std::string& tmpl,
                                         const std::string& description,
                                         const std::string& rewardText)
 {
-    auto replace = [](std::string s, const std::string& from, const std::string& to) -> std::string
-    {
-        size_t pos = 0;
-        while ((pos = s.find(from, pos)) != std::string::npos)
-        {
-            s.replace(pos, from.size(), to);
-            pos += to.size();
-        }
-        return s;
-    };
-
     std::string result = tmpl;
-    result = replace(result, "{quest_title}",       title);
-    result = replace(result, "{quest_description}", description);
-    result = replace(result, "{quest_reward_text}", rewardText);
+    PBC_ReplaceToken(result, "quest_title",       title);
+    PBC_ReplaceToken(result, "quest_description", description);
+    PBC_ReplaceToken(result, "quest_reward_text", rewardText);
     return result;
 }
 
