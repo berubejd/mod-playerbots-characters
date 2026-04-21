@@ -5,6 +5,7 @@
 #include "pbc_events.h"
 #include "Config.h"
 #include "Log.h"
+#include "World.h"
 #include "DatabaseEnv.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
@@ -29,15 +30,15 @@ bool     g_PBC_DebugEnabled        = false;
 bool     g_PBC_DebugShowFullRequest = false;
 bool     g_PBC_DisplayNarratorEvents = true;
 
-std::string g_PBC_BaseUrl          = "https://api.deepseek.com/v1";
+std::string g_PBC_BaseUrl          = "";
 std::string g_PBC_ApiKey           = "";
-std::string g_PBC_Model            = "deepseek-chat";
+std::string g_PBC_Model            = "";
 int         g_PBC_MaxResponseTokens = 100;
-double      g_PBC_Temperature      = 1.5;
+double      g_PBC_Temperature      = 1.0;
 std::string g_PBC_ModelExtraParameters;
 int         g_PBC_RequestTimeoutSec = 30;
 
-uint32_t    g_PBC_MaxCtx                    = 32768;
+uint32_t    g_PBC_MaxCtx                    = 0;
 uint32_t    g_PBC_CondensationPreservedLines = 50;
 
 std::string g_PBC_SystemPrompt;
@@ -734,22 +735,22 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
 // PBC_LoadConfig
 // ---------------------------------------------------------------------------
 
-void PBC_LoadConfig()
+void PBC_LoadConfig(bool isStartup)
 {
     g_PBC_Enable              = sConfigMgr->GetOption<bool>("PBC.Enable", true);
     g_PBC_DebugEnabled        = sConfigMgr->GetOption<bool>("PBC.DebugEnabled", false);
     g_PBC_DebugShowFullRequest = sConfigMgr->GetOption<bool>("PBC.DebugShowFullRequest", false);
     g_PBC_DisplayNarratorEvents = sConfigMgr->GetOption<bool>("PBC.DisplayNarratorEvents", true);
 
-    g_PBC_BaseUrl             = sConfigMgr->GetOption<std::string>("PBC.BaseUrl", "https://api.deepseek.com/v1");
+    g_PBC_BaseUrl             = sConfigMgr->GetOption<std::string>("PBC.BaseUrl", "");
     g_PBC_ApiKey              = sConfigMgr->GetOption<std::string>("PBC.ApiKey", "");
-    g_PBC_Model               = sConfigMgr->GetOption<std::string>("PBC.Model", "deepseek-chat");
+    g_PBC_Model               = sConfigMgr->GetOption<std::string>("PBC.Model", "");
     g_PBC_MaxResponseTokens   = sConfigMgr->GetOption<int>("PBC.MaxResponseLength", 100);
-    g_PBC_Temperature         = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.Temperature", 1.5f)) * 100.0) / 100.0;
+    g_PBC_Temperature         = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.Temperature", 1.0f)) * 100.0) / 100.0;
     g_PBC_ModelExtraParameters = sConfigMgr->GetOption<std::string>("PBC.ModelExtraParameters", "");
     g_PBC_RequestTimeoutSec   = sConfigMgr->GetOption<int>("PBC.RequestTimeoutSec", 30);
 
-    g_PBC_MaxCtx                     = sConfigMgr->GetOption<uint32_t>("PBC.MaxCtx", 32768);
+    g_PBC_MaxCtx                     = sConfigMgr->GetOption<uint32_t>("PBC.MaxCtx", 0);
     g_PBC_CondensationPreservedLines = sConfigMgr->GetOption<uint32_t>("PBC.CondensationPreservedLines", 50);
 
     g_PBC_SystemPrompt              = sConfigMgr->GetOption<std::string>("PBC.SystemPrompt", "");
@@ -782,6 +783,45 @@ void PBC_LoadConfig()
 
     std::string blacklistStr = sConfigMgr->GetOption<std::string>("PBC.Blacklist", "");
     g_PBC_Blacklist = SplitByComma(blacklistStr);
+
+    // Validate required settings when the module is enabled
+    if (g_PBC_Enable)
+    {
+        bool configValid = true;
+
+        if (g_PBC_BaseUrl.empty())
+        {
+            LOG_ERROR("server.loading", "[PBC] PBC.BaseUrl is not set. This is a required setting when the module is enabled.");
+            configValid = false;
+        }
+
+        if (g_PBC_Model.empty())
+        {
+            LOG_ERROR("server.loading", "[PBC] PBC.Model is not set. This is a required setting when the module is enabled.");
+            configValid = false;
+        }
+
+        if (g_PBC_MaxCtx == 0)
+        {
+            LOG_ERROR("server.loading", "[PBC] PBC.MaxCtx is not set. This is a required setting when the module is enabled.");
+            configValid = false;
+        }
+
+        if (!configValid)
+        {
+            if (isStartup)
+            {
+                LOG_ERROR("server.loading", "[PBC] Required configuration is missing. Shutting down server.");
+                World::StopNow(ERROR_EXIT_CODE);
+            }
+            else
+            {
+                LOG_ERROR("server.loading", "[PBC] Required configuration is missing. Module disabled until fixed.");
+                g_PBC_Enable = false;
+            }
+            return;
+        }
+    }
 
     LOG_INFO("server.loading",
         "[PBC] Config: Enable={} Model='{}' Url='{}' MaxCtx={} Timeout={}s "
@@ -949,7 +989,7 @@ PBC_WorldScript::PBC_WorldScript() : WorldScript("PBC_WorldScript") {}
 
 void PBC_WorldScript::OnStartup()
 {
-    PBC_LoadConfig();
+    PBC_LoadConfig(true);
     PBC_LoadCharacterCards();
     PBC_LoadCardAdditionsFromDB();
     PBC_LoadHistoryFromDB();

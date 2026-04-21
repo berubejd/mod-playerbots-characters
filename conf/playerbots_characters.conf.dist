@@ -44,8 +44,9 @@ PBC.DisplayNarratorEvents = 1
 # PBC.BaseUrl
 #     Description: The base URL of the OpenAI-compatible API.
 #                  The module appends /chat/completions to this URL.
-#     Default:     https://api.deepseek.com/v1
-PBC.BaseUrl = https://api.deepseek.com/v1
+#                  REQUIRED when PBC.Enable = 1. The server will not start without it.
+#     Default:     (empty)
+PBC.BaseUrl =
 
 # PBC.ApiKey
 #     Description: Bearer token sent in the Authorization header.
@@ -67,21 +68,22 @@ PBC.RequestTimeoutSec = 30
 
 # PBC.Model
 #     Description: The model identifier to be used in the API request.
-#     Default:     deepseek-chat
-PBC.Model = deepseek-chat
+#                  REQUIRED when PBC.Enable = 1. The server will not start without it.
+#     Default:     (empty)
+PBC.Model =
 
 # PBC.MaxResponseLength
 #     Description: Maximum number of tokens for the model to generate.
 #                  0 = unlimited.
-#     Default:     100
-PBC.MaxResponseLength = 100
+#     Default:     120
+PBC.MaxResponseLength = 120
 
 # PBC.Temperature
 #     Description: Controls the "creativity" or randomness of the model's output.
 #                  Check model description to determine correct value.
 #     Example:     PBC.Temperature = 0.6
-#     Default:     1.5
-PBC.Temperature = 1.5
+#     Default:     1.0
+PBC.Temperature = 1.0
 
 # PBC.ModelExtraParameters
 #     Description: Raw JSON fragment appended to every LLM request body.
@@ -92,14 +94,15 @@ PBC.Temperature = 1.5
 #     Example (DeepSeek): 'frequency_penalty':0.5,'presence_penalty':0.2
 #     Example (GLM):       'thinking':{'type':'disabled'}
 #     Default:     (empty)
-PBC.ModelExtraParameters = 'frequency_penalty':0.5,'presence_penalty':0.2
+PBC.ModelExtraParameters =
 
 # PBC.MaxCtx
 #     Description: Maximum context length (in tokens) before condensation happens.
+#                  REQUIRED when PBC.Enable = 1. The server will not start without it.
 #                  Recommended to keep it at around 25% of the total model max context.
-#     Example:     PBC.MaxCtx = 8192
-#     Default:     32768
-PBC.MaxCtx = 32768
+#     Example:     PBC.MaxCtx = 32768
+#     Default:     0
+PBC.MaxCtx =
 
 # PBC.CondensationPreservedLines
 #     Description: Number of history lines kept after condensation.

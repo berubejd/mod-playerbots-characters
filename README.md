@@ -31,7 +31,57 @@ If [mod_weather_vibe](https://github.com/hermensbas/mod_weather_vibe) is also in
 
 ## Configuration
 
-Copy `env/dist/etc/modules/playerbots_characters.conf.dist` as `env/dist/etc/modules/playerbots_characters.conf` and adjust it as needed. As a bare minimum you will need to define `PBC.ApiKey` for DeepSeek that you can get [in their console](https://platform.deepseek.com/). Of course nothing stops you from using any other provider and any other model. However, note that due to the complexity of requests, almost any model you could run locally on your average home system will likely fail miserably and produce garbage as context size and complexity grows. DeepSeek was picked as a baseline and a reasonable cost/capabilities compromise.
+Copy `env/dist/etc/modules/playerbots_characters.conf.dist` as `env/dist/etc/modules/playerbots_characters.conf` and adjust it as needed.
+
+### Model Connection Setup
+
+The module communicates with an OpenAI-compatible chat completions API. You need to configure at least `PBC.BaseUrl`, `PBC.Model` and `PBC.ApiKey` before the module can generate responses. The relevant config options are in the **API CONNECTION** and **MODEL PARAMETERS** sections of the config file.
+
+Due to the complexity and length of the prompts, locally-run models on average home hardware will generally struggle and produce low-quality output as context grows. A cloud-based model with a large context window is recommended. Make sure to also adjust `PBC.MaxCtx` accordingly — a good starting point is around 25% of the model's total context window. Aim for at least 32k in general, anything less could lead to poor efficiency of character relationship tracking and card additions.
+
+Choosing the right model can be tricky. Two tested configurations are listed below.
+
+#### DeepSeek
+
+| Setting | Value |
+|---|---|
+| `PBC.BaseUrl` | `https://api.deepseek.com/v1` |
+| `PBC.Model` | `deepseek-chat` |
+| `PBC.Temperature` | `1.6` |
+| `PBC.MaxCtx` | `32768` |
+| `PBC.ModelExtraParameters` | `'frequency_penalty':0.5,'presence_penalty':0.2` |
+| `PBC.ApiKey` | your API key from [DeepSeek platform](https://platform.deepseek.com/) |
+
+DeepSeek offers a reasonable cost/capabilities compromise and can be considered the cheapest viable option. The `frequency_penalty` and `presence_penalty` extra parameters help reduce repetitive output. Expect to spend under $0.5 for several hours of play.
+
+#### GLM (Zhipu AI)
+
+| Setting | Value |
+|---|---|
+| `PBC.BaseUrl` | `https://api.z.ai/api/paas/v4` |
+| `PBC.Model` | `glm-5.1` |
+| `PBC.Temperature` | `1.0` |
+| `PBC.MaxCtx` | `32768` |
+| `PBC.ModelExtraParameters` | `'thinking':{'type':'disabled'}` |
+| `PBC.ApiKey` | your API key from [Z.ai](https://z.ai/manage-apikey/apikey-list) |
+
+GLM 5.1 has a built-in "thinking" mode that is incompatible with the module's prompt structure — disabling it via `ModelExtraParameters` is required for correct output. The model handles the required tasks impressively well, though the cost adds up fairly quickly. Expect to spend around $2 per long game session with a full party.
+
+#### Other Models
+
+Any OpenAI-compatible API should work — just set `PBC.BaseUrl` to the endpoint (the module appends `/chat/completions` automatically), `PBC.Model` to the model identifier, and `PBC.ApiKey` to your bearer token. If the endpoint doesn't require authentication (e.g. a local Ollama or LM Studio instance), leave `PBC.ApiKey` empty.
+
+Use `PBC.ModelExtraParameters` to inject provider-specific JSON into the request body. Single quotes are used instead of double quotes and are automatically replaced at runtime:
+
+```
+PBC.ModelExtraParameters = 'frequency_penalty':0.5,'presence_penalty':0.2
+```
+
+becomes `"frequency_penalty":0.5,"presence_penalty":0.2` in the request.
+
+When switching providers, pay attention to `PBC.Temperature` — acceptable ranges vary between models. Check the provider's documentation for the recommended value.
+
+### Playerbots Adjustments
 
 Recommended adjustments to the playerbots config (`playerbots.conf`), to make bots less talkative outside of this module:
 

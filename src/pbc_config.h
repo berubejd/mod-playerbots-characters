@@ -381,7 +381,7 @@ void PBC_PushEvent(PBC_EventItem item);
 // ---------------------------------------------------------------------------
 // Loader / WorldScript
 // ---------------------------------------------------------------------------
-void PBC_LoadConfig();
+void PBC_LoadConfig(bool isStartup = false);
 void PBC_LoadCharacterCards();
 void PBC_LoadHistoryFromDB();
 void PBC_LoadCardAdditionsFromDB();
