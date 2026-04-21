@@ -14,6 +14,19 @@ std::string PBC_TruncateForDebug(const std::string& s, size_t maxLen, size_t hal
     return s.substr(0, halfLen) + " ... " + s.substr(s.size() - halfLen);
 }
 
+std::string PBC_SanitizeForFmt(const std::string& s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s)
+    {
+        if (c == '{')      out += '(';
+        else if (c == '}') out += ')';
+        else               out += c;
+    }
+    return out;
+}
+
 // ---------------------------------------------------------------------------
 // Template substitution helpers
 // ---------------------------------------------------------------------------

@@ -31,6 +31,10 @@ void PBC_ReplaceToken(std::string& s, const std::string& key, const std::string&
 // first halfLen ... last halfLen.  Otherwise return the string unchanged.
 std::string PBC_TruncateForDebug(const std::string& s, size_t maxLen = 1000, size_t halfLen = 500);
 
+// Replace curly braces with parentheses so the string is safe to pass
+// through AzerothCore's fmt-based LOG macros (which double-format).
+std::string PBC_SanitizeForFmt(const std::string& s);
+
 // ---------------------------------------------------------------------------
 // String formatting helpers
 // ---------------------------------------------------------------------------

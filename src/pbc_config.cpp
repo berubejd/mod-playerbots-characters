@@ -360,7 +360,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         if (g_PBC_DebugEnabled)
             LOG_INFO("server.loading", "[PBC] RelationshipUpdate: updated bot={} target={} mentions={} text=\"{}\"",
                      ev.relationshipBot.botName, ev.relationshipTargetName,
-                     ev.relationshipMentionTotal, res.text);
+                     ev.relationshipMentionTotal, PBC_SanitizeForFmt(res.text));
 
         g_PBC_EventThreadDone.store(true);
         return;
@@ -421,21 +421,20 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     // next bot in the chain sees the previous reply when building its prompt.
     std::vector<std::string> completedReplyLines;
 
-    // Post deferred "thinks..." notifications to the main thread so they
-    // appear right before the LLM call starts, not at event-creation time.
-    for (const PBC_BotSnapshot& snap : ev.respondingBots)
-    {
-        PBC_PendingAction action;
-        action.botGuid             = snap.botObjGuid;
-        action.text                = PBC_MakeEventLine(snap.botName + " thinks...");
-        action.isThinkNotification = true;
-
-        std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
-        g_PBC_PendingActions.push(std::move(action));
-    }
-
     for (PBC_BotSnapshot& snap : ev.respondingBots)
     {
+        // Post deferred "thinks..." notification to the main thread so it
+        // appears right before this bot's LLM call, not at event-creation time.
+        {
+            PBC_PendingAction action;
+            action.botGuid             = snap.botObjGuid;
+            action.text                = PBC_MakeEventLine(snap.botName + " thinks...");
+            action.isThinkNotification = true;
+
+            std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
+            g_PBC_PendingActions.push(std::move(action));
+        }
+
         // Condense inline if over token budget before building the prompt.
         int histTokens = PBC_EstimateHistoryTokens(snap.botGuidRaw);
         if (histTokens > static_cast<int>(g_PBC_MaxCtx))
@@ -499,7 +498,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         lastEventLine     = currentEvent;
 
         if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] ProcessEvent: bot={} replied: \"{}\"", snap.botName, res.text);
+            LOG_INFO("server.loading", "[PBC] ProcessEvent: bot={} replied", snap.botName);
     }
 
     // -----------------------------------------------------------------------
@@ -1221,8 +1220,8 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                     }
 
                     if (g_PBC_DebugEnabled)
-                        LOG_INFO("server.loading", "[PBC] OnUpdate: sent chat for bot={} type={} text=\"{}\"",
-                                 bot->GetName(), ct, action.text);
+                        LOG_INFO("server.loading", "[PBC] OnUpdate: sent chat for bot={} type={}",
+                                 bot->GetName(), ct);
                 }
             }
 

@@ -1,5 +1,6 @@
 #include "pbc_http.h"
 #include "pbc_config.h"
+#include "pbc_utils.h"
 #include "Log.h"
 
 #include <httplib.h>
@@ -79,7 +80,7 @@ std::string PBC_HttpClient::Post(const std::string& url,
         {
             LOG_ERROR("server.loading", "[PBC] HTTP {} from {}:{}{}", res->status, host, port, path);
             if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] Response body: {}", res->body);
+                LOG_INFO("server.loading", "[PBC] Response body: {}", PBC_SanitizeForFmt(res->body));
             return "";
         }
 

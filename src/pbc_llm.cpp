@@ -139,7 +139,7 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
 
     if (g_PBC_DebugEnabled && g_PBC_DebugShowFullRequest)
     {
-        LOG_INFO("server.loading", "[PBC] LLM request body:\n{}", PBC_TruncateForDebug(bodyStr));
+        LOG_INFO("server.loading", "[PBC] LLM request body:\n{}", PBC_SanitizeForFmt(PBC_TruncateForDebug(bodyStr)));
     }
 
     // --- Build headers ----------------------------------------------------
@@ -181,7 +181,7 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
 
         if (g_PBC_DebugEnabled && g_PBC_DebugShowFullRequest)
         {
-            LOG_INFO("server.loading", "[PBC] LLM response body:\n{}", PBC_TruncateForDebug(responseBody));
+            LOG_INFO("server.loading", "[PBC] LLM response body:\n{}", PBC_SanitizeForFmt(PBC_TruncateForDebug(responseBody)));
         }
 
         try
@@ -243,7 +243,7 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
             result.tokensUsed = tokensUsed;
 
             if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] LLM reply ({} tokens): {}", tokensUsed, text);
+                LOG_INFO("server.loading", "[PBC] LLM reply ({} tokens): {}", tokensUsed, PBC_SanitizeForFmt(text));
 
             return result;
         }
@@ -251,7 +251,7 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
         {
             LOG_ERROR("server.loading", "[PBC] JSON parse error (attempt {}/{}): {}", attempt, MAX_ATTEMPTS, ex.what());
             if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] Raw response: {}", responseBody);
+                LOG_INFO("server.loading", "[PBC] Raw response: {}", PBC_SanitizeForFmt(responseBody));
         }
     }
 
