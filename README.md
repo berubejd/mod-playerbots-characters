@@ -5,7 +5,9 @@ This is an [AzerothCore](https://www.azerothcore.org) module built around [mod-p
 
 ## How It Works
 
-The module hooks into various in-game events (chat messages, item pickups, duels, level-ups, location changes, boss kills, quest completions) and dispatches them to characters in the party based on configurable reply chances. When a character "rolls" to respond, the module builds a prompt from its character card, accumulated chat history, current relationships with other party members, live context (location, time of day, nearby characters, combat status), and the event itself. This prompt is then sent to an OpenAI-compatible LLM API, and the model's response is spoken by the character in-game.
+This module extends the bots provided by `mod-playerbots` into full characters — giving them a voice, memories, relationships, and the ability to react to events and converse with companions. The bot logic (combat, movement, questing) remains entirely untouched; this module only adds the personality layer on top.
+
+The module hooks into various in-game events (chat messages, item pickups, duels, level-ups, location changes, boss kills, quest completions) and dispatches them to the characters in the player's party based on configurable reply chances. When a character "rolls" to respond, the module builds a prompt from its character card, accumulated chat history, current relationships with other party members, live context (location, time of day, nearby characters, combat status), and the event itself. This prompt is then sent to an OpenAI-compatible LLM API, and the model's response is spoken by the character in-game.
 
 For regular (non-whisper, non-mention) chat messages, characters roll in a random order. The first character rolls at `PBC.ReplyChanceMessage`. Each time a character successfully rolls to answer, the chance for the next character is reduced by `PBC.RollPenaltyOnAnswer`. If a character fails its roll, the next character rolls at the same chance (no penalty). This guarantees that with a high initial chance someone will respond, while preventing too many characters from answering at once. When a player mentions specific characters by name, only those characters roll (at `PBC.ReplyChanceMention`), independently of the penalty system.
 
@@ -13,7 +15,7 @@ Over time, chat history grows. When it reaches the configured token limit (`PBC.
 
 Relationships are tracked for each individual character in relation to other characters and real players. Every time a name is mentioned enough times in a character's history (controlled by `PBC.RelationshipUpdateThreshold`), a relationship update LLM call is triggered, generating or updating a brief description of how the character feels about that person. These relationship descriptions are included in future prompts, giving characters a sense of continuity with their companions.
 
-Note that this module only handles the conversational and roleplaying side of characters — it does not influence any of the bot logic that `mod-playerbots` uses to control in-game characters (combat, movement, questing and so on).
+Note that this module only handles the character layer — it does not influence any of the bot logic that `mod-playerbots` uses (combat, movement, questing and so on).
 
 
 ## Installation
