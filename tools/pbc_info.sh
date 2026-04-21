@@ -46,6 +46,22 @@ else
     done <<< "$ADDITIONS"
 fi
 
+# ── roll modifier ─────────────────────────────────────────────────────────────
+ROLL_MOD=$(mysql -NB acore_characters 2>/dev/null <<SQL
+SELECT roll_chance_modifier
+FROM mod_pbc_data
+WHERE bot_guid = ${GUID};
+SQL
+)
+
+echo ""
+echo "── Roll Modifier ────────────────────────"
+if [[ -z "$ROLL_MOD" ]]; then
+    echo "  0 (default)"
+else
+    echo "  ${ROLL_MOD}"
+fi
+
 # ── relationships ─────────────────────────────────────────────────────────────
 RELS=$(mysql -NB acore_characters 2>/dev/null <<SQL
 SELECT target_name, updated_at, mention_count_at_last_update, relationship_text

@@ -24,15 +24,17 @@ CREATE TABLE IF NOT EXISTS `mod_pbc_chat_history` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='Per-bot chat and event history lines for LLM context';
 
--- Last known stable location for each tracked bot.
--- Written when a bot's location event fires; loaded on server start so that
--- the stable-cycle counter is not reset by a server restart.
-CREATE TABLE IF NOT EXISTS `mod_pbc_bot_location` (
-    `bot_guid`      BIGINT UNSIGNED NOT NULL PRIMARY KEY COMMENT 'GUID of the playerbot character',
-    `last_location` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Last "Area in Zone" string for which the location event was fired',
-    `updated_at`    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+-- Per-bot persistent data: location tracking and roll chance modifier.
+-- Written when a bot's location event fires or when roll_modifier is set;
+-- loaded on server start so that the stable-cycle counter is not reset by
+-- a server restart and roll modifiers are preserved.
+CREATE TABLE IF NOT EXISTS `mod_pbc_data` (
+    `bot_guid`              BIGINT UNSIGNED NOT NULL PRIMARY KEY COMMENT 'GUID of the playerbot character',
+    `last_location`         VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Last "Area in Zone" string for which the location event was fired',
+    `roll_chance_modifier`  INT NOT NULL DEFAULT 0 COMMENT 'Per-character roll chance modifier (-100 to 100), added to every roll chance',
+    `updated_at`            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  COMMENT='Last stable location recorded for each tracked bot';
+  COMMENT='Per-bot persistent data (location, roll modifier)';
 
 -- LLM-generated relationship descriptions per bot, one row per (bot, target) pair.
 CREATE TABLE IF NOT EXISTS `mod_pbc_relationships` (

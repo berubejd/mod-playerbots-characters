@@ -42,6 +42,7 @@ static bool HandleCharsReload(ChatHandler* handler, Optional<std::string_view>)
     PBC_LoadConfig();
     PBC_LoadCharacterCards();
     PBC_LoadCardAdditionsFromDB();
+    PBC_LoadBotDataFromDB();
 
     // Reload history (and relationships) from DB safely by posting a
     // HistoryReload event onto the queue.  It will be processed after all
@@ -51,7 +52,7 @@ static bool HandleCharsReload(ChatHandler* handler, Optional<std::string_view>)
     ev.type = PBC_EventType::HistoryReload;
     PBC_PushEvent(std::move(ev));
 
-    handler->PSendSysMessage("[PBC] Config, character cards and card additions reloaded. History/relationship reload queued (runs after pending events).");
+    handler->PSendSysMessage("[PBC] Config, character cards, card additions and character data reloaded. History/relationship reload queued (runs after pending events).");
     return true;
 }
 
@@ -122,9 +123,16 @@ static bool HandleCharsInfo(ChatHandler* handler, Optional<std::string_view> nam
 
     int estimatedTokens = PBC_EstimateHistoryTokens(botGuid);
 
+    int32_t rollMod = 0;
+    {
+        auto it = g_PBC_RollChanceModifiers.find(botGuid);
+        if (it != g_PBC_RollChanceModifiers.end())
+            rollMod = it->second;
+    }
+
     handler->PSendSysMessage("[PBC] === {} ===", target->GetName());
-    handler->PSendSysMessage("[PBC] Card additions: {}  |  History lines: {}  |  Est. tokens: {}/{}",
-        addCount, histCount, estimatedTokens, g_PBC_MaxCtx);
+    handler->PSendSysMessage("[PBC] Card additions: {}  |  History lines: {}  |  Est. tokens: {}/{}  |  Roll modifier: {:+d}",
+        addCount, histCount, estimatedTokens, g_PBC_MaxCtx, rollMod);
     handler->PSendSysMessage("[PBC] Card:\n{}", card);
     return true;
 }
@@ -368,6 +376,63 @@ static bool HandleCharsRelationshipUpdate(ChatHandler* handler,
 }
 
 // ---------------------------------------------------------------------------
+// .chars roll_modifier [char_name] [roll_modifier]
+// Sets or displays the per-character roll chance modifier (-100 to 100).
+// ---------------------------------------------------------------------------
+static bool HandleCharsRollModifier(ChatHandler* handler,
+                                    Optional<std::string_view> nameArg,
+                                    Optional<int32> modifierArg)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+
+    // Need at least a character name
+    if (!nameArg || nameArg->empty())
+    {
+        handler->PSendSysMessage("[PBC] Usage: chars roll_modifier <char_name> [roll_modifier]");
+        handler->PSendSysMessage("[PBC]   roll_modifier: integer from -100 to 100. Positive = more talkative, negative = less talkative.");
+        handler->PSendSysMessage("[PBC]   Omit roll_modifier to display the current value.");
+        return false;
+    }
+
+    Player* target = ObjectAccessor::FindPlayerByName(std::string(*nameArg));
+    if (!target)
+    {
+        handler->PSendSysMessage("[PBC] Character '{}' not found or not online.", *nameArg);
+        return false;
+    }
+
+    uint64_t botGuid = target->GetGUID().GetCounter();
+
+    // No modifier argument: display current value
+    if (!modifierArg)
+    {
+        auto it = g_PBC_RollChanceModifiers.find(botGuid);
+        int32_t currentMod = (it != g_PBC_RollChanceModifiers.end()) ? it->second : 0;
+        handler->PSendSysMessage("[PBC] {}'s roll chance modifier: {:+d}", target->GetName(), currentMod);
+        return true;
+    }
+
+    int32_t modifier = *modifierArg;
+    if (modifier < -100 || modifier > 100)
+    {
+        handler->PSendSysMessage("[PBC] Roll modifier must be between -100 and 100 (got {}).", modifier);
+        return false;
+    }
+
+    // Update in-memory map
+    if (modifier == 0)
+        g_PBC_RollChanceModifiers.erase(botGuid);
+    else
+        g_PBC_RollChanceModifiers[botGuid] = modifier;
+
+    // Persist to database
+    DB_UpsertRollChanceModifier(botGuid, modifier);
+
+    handler->PSendSysMessage("[PBC] {}'s roll chance modifier set to {:+d}.", target->GetName(), modifier);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // .chars apitest [query=hi]
 // ---------------------------------------------------------------------------
 static bool HandleCharsApiTest(ChatHandler* handler, Optional<std::string_view> queryArg)
@@ -409,6 +474,7 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
         { "history",             HandleCharsHistory,            SEC_GAMEMASTER, Console::Yes },
         { "relationship",        HandleCharsRelationship,       SEC_GAMEMASTER, Console::Yes },
         { "relationship_update", HandleCharsRelationshipUpdate, SEC_GAMEMASTER, Console::Yes },
+        { "roll_modifier",       HandleCharsRollModifier,       SEC_GAMEMASTER, Console::Yes },
         { "apitest",             HandleCharsApiTest,            SEC_GAMEMASTER, Console::Yes },
     };
 

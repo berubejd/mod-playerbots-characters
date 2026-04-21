@@ -93,6 +93,13 @@ extern std::string g_PBC_QuestTakenUserPrompt;
 extern std::vector<std::string> g_PBC_Blacklist;
 
 // ---------------------------------------------------------------------------
+// Per-character roll chance modifiers (bot_guid -> modifier, range -100..100)
+// A positive modifier makes a character more talkative; negative less talkative.
+// Applied to every roll chance for the character.
+// ---------------------------------------------------------------------------
+extern std::unordered_map<uint64_t, int32_t> g_PBC_RollChanceModifiers;
+
+// ---------------------------------------------------------------------------
 // Snapshot of a single bot's state, taken on the main thread at the moment
 // an event is pushed to the queue.  The event thread works exclusively with
 // these snapshots — it never touches live Player* objects.
@@ -384,6 +391,14 @@ extern uint32_t g_PBC_LocationPollAccum;
 void PBC_PushEvent(PBC_EventItem item);
 
 // ---------------------------------------------------------------------------
+// Per-character roll chance helper (main-thread only)
+// ---------------------------------------------------------------------------
+
+// Returns the effective roll chance for a bot after applying its per-character
+// modifier.  The result is clamped to [0, 100].
+uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance);
+
+// ---------------------------------------------------------------------------
 // Loader / WorldScript
 // ---------------------------------------------------------------------------
 void PBC_LoadConfig(bool isStartup = false);
@@ -391,7 +406,7 @@ void PBC_LoadCharacterCards();
 void PBC_LoadHistoryFromDB();
 void PBC_LoadCardAdditionsFromDB();
 void PBC_SaveCardAdditionsToDB();
-void PBC_LoadBotLocationsFromDB();
+void PBC_LoadBotDataFromDB();
 void PBC_LoadRelationshipsFromDB();
 
 class PBC_WorldScript : public WorldScript

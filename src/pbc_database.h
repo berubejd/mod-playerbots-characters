@@ -78,20 +78,33 @@ inline void DB_DeleteAllCardAdditions()
 }
 
 // ---------------------------------------------------------------------------
-// Bot location
+// Bot data (location + roll chance modifier)
 // ---------------------------------------------------------------------------
 
-// Upsert the last stable location for a bot.
+// Upsert the last stable location for a bot (preserves roll_chance_modifier).
 inline void DB_UpsertBotLocation(uint64_t botGuid, const std::string& location)
 {
     std::string escaped = location;
     CharacterDatabase.EscapeString(escaped);
     CharacterDatabase.Execute(
-        "INSERT INTO mod_pbc_bot_location (bot_guid, last_location) VALUES ({}, '{}') "
+        "INSERT INTO mod_pbc_data (bot_guid, last_location) VALUES ({}, '{}') "
         "ON DUPLICATE KEY UPDATE last_location = '{}'",
         botGuid,
         escaped,
         escaped
+    );
+}
+
+// Upsert the roll chance modifier for a bot (preserves last_location).
+// modifier must be in range [-100, 100].
+inline void DB_UpsertRollChanceModifier(uint64_t botGuid, int32_t modifier)
+{
+    CharacterDatabase.Execute(
+        "INSERT INTO mod_pbc_data (bot_guid, roll_chance_modifier) VALUES ({}, {}) "
+        "ON DUPLICATE KEY UPDATE roll_chance_modifier = {}",
+        botGuid,
+        modifier,
+        modifier
     );
 }
 

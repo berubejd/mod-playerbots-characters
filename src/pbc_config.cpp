@@ -96,6 +96,7 @@ std::mutex g_PBC_RelationshipsMutex;
 
 std::unordered_map<uint64_t, PBC_LocationState> g_PBC_LocationStates;
 std::unordered_map<uint64_t, std::string>        g_PBC_BotLastLocations;
+std::unordered_map<uint64_t, int32_t>            g_PBC_RollChanceModifiers;
 uint32_t g_PBC_LocationPollAccum = 0;
 
 // ---------------------------------------------------------------------------
@@ -931,23 +932,45 @@ void PBC_SaveCardAdditionsToDB()
     // This stub exists for API completeness.
 }
 
-void PBC_LoadBotLocationsFromDB()
+void PBC_LoadBotDataFromDB()
 {
     QueryResult result = CharacterDatabase.Query(
-        "SELECT bot_guid, last_location FROM mod_pbc_bot_location"
+        "SELECT bot_guid, last_location, roll_chance_modifier FROM mod_pbc_data"
     );
 
     g_PBC_BotLastLocations.clear();
+    g_PBC_RollChanceModifiers.clear();
 
-    if (!result) return;
+    if (!result)
+    {
+        LOG_INFO("server.loading", "[PBC] Characters data loaded from DB (0 entries).");
+        return;
+    }
 
     do {
         uint64_t    botGuid  = (*result)[0].Get<uint64_t>();
         std::string location = (*result)[1].Get<std::string>();
+        int32_t     rollMod  = (*result)[2].Get<int32_t>();
         g_PBC_BotLastLocations[botGuid] = std::move(location);
+        if (rollMod != 0)
+            g_PBC_RollChanceModifiers[botGuid] = rollMod;
     } while (result->NextRow());
 
-    LOG_INFO("server.loading", "[PBC] Bot locations loaded from DB ({} entries).", g_PBC_BotLastLocations.size());
+    LOG_INFO("server.loading", "[PBC] Characters data loaded from DB ({} entries, {} with roll modifier).",
+             g_PBC_BotLastLocations.size(), g_PBC_RollChanceModifiers.size());
+}
+
+// ---------------------------------------------------------------------------
+// PBC_GetEffectiveChance
+// ---------------------------------------------------------------------------
+
+uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance)
+{
+    auto it = g_PBC_RollChanceModifiers.find(botGuid);
+    if (it == g_PBC_RollChanceModifiers.end())
+        return baseChance;
+    int32_t effective = static_cast<int32_t>(baseChance) + it->second;
+    return static_cast<uint32_t>(std::max(0, std::min(100, effective)));
 }
 
 void PBC_LoadRelationshipsFromDB()
@@ -1002,7 +1025,7 @@ void PBC_WorldScript::OnStartup()
     PBC_LoadCardAdditionsFromDB();
     PBC_LoadHistoryFromDB();
     PBC_LoadRelationshipsFromDB();
-    PBC_LoadBotLocationsFromDB();
+    PBC_LoadBotDataFromDB();
 
     g_PBC_EventThreadDone.store(true);
 
@@ -1132,11 +1155,13 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                             continue;
                         }
 
-                        bool rolled = PBC_RollChance(currentChance);
+                        uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), currentChance);
+                        bool rolled = PBC_RollChance(effectiveChance);
                         if (g_PBC_DebugEnabled)
                             LOG_INFO("server.loading",
-                                     "[PBC] SecondaryEvent: roll bot={} chance={}% -> {}",
-                                     bot->GetName(), currentChance,
+                                     "[PBC] SecondaryEvent: roll bot={} chance={}% (base={}% mod={}) -> {}",
+                                     bot->GetName(), effectiveChance, currentChance,
+                                     static_cast<int32_t>(effectiveChance) - static_cast<int32_t>(currentChance),
                                      rolled ? "RESPOND" : "silent");
                         if (rolled)
                         {

@@ -201,10 +201,13 @@ static PBC_EventItem BuildBotEvent(const std::vector<Player*>& bots,
 
     for (Player* bot : bots)
     {
-        bool rolled = PBC_RollChance(chance);
+        uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), chance);
+        bool rolled = PBC_RollChance(effectiveChance);
         if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] Roll event bot={} chance={}% -> {}",
-                     bot->GetName(), chance, rolled ? "RESPOND" : "silent");
+            LOG_INFO("server.loading", "[PBC] Roll event bot={} chance={}% (base={}% mod={}) -> {}",
+                     bot->GetName(), effectiveChance, chance,
+                     effectiveChance - chance,
+                     rolled ? "RESPOND" : "silent");
         if (rolled)
             ev.respondingBots.push_back(PBC_SnapshotBot(bot));
         else
@@ -429,10 +432,13 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
                 continue;
             }
 
-            bool rolled = PBC_RollChance(currentChance);
+            uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), currentChance);
+            bool rolled = PBC_RollChance(effectiveChance);
             if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] Roll message bot={} chance={}% -> {}",
-                         bot->GetName(), currentChance, rolled ? "RESPOND" : "silent");
+                LOG_INFO("server.loading", "[PBC] Roll message bot={} chance={}% (base={}% mod={}) -> {}",
+                         bot->GetName(), effectiveChance, currentChance,
+                         static_cast<int32_t>(effectiveChance) - static_cast<int32_t>(currentChance),
+                         rolled ? "RESPOND" : "silent");
             if (rolled)
             {
                 ev.respondingBots.push_back(PBC_SnapshotBot(bot));
