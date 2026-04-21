@@ -1,19 +1,19 @@
 # Playerbots Characters (PBC)
 
-This is an [AzerothCore](https://www.azerothcore.org) module built around [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots), breathing new life into bots, focusing on making them into true in-game companions. Heavily inspired by [mod-ollama-chat](https://github.com/DustinHendrickson/mod-ollama-chat), but taking a different, more complex approach — focusing on the roleplaying experience rather than emulating real WoW players.
+This is an [AzerothCore](https://www.azerothcore.org) module built around [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots), breathing new life into bots by turning them into true in-game characters — companions with personality, memory, and relationships. Heavily inspired by [mod-ollama-chat](https://github.com/DustinHendrickson/mod-ollama-chat), but taking a different, more complex approach — focusing on the roleplaying experience rather than emulating real WoW players.
 
 
 ## How It Works
 
-The module hooks into various in-game events (chat messages, item pickups, duels, level-ups, location changes, boss kills, quest completions) and dispatches them to bots in the party based on configurable reply chances. When a bot "rolls" to respond, the module builds a prompt from its character card, accumulated chat history, current relationships with other party members, live context (location, time of day, nearby characters, combat status), and the event itself. This prompt is then sent to an OpenAI-compatible LLM API, and the model's response is spoken by the bot in-game.
+The module hooks into various in-game events (chat messages, item pickups, duels, level-ups, location changes, boss kills, quest completions) and dispatches them to characters in the party based on configurable reply chances. When a character "rolls" to respond, the module builds a prompt from its character card, accumulated chat history, current relationships with other party members, live context (location, time of day, nearby characters, combat status), and the event itself. This prompt is then sent to an OpenAI-compatible LLM API, and the model's response is spoken by the character in-game.
 
-For regular (non-whisper, non-mention) chat messages, bots roll in a random order. The first bot rolls at `PBC.ReplyChanceMessage`. Each time a bot successfully rolls to answer, the chance for the next bot is reduced by `PBC.RollPenaltyOnAnswer`. If a bot fails its roll, the next bot rolls at the same chance (no penalty). This guarantees that with a high initial chance someone will respond, while preventing too many bots from answering at once. When a player mentions specific bots by name, only those bots roll (at `PBC.ReplyChanceMention`), independently of the penalty system.
+For regular (non-whisper, non-mention) chat messages, characters roll in a random order. The first character rolls at `PBC.ReplyChanceMessage`. Each time a character successfully rolls to answer, the chance for the next character is reduced by `PBC.RollPenaltyOnAnswer`. If a character fails its roll, the next character rolls at the same chance (no penalty). This guarantees that with a high initial chance someone will respond, while preventing too many characters from answering at once. When a player mentions specific characters by name, only those characters roll (at `PBC.ReplyChanceMention`), independently of the penalty system.
 
 Over time, chat history grows. When it reaches the configured token limit (`PBC.MaxCtx`), a condensation process kicks in — the LLM is asked to summarize the history, and the result is appended to the character's card as a permanent addition. The in-memory history is then trimmed, keeping only the most recent lines. This way, characters gradually develop memories and personality traits without the context growing unbounded.
 
-Relationships are tracked for each individual character in relation to other characters and real players. Every time a name is mentioned enough times in a bot's history (controlled by `PBC.RelationshipUpdateThreshold`), a relationship update LLM call is triggered, generating or updating a brief description of how the bot feels about that person. These relationship descriptions are included in future prompts, giving bots a sense of continuity with their companions.
+Relationships are tracked for each individual character in relation to other characters and real players. Every time a name is mentioned enough times in a character's history (controlled by `PBC.RelationshipUpdateThreshold`), a relationship update LLM call is triggered, generating or updating a brief description of how the character feels about that person. These relationship descriptions are included in future prompts, giving characters a sense of continuity with their companions.
 
-Note that this module only handles the conversational and roleplaying side of bots — it does not influence any of the bot logic that `mod-playerbots` uses to control in-game characters (combat, movement, questing and so on).
+Note that this module only handles the conversational and roleplaying side of characters — it does not influence any of the bot logic that `mod-playerbots` uses to control in-game characters (combat, movement, questing and so on).
 
 
 ## Installation
@@ -83,7 +83,7 @@ When switching providers, pay attention to `PBC.Temperature` — acceptable rang
 
 ### Playerbots Adjustments
 
-Recommended adjustments to the playerbots config (`playerbots.conf`), to make bots less talkative outside of this module:
+Recommended adjustments to the playerbots config (`playerbots.conf`), to make bots less talkative in order to not interfere with the new character logic:
 
 | Setting | Default | Recommended | Purpose |
 |---|---|---|---|
@@ -157,7 +157,7 @@ These variables can be used in most prompts and character cards. It's recommende
 - `{char_gold}` — amount of character's money
 - `{char_location}` — human-readable location of the character in game, as a full sentence. For example "You are currently in Undercity." when on the ground, or "You are currently flying to Ratchet, The Barrens." when in a taxi flight.
 - `{scene}` — human-readable description of the current time of day, and weather if `mod_weather_vibe` is active, for example "It is currently evening." or "It's currently evening and it's raining lightly."
-- `{char_los}` — human-readable list of nearby characters and NPCs visible to the bot, for example "You see John, Jane and Defias Bandit nearby." or "You see Defias Bandit nearby."
+- `{char_los}` — human-readable list of nearby characters and NPCs visible to the character, for example "You see John, Jane and Defias Bandit nearby." or "You see Defias Bandit nearby."
 - `{combat_status}` — dynamic combat status, could be "You are not currently in combat." or "You are currently in combat.", or even "You are currently fighting Archimonde.", based on current target
 - `{char_group}` — dynamic group status, could be "You are not currently in a group." or "You are currently in a group led by John (male Tauren Druid) with the following members: Jane (female Troll Rogue) and Kevin (male Blood Elf Paladin)."
 
@@ -168,7 +168,7 @@ These variables can only be used in `PBC.SystemPrompt` and `PBC.UserPrompt`.
 
 - `{character_card}` — current character card or generic description from `PBC.DefaultCharacterDescription` with an addition of previously condensed description
 - `{chat_history}` — current chat history, including events
-- `{relationships}` — the bot's current relationship descriptions with other party members. When the bot is not in a group with a real player (e.g. a whisper interaction), falls back to "You don't know much about <player_name>.". When in a group, lists one entry per member, e.g. "You know Luna is brave and kind." or "You don't know much about Jon." for members with no data yet. Updated automatically every `PBC.RelationshipUpdateThreshold` new mentions of a character name in history.
+- `{relationships}` — the character's current relationship descriptions with other party members. When the character is not in a group with a real player (e.g. a whisper interaction), falls back to "You don't know much about <player_name>.". When in a group, lists one entry per member, e.g. "You know Luna is brave and kind." or "You don't know much about Jon." for members with no data yet. Updated automatically every `PBC.RelationshipUpdateThreshold` new mentions of a character name in history.
 - `{context}` — current context for the character, defined in `PBC.CharacterContext`
 - `{event}` — recently happened event, see the Events section above for details
 
