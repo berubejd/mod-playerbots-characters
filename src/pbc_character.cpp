@@ -170,7 +170,13 @@ static std::string BuildSceneStr(Player* bot)
         {
             char const* clause = WeatherClause(it->second.state);
             if (clause)
-                return "It's currently " + timeLabel + " and " + std::string(clause) + ".";
+            {
+                std::string result = "It's currently " + timeLabel + " and " + std::string(clause);
+                // When indoors, note that the character is sheltered from the weather
+                if (!bot->IsOutdoors())
+                    result += ", but you are inside and sheltered from the weather";
+                return result + ".";
+            }
         }
     }
 #endif
@@ -814,7 +820,7 @@ std::string PBC_BuildUserPromptFromSnapshot(const PBC_BotSnapshot& snap,
     Replace("char_level",    snap.charLevel);
     Replace("char_gold",     snap.charGold);
     Replace("char_location", snap.charLocation);
-    Replace("scene",          snap.scene);
+    Replace("scene",         snap.scene);
     Replace("char_group",    snap.charGroup);
     Replace("char_los",      snap.charLos);
     Replace("combat_status", snap.combatStatus);
