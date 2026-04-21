@@ -1,6 +1,7 @@
 #include "pbc_llm.h"
 #include "pbc_config.h"
 #include "pbc_http.h"
+#include "pbc_utils.h"
 #include "Log.h"
 
 #include <nlohmann/json.hpp>
@@ -138,7 +139,7 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
 
     if (g_PBC_DebugEnabled && g_PBC_DebugShowFullRequest)
     {
-        LOG_INFO("server.loading", "[PBC] LLM request body:\n{}", bodyStr);
+        LOG_INFO("server.loading", "[PBC] LLM request body:\n{}", PBC_TruncateForDebug(bodyStr));
     }
 
     // --- Build headers ----------------------------------------------------
@@ -180,7 +181,7 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
 
         if (g_PBC_DebugEnabled && g_PBC_DebugShowFullRequest)
         {
-            LOG_INFO("server.loading", "[PBC] LLM response body:\n{}", responseBody);
+            LOG_INFO("server.loading", "[PBC] LLM response body:\n{}", PBC_TruncateForDebug(responseBody));
         }
 
         try

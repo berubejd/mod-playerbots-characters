@@ -24,6 +24,14 @@ void PBC_ExpandNewlineEscapes(std::string& s);
 void PBC_ReplaceToken(std::string& s, const std::string& key, const std::string& value);
 
 // ---------------------------------------------------------------------------
+// Debug output helpers
+// ---------------------------------------------------------------------------
+
+// Truncate a long string for debug logging: if > maxLen symbols, return
+// first halfLen ... last halfLen.  Otherwise return the string unchanged.
+std::string PBC_TruncateForDebug(const std::string& s, size_t maxLen = 1000, size_t halfLen = 500);
+
+// ---------------------------------------------------------------------------
 // String formatting helpers
 // ---------------------------------------------------------------------------
 

@@ -21,8 +21,9 @@ PBC.Enable = 1
 PBC.DebugEnabled = 0
 
 # PBC.DebugShowFullRequest
-#     Description: When enabled (1), logs the complete request body and response body
+#     Description: When enabled (1), logs the request body and response body
 #                  for every LLM API call.  Only active when PBC.DebugEnabled is also enabled.
+#                  Long payloads (>1000 symbols) are truncated to first 500 + " ... " + last 500 symbols.
 #                  When disabled (0), only standard logging is used.
 #     Default:     0 (false)
 PBC.DebugShowFullRequest = 0

@@ -4,6 +4,17 @@
 #include <thread>
 
 // ---------------------------------------------------------------------------
+// Debug output helpers
+// ---------------------------------------------------------------------------
+
+std::string PBC_TruncateForDebug(const std::string& s, size_t maxLen, size_t halfLen)
+{
+    if (s.size() <= maxLen)
+        return s;
+    return s.substr(0, halfLen) + " ... " + s.substr(s.size() - halfLen);
+}
+
+// ---------------------------------------------------------------------------
 // Template substitution helpers
 // ---------------------------------------------------------------------------
 
