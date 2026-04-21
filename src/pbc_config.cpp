@@ -990,6 +990,13 @@ PBC_WorldScript::PBC_WorldScript() : WorldScript("PBC_WorldScript") {}
 void PBC_WorldScript::OnStartup()
 {
     PBC_LoadConfig(true);
+
+    if (!g_PBC_Enable)
+    {
+        LOG_INFO("server.loading", "[PBC] Module is disabled, skipping initialization.");
+        return;
+    }
+
     PBC_LoadCharacterCards();
     PBC_LoadCardAdditionsFromDB();
     PBC_LoadHistoryFromDB();

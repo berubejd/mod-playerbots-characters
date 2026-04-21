@@ -58,6 +58,7 @@ static bool HandleCharsReload(ChatHandler* handler, Optional<std::string_view>)
 // ---------------------------------------------------------------------------
 static bool HandleCharsCondense(ChatHandler* handler, Optional<std::string_view> nameArg)
 {
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
     if ((!nameArg || nameArg->empty()) && !handler->GetSession())
     {
         handler->PSendSysMessage("[PBC] Usage from console: chars condense <char_name>");
@@ -85,6 +86,7 @@ static bool HandleCharsCondense(ChatHandler* handler, Optional<std::string_view>
 // ---------------------------------------------------------------------------
 static bool HandleCharsInfo(ChatHandler* handler, Optional<std::string_view> nameArg)
 {
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
     if ((!nameArg || nameArg->empty()) && !handler->GetSession())
     {
         handler->PSendSysMessage("[PBC] Usage from console: chars info <char_name>");
@@ -130,6 +132,7 @@ static bool HandleCharsInfo(ChatHandler* handler, Optional<std::string_view> nam
 // ---------------------------------------------------------------------------
 static bool HandleCharsReset(ChatHandler* handler, Optional<std::string_view> nameArg)
 {
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
     if ((!nameArg || nameArg->empty()) && !handler->GetSession())
     {
         handler->PSendSysMessage("[PBC] Usage from console: chars reset <char_name>  or  chars reset @ALL");
@@ -196,6 +199,7 @@ static bool HandleCharsReset(ChatHandler* handler, Optional<std::string_view> na
 static bool HandleCharsHistory(ChatHandler* handler, Optional<std::string_view> nameArg,
                                 Optional<int32> numArg)
 {
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
     if ((!nameArg || nameArg->empty()) && !handler->GetSession())
     {
         handler->PSendSysMessage("[PBC] Usage from console: chars history <char_name> [num]");
@@ -242,6 +246,7 @@ static bool HandleCharsRelationship(ChatHandler* handler,
                                     std::string_view charNameArg,
                                     std::string_view targetNameArg)
 {
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
     if (charNameArg.empty() || targetNameArg.empty())
     {
         handler->PSendSysMessage("[PBC] Usage: chars relationship <char_name> <target_char_name>");
@@ -289,6 +294,7 @@ static bool HandleCharsRelationshipUpdate(ChatHandler* handler,
                                           std::string_view charNameArg,
                                           std::string_view targetNameArg)
 {
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
     if (charNameArg.empty() || targetNameArg.empty())
     {
         handler->PSendSysMessage("[PBC] Usage: chars relationship_update <char_name> <target_char_name>");
