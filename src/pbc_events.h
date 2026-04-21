@@ -35,6 +35,13 @@ std::string PBC_MakeEventLine(const std::string& text);
 std::string PBC_MakeHistLine(const std::string& text);
 
 // ---------------------------------------------------------------------------
+// Send a narrator system message to all real (non-bot) players in the
+// same group as 'anchor' (or to anchor alone if ungrouped).
+// No-op when PBC.DisplayNarratorEvents is disabled.
+// ---------------------------------------------------------------------------
+void PBC_NotifyRealPlayersInGroup(Player* anchor, const std::string& eventLine);
+
+// ---------------------------------------------------------------------------
 // Dispatch a group event (from any translation unit).
 // Builds a PBC_EventItem with snapshots for all bots in anchor's group,
 // rolls each bot's chance, and pushes the item onto the global event queue.

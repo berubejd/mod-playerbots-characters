@@ -1085,7 +1085,11 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                                      bot->GetName(), g_PBC_ReplyChanceMessage,
                                      rolled ? "RESPOND" : "silent");
                         if (rolled)
+                        {
                             newEv.respondingBots.push_back(PBC_SnapshotBot(bot));
+                            PBC_NotifyRealPlayersInGroup(anchor,
+                                PBC_MakeEventLine(bot->GetName() + " thinks..."));
+                        }
                         else
                             newEv.silentBotGuids.push_back(bot->GetGUID().GetCounter());
                     }
