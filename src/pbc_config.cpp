@@ -6,7 +6,6 @@
 #include "pbc_utils.h"
 #include "Config.h"
 #include "Log.h"
-#include "World.h"
 #include "DatabaseEnv.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
@@ -34,7 +33,7 @@ std::string g_PBC_APIType          = "openai";
 std::string g_PBC_BaseUrl          = "";
 std::string g_PBC_ApiKey           = "";
 std::string g_PBC_Model            = "";
-int         g_PBC_MaxResponseTokens = 100;
+int         g_PBC_MaxResponseTokens = 120;
 double      g_PBC_Temperature      = 1.0;
 std::string g_PBC_ModelExtraParameters;
 int         g_PBC_RequestTimeoutSec = 30;
@@ -63,11 +62,14 @@ uint32_t g_PBC_ReplyChanceItem     = 5;
 uint32_t g_PBC_ReplyChanceDuel     = 5;
 uint32_t g_PBC_ReplyChanceLevelUp  = 5;
 uint32_t g_PBC_ReplyChanceLocation        = 5;
-uint32_t g_PBC_ReplyChanceBossKill        = 35;
-uint32_t g_PBC_ReplyChanceQuestCompletion = 10;
+uint32_t g_PBC_ReplyChanceBossKill       = 35;
+uint32_t g_PBC_ReplyChanceQuestCompleted = 10;
+uint32_t g_PBC_ReplyChanceQuestTaken     = 10;
 
-std::string g_PBC_QuestCompletionSystemPrompt;
-std::string g_PBC_QuestCompletionUserPrompt;
+std::string g_PBC_QuestCompletedSystemPrompt;
+std::string g_PBC_QuestCompletedUserPrompt;
+std::string g_PBC_QuestTakenSystemPrompt;
+std::string g_PBC_QuestTakenUserPrompt;
 
 std::vector<std::string> g_PBC_Blacklist;
 
@@ -701,7 +703,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
 // PBC_LoadConfig
 // ---------------------------------------------------------------------------
 
-void PBC_LoadConfig(bool isStartup)
+void PBC_LoadConfig(bool /*isStartup*/)
 {
     g_PBC_Enable              = sConfigMgr->GetOption<bool>("PBC.Enable", true);
     g_PBC_DebugEnabled        = sConfigMgr->GetOption<bool>("PBC.DebugEnabled", false);
@@ -712,7 +714,7 @@ void PBC_LoadConfig(bool isStartup)
     g_PBC_BaseUrl              = sConfigMgr->GetOption<std::string>("PBC.BaseUrl", "");
     g_PBC_ApiKey               = sConfigMgr->GetOption<std::string>("PBC.ApiKey", "");
     g_PBC_Model               = sConfigMgr->GetOption<std::string>("PBC.Model", "");
-    g_PBC_MaxResponseTokens   = sConfigMgr->GetOption<int>("PBC.MaxResponseLength", 100);
+    g_PBC_MaxResponseTokens   = sConfigMgr->GetOption<int>("PBC.MaxResponseLength", 120);
     g_PBC_Temperature         = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.Temperature", 1.0f)) * 100.0) / 100.0;
     g_PBC_ModelExtraParameters = sConfigMgr->GetOption<std::string>("PBC.ModelExtraParameters", "");
     g_PBC_RequestTimeoutSec   = sConfigMgr->GetOption<int>("PBC.RequestTimeoutSec", 30);
@@ -738,11 +740,14 @@ void PBC_LoadConfig(bool isStartup)
     g_PBC_ReplyChanceDuel     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceDuel", 5);
     g_PBC_ReplyChanceLevelUp  = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLevelUp", 5);
     g_PBC_ReplyChanceLocation        = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLocation", 5);
-    g_PBC_ReplyChanceBossKill        = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceBossKill", 35);
-    g_PBC_ReplyChanceQuestCompletion = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestCompletion", 10);
+    g_PBC_ReplyChanceBossKill       = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceBossKill", 35);
+    g_PBC_ReplyChanceQuestCompleted = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestCompleted", 10);
+    g_PBC_ReplyChanceQuestTaken     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestTaken", 10);
 
-    g_PBC_QuestCompletionSystemPrompt = sConfigMgr->GetOption<std::string>("PBC.QuestCompletionSystemPrompt", "");
-    g_PBC_QuestCompletionUserPrompt   = sConfigMgr->GetOption<std::string>("PBC.QuestCompletionUserPrompt", "");
+    g_PBC_QuestCompletedSystemPrompt = sConfigMgr->GetOption<std::string>("PBC.QuestCompletedSystemPrompt", "");
+    g_PBC_QuestCompletedUserPrompt   = sConfigMgr->GetOption<std::string>("PBC.QuestCompletedUserPrompt", "");
+    g_PBC_QuestTakenSystemPrompt     = sConfigMgr->GetOption<std::string>("PBC.QuestTakenSystemPrompt", "");
+    g_PBC_QuestTakenUserPrompt       = sConfigMgr->GetOption<std::string>("PBC.QuestTakenUserPrompt", "");
 
     g_PBC_RelationshipUpdateSystemPrompt = sConfigMgr->GetOption<std::string>("PBC.RelationshipUpdateSystemPrompt", "");
     g_PBC_RelationshipUpdateUserPrompt   = sConfigMgr->GetOption<std::string>("PBC.RelationshipUpdateUserPrompt", "");
@@ -751,41 +756,58 @@ void PBC_LoadConfig(bool isStartup)
     std::string blacklistStr = sConfigMgr->GetOption<std::string>("PBC.Blacklist", "");
     g_PBC_Blacklist = SplitByComma(blacklistStr);
 
-    // Validate required settings when the module is enabled
+    // -----------------------------------------------------------------------
+    // Validate required settings when the module is enabled.
+    //
+    // AzerothCore does NOT fall back to .conf.dist for missing parameters —
+    // it uses the C++ default passed to GetOption().  To avoid silent
+    // misconfiguration, every parameter that is essential for the module to
+    // work correctly must be present and non-empty in the user's .conf file.
+    // If any required parameter is missing the module is disabled with a
+    // clear error; the server itself keeps running.
+    // -----------------------------------------------------------------------
     if (g_PBC_Enable)
     {
+        // Each entry: { config key, reference to the loaded value }
+        struct RequiredCheck { const char* key; std::string const& value; };
+        const RequiredCheck requiredStrings[] = {
+            { "PBC.BaseUrl",                        g_PBC_BaseUrl                        },
+            { "PBC.Model",                          g_PBC_Model                          },
+            { "PBC.SystemPrompt",                   g_PBC_SystemPrompt                   },
+            { "PBC.UserPrompt",                     g_PBC_UserPrompt                     },
+            { "PBC.CondensationSystemPrompt",       g_PBC_CondensationSystemPrompt       },
+            { "PBC.CondensationUserPrompt",         g_PBC_CondensationUserPrompt         },
+            { "PBC.DefaultCharacterDescription",    g_PBC_DefaultCharacterDescription    },
+            { "PBC.CharacterContext",               g_PBC_CharacterContext               },
+            { "PBC.QuestCompletedSystemPrompt",     g_PBC_QuestCompletedSystemPrompt     },
+            { "PBC.QuestCompletedUserPrompt",       g_PBC_QuestCompletedUserPrompt       },
+            { "PBC.QuestTakenSystemPrompt",         g_PBC_QuestTakenSystemPrompt         },
+            { "PBC.QuestTakenUserPrompt",           g_PBC_QuestTakenUserPrompt           },
+            { "PBC.RelationshipUpdateSystemPrompt", g_PBC_RelationshipUpdateSystemPrompt },
+            { "PBC.RelationshipUpdateUserPrompt",   g_PBC_RelationshipUpdateUserPrompt   },
+        };
+
         bool configValid = true;
 
-        if (g_PBC_BaseUrl.empty())
+        for (auto const& check : requiredStrings)
         {
-            LOG_ERROR("server.loading", "[PBC] PBC.BaseUrl is not set. This is a required setting when the module is enabled.");
-            configValid = false;
-        }
-
-        if (g_PBC_Model.empty())
-        {
-            LOG_ERROR("server.loading", "[PBC] PBC.Model is not set. This is a required setting when the module is enabled.");
-            configValid = false;
+            if (check.value.empty())
+            {
+                LOG_ERROR("server.loading", "[PBC] {} is not set. This is a required setting when the module is enabled.", check.key);
+                configValid = false;
+            }
         }
 
         if (g_PBC_MaxCtx == 0)
         {
-            LOG_ERROR("server.loading", "[PBC] PBC.MaxCtx is not set. This is a required setting when the module is enabled.");
+            LOG_ERROR("server.loading", "[PBC] PBC.MaxCtx is not set (or is 0). This is a required setting when the module is enabled.");
             configValid = false;
         }
 
         if (!configValid)
         {
-            if (isStartup)
-            {
-                LOG_ERROR("server.loading", "[PBC] Required configuration is missing. Shutting down server.");
-                World::StopNow(ERROR_EXIT_CODE);
-            }
-            else
-            {
-                LOG_ERROR("server.loading", "[PBC] Required configuration is missing. Module disabled until fixed.");
-                g_PBC_Enable = false;
-            }
+            LOG_ERROR("server.loading", "[PBC] Required configuration is missing or empty. Module DISABLED — fix your playerbots_characters.conf and reload with .chars reload.");
+            g_PBC_Enable = false;
             return;
         }
     }
@@ -793,14 +815,14 @@ void PBC_LoadConfig(bool isStartup)
     LOG_INFO("server.loading",
         "[PBC] Config: Enable={} APIType='{}' Model='{}' Url='{}' MaxCtx={} Timeout={}s "
         "Chances: Whisper={}% Mention={}% Message={}% RollPenalty={}% "
-        "Item={}% Duel={}% LevelUp={}% Location={}% BossKill={}% QuestCompletion={}%",
+        "Item={}% Duel={}% LevelUp={}% Location={}% BossKill={}% QuestCompleted={}% QuestTaken={}%",
         g_PBC_Enable, g_PBC_APIType, g_PBC_Model, g_PBC_BaseUrl, g_PBC_MaxCtx,
         g_PBC_RequestTimeoutSec,
         g_PBC_ReplyChanceWhisper, g_PBC_ReplyChanceMention,
         g_PBC_ReplyChanceMessage, g_PBC_RollPenaltyOnAnswer,
         g_PBC_ReplyChanceItem,
         g_PBC_ReplyChanceDuel, g_PBC_ReplyChanceLevelUp, g_PBC_ReplyChanceLocation,
-        g_PBC_ReplyChanceBossKill, g_PBC_ReplyChanceQuestCompletion);
+        g_PBC_ReplyChanceBossKill, g_PBC_ReplyChanceQuestCompleted, g_PBC_ReplyChanceQuestTaken);
 }
 
 // ---------------------------------------------------------------------------

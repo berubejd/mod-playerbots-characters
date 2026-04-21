@@ -7,7 +7,7 @@ This is an [AzerothCore](https://www.azerothcore.org) module built around [mod-p
 
 This module extends the bots provided by `mod-playerbots` into full characters — giving them a voice, memories, relationships, and the ability to react to events and converse with companions. The bot logic (combat, movement, questing) remains entirely untouched; this module only adds the personality layer on top.
 
-The module hooks into various in-game events (chat messages, item pickups, duels, level-ups, location changes, boss kills, quest completions) and dispatches them to the characters in the player's party based on configurable reply chances. When a character "rolls" to respond, the module builds a prompt from its character card, accumulated chat history, current relationships with other party members, live context (location, time of day, nearby characters, combat status), and the event itself. This prompt is then sent to an OpenAI-compatible LLM API, and the model's response is spoken by the character in-game.
+The module hooks into various in-game events (chat messages, item pickups, duels, level-ups, location changes, boss kills, quest taken, quest completed) and dispatches them to the characters in the player's party based on configurable reply chances. When a character "rolls" to respond, the module builds a prompt from its character card, accumulated chat history, current relationships with other party members, live context (location, time of day, nearby characters, combat status), and the event itself. This prompt is then sent to an OpenAI-compatible LLM API, and the model's response is spoken by the character in-game.
 
 For regular (non-whisper, non-mention) chat messages, characters roll in a random order. The first character rolls at `PBC.ReplyChanceMessage`. Each time a character successfully rolls to answer, the chance for the next character is reduced by `PBC.RollPenaltyOnAnswer`. If a character fails its roll, the next character rolls at the same chance (no penalty). This guarantees that with a high initial chance someone will respond, while preventing too many characters from answering at once. When a player mentions specific characters by name, only those characters roll (at `PBC.ReplyChanceMention`), independently of the penalty system.
 
@@ -34,6 +34,9 @@ If [mod_weather_vibe](https://github.com/hermensbas/mod_weather_vibe) is also in
 ## Configuration
 
 Copy `env/dist/etc/modules/playerbots_characters.conf.dist` as `env/dist/etc/modules/playerbots_characters.conf` and adjust it as needed.
+
+> [!IMPORTANT]
+> When updating the module, always compare your `.conf` with the new `.conf.dist` to ensure any newly added parameters are present in your config. The default values, especially prompts, may also get changed in newer versions.
 
 ### Model Connection Setup
 
@@ -126,7 +129,8 @@ Here's the list of possible events that characters could react to.
 - **Character leveled up** — fires after the character or someone else in the party got a level up in a roleplay-friendly way, for example "John can feel their abilities growing stronger"
 - **Character changed location** — fires after the character enters a new location, for example "You have just entered Brill in Tirisfal Glades"
 - **Boss slain** — fires when any party member lands the killing blow on a significant opponent (dungeon/raid boss, world boss, or named elite), only when the group contains at least one real player; **always written to all character histories** regardless of whether anyone rolls to respond, for example: "The party has slain Kel'Thuzad (The Lich's Champion) in Naxxramas"
-- **Quest completed** — fires when the **party leader** completes a quest, only when the group contains at least one real player; a preliminary LLM call generates a one-line narrative summary of the quest, for example "The party completed a task where they slew the Defias Brotherhood leader and recovered stolen goods."
+- **Quest taken** — fires when the **party leader** accepts a new quest from an NPC, game object, or item, only when the group contains at least one real player; a preliminary LLM call generates a one-line narrative summary of the quest, for example "The party accepted a task from Gryan Stoutmantle to slay the Defias Brotherhood leader and recover stolen goods."
+- **Quest completed** — fires when the **party leader** completes a quest, only when the group contains at least one real player; a preliminary LLM call generates a one-line narrative summary of the quest, for example "The party reported to Gryan Stoutmantle that they successfully slew the Defias Brotherhood leader and recovered the stolen goods."
 
 
 ## Commands
@@ -183,12 +187,16 @@ These variables can only be used in `PBC.SystemPrompt` and `PBC.UserPrompt`.
 - `{event}` — recently happened event, see the Events section above for details
 
 
-### Quest Completion Prompt Variables
+### Quest Prompt Variables
 
-These variables can only be used in `PBC.QuestCompletionUserPrompt`.
+These variables can be used in `PBC.QuestCompletedUserPrompt` and `PBC.QuestTakenUserPrompt`.
 
-- `{quest_title}` — the title of the completed quest
+- `{quest_title}` — the title of the quest
+- `{quest_giver}` — the name of the NPC, game object, or item that offered the quest
+- `{quest_ender}` — the name of the NPC or game object that completes the quest
 - `{quest_description}` — the full lore/details text of the quest (shown when accepting it)
+- `{quest_log_description}` — the objectives text shown in the quest log
+- `{quest_completion_log}` — the completion log text
 - `{quest_reward_text}` — the NPC's reward speech (OfferRewardText): what the quest-giver says when handing out the reward upon turn-in
 
 

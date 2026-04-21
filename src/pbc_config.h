@@ -76,13 +76,16 @@ extern uint32_t g_PBC_ReplyChanceDuel;
 extern uint32_t g_PBC_ReplyChanceLevelUp;
 extern uint32_t g_PBC_ReplyChanceLocation;
 extern uint32_t g_PBC_ReplyChanceBossKill;
-extern uint32_t g_PBC_ReplyChanceQuestCompletion;
+extern uint32_t g_PBC_ReplyChanceQuestCompleted;
+extern uint32_t g_PBC_ReplyChanceQuestTaken;
 
 // ---------------------------------------------------------------------------
-// Quest completion LLM prompts
+// Quest LLM prompts
 // ---------------------------------------------------------------------------
-extern std::string g_PBC_QuestCompletionSystemPrompt;
-extern std::string g_PBC_QuestCompletionUserPrompt;
+extern std::string g_PBC_QuestCompletedSystemPrompt;
+extern std::string g_PBC_QuestCompletedUserPrompt;
+extern std::string g_PBC_QuestTakenSystemPrompt;
+extern std::string g_PBC_QuestTakenUserPrompt;
 
 // ---------------------------------------------------------------------------
 // Blacklist prefixes

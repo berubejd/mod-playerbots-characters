@@ -28,6 +28,30 @@ public:
     void OnPlayerCompleteQuest(Player* player, Quest const* quest) override;
 };
 
+// Captures quest-accept events from creatures.
+class PBC_CreatureQuestScript : public CreatureScript
+{
+public:
+    PBC_CreatureQuestScript();
+    bool OnQuestAccept(Player* player, Creature* creature, Quest const* quest) override;
+};
+
+// Captures quest-accept events from gameobjects.
+class PBC_GameObjectQuestScript : public GameObjectScript
+{
+public:
+    PBC_GameObjectQuestScript();
+    bool OnQuestAccept(Player* player, GameObject* go, Quest const* quest) override;
+};
+
+// Captures quest-accept events from items.
+class PBC_ItemQuestScript : public ItemScript
+{
+public:
+    PBC_ItemQuestScript();
+    bool OnQuestAccept(Player* player, Item* item, Quest const* quest) override;
+};
+
 // ---------------------------------------------------------------------------
 // Narrator event formatting helpers
 // ---------------------------------------------------------------------------

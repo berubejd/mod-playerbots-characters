@@ -6,6 +6,7 @@
 #include "Log.h"
 #include "Player.h"
 #include "Creature.h"
+#include "GameObject.h"
 #include "Map.h"
 #include "Item.h"
 #include "Group.h"
@@ -1005,65 +1006,160 @@ static std::string StripWowTextCodes(const std::string& text)
 }
 
 // ---------------------------------------------------------------------------
-// Simple string substitution for quest completion user prompt placeholders.
+// Look up quest starter/ender NPC names from ObjectMgr relations.
+// Returns a comma-separated list of creature names for the given quest ID.
+// ---------------------------------------------------------------------------
+static std::string GetQuestStarterNames(uint32 questId)
+{
+    std::string result;
+    auto* relMap = sObjectMgr->GetCreatureQuestRelationMap();
+    for (auto it = relMap->begin(); it != relMap->end(); ++it)
+    {
+        if (it->second == questId)
+        {
+            CreatureTemplate const* cInfo = sObjectMgr->GetCreatureTemplate(it->first);
+            if (cInfo)
+            {
+                if (!result.empty()) result += ", ";
+                result += cInfo->Name;
+            }
+        }
+    }
+    // Also check gameobject starters
+    auto* goRelMap = sObjectMgr->GetGOQuestRelationMap();
+    for (auto it = goRelMap->begin(); it != goRelMap->end(); ++it)
+    {
+        if (it->second == questId)
+        {
+            GameObjectTemplate const* goInfo = sObjectMgr->GetGameObjectTemplate(it->first);
+            if (goInfo)
+            {
+                if (!result.empty()) result += ", ";
+                result += goInfo->name;
+            }
+        }
+    }
+    return result;
+}
+
+static std::string GetQuestEnderNames(uint32 questId)
+{
+    std::string result;
+    auto* relMap = sObjectMgr->GetCreatureQuestInvolvedRelationMap();
+    for (auto it = relMap->begin(); it != relMap->end(); ++it)
+    {
+        if (it->second == questId)
+        {
+            CreatureTemplate const* cInfo = sObjectMgr->GetCreatureTemplate(it->first);
+            if (cInfo)
+            {
+                if (!result.empty()) result += ", ";
+                result += cInfo->Name;
+            }
+        }
+    }
+    // Also check gameobject enders
+    auto* goRelMap = sObjectMgr->GetGOQuestInvolvedRelationMap();
+    for (auto it = goRelMap->begin(); it != goRelMap->end(); ++it)
+    {
+        if (it->second == questId)
+        {
+            GameObjectTemplate const* goInfo = sObjectMgr->GetGameObjectTemplate(it->first);
+            if (goInfo)
+            {
+                if (!result.empty()) result += ", ";
+                result += goInfo->name;
+            }
+        }
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// String substitution for quest prompt placeholders.
 // ---------------------------------------------------------------------------
 static std::string SubstituteQuestVars(const std::string& tmpl,
                                         const std::string& title,
                                         const std::string& description,
-                                        const std::string& rewardText)
+                                        const std::string& logDescription,
+                                        const std::string& completionLog,
+                                        const std::string& rewardText,
+                                        const std::string& questGiver,
+                                        const std::string& questEnder)
 {
     std::string result = tmpl;
-    PBC_ReplaceToken(result, "quest_title",       title);
-    PBC_ReplaceToken(result, "quest_description", description);
-    PBC_ReplaceToken(result, "quest_reward_text", rewardText);
+    PBC_ReplaceToken(result, "quest_title",          title);
+    PBC_ReplaceToken(result, "quest_description",    description);
+    PBC_ReplaceToken(result, "quest_log_description", logDescription);
+    PBC_ReplaceToken(result, "quest_completion_log",  completionLog);
+    PBC_ReplaceToken(result, "quest_reward_text",    rewardText);
+    PBC_ReplaceToken(result, "quest_giver",          questGiver);
+    PBC_ReplaceToken(result, "quest_ender",          questEnder);
     return result;
 }
 
-void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
+// ---------------------------------------------------------------------------
+// Common guard checks for quest events.
+// Returns true if the event should proceed.
+// ---------------------------------------------------------------------------
+static bool QuestEventGuard(Player* player)
 {
-    if (!g_PBC_Enable) return;
-    if (!PBC_PTR_VALID(player) || !quest) return;
+    if (!g_PBC_Enable) return false;
+    if (!PBC_PTR_VALID(player)) return false;
 
     Group* grp = player->GetGroup();
-    if (!grp) return;
-    if (grp->GetLeaderGUID() != player->GetGUID()) return;
+    if (!grp) return false;
+    if (grp->GetLeaderGUID() != player->GetGUID()) return false;
 
     WorldSession* sess = player->GetSession();
     bool leaderIsReal = PBC_PTR_VALID(sess) && !sess->IsBot();
-    if (!leaderIsReal && !BotIsGroupedWithRealPlayer(player)) return;
+    if (!leaderIsReal && !BotIsGroupedWithRealPlayer(player)) return false;
 
-    if (g_PBC_QuestCompletionSystemPrompt.empty() || g_PBC_QuestCompletionUserPrompt.empty())
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Quest completed event
+// ---------------------------------------------------------------------------
+void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
+{
+    if (!QuestEventGuard(player) || !quest) return;
+
+    if (g_PBC_QuestCompletedSystemPrompt.empty() || g_PBC_QuestCompletedUserPrompt.empty())
     {
         if (g_PBC_DebugEnabled)
             LOG_INFO("server.loading", "[PBC] OnPlayerCompleteQuest: prompts not configured, skipping");
         return;
     }
 
-    std::string questTitle       = StripWowTextCodes(quest->GetTitle());
-    std::string questDescription = StripWowTextCodes(quest->GetDetails());
-    std::string questRewardText  = StripWowTextCodes(quest->GetOfferRewardText());
+    std::string questTitle          = StripWowTextCodes(quest->GetTitle());
+    std::string questDescription    = StripWowTextCodes(quest->GetDetails());
+    std::string questLogDescription = StripWowTextCodes(quest->GetObjectives());
+    std::string questCompletionLog  = StripWowTextCodes(quest->GetCompletedText());
+    std::string questRewardText     = StripWowTextCodes(quest->GetOfferRewardText());
+    std::string questGiver          = GetQuestStarterNames(quest->GetQuestId());
+    std::string questEnder          = GetQuestEnderNames(quest->GetQuestId());
 
     if (g_PBC_DebugEnabled)
         LOG_INFO("server.loading", "[PBC] OnPlayerCompleteQuest: leader={} quest='{}' (id={})",
                  player->GetName(), questTitle, quest->GetQuestId());
 
     std::string userPrompt = SubstituteQuestVars(
-        g_PBC_QuestCompletionUserPrompt,
-        questTitle, questDescription, questRewardText);
+        g_PBC_QuestCompletedUserPrompt,
+        questTitle, questDescription, questLogDescription, questCompletionLog,
+        questRewardText, questGiver, questEnder);
 
     auto bots = FindGroupBots(player);
     if (bots.empty()) return;
 
-    // Build a QuestSummarization event: the worker calls the LLM first to
-    // generate a narrative summary, then processes each responding bot.
     PBC_EventItem ev;
     ev.type               = PBC_EventType::QuestSummarization;
     ev.chatType           = CHAT_MSG_PARTY;
     ev.canCreateEvents    = true;
-    ev.questSystemPrompt  = g_PBC_QuestCompletionSystemPrompt;
+    ev.questSystemPrompt  = g_PBC_QuestCompletedSystemPrompt;
     ev.questUserPrompt    = userPrompt;
 
-    PBC_EventItem rolled = BuildBotEvent(bots, "", "", g_PBC_ReplyChanceQuestCompletion,
+    PBC_EventItem rolled = BuildBotEvent(bots, "", "", g_PBC_ReplyChanceQuestCompleted,
                                          CHAT_MSG_PARTY, /*skipHistoryIfSilent=*/false,
                                          /*canCreateEvents=*/true,
                                          /*notifyAnchor=*/player);
@@ -1071,4 +1167,102 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     ev.silentBotGuids  = std::move(rolled.silentBotGuids);
 
     PBC_PushEvent(std::move(ev));
+}
+
+// ---------------------------------------------------------------------------
+// Quest taken event — internal handler shared by all three script types.
+// ---------------------------------------------------------------------------
+static void HandleQuestTaken(Player* player, Quest const* quest, std::string const& questGiver)
+{
+    if (!QuestEventGuard(player) || !quest) return;
+
+    if (g_PBC_QuestTakenSystemPrompt.empty() || g_PBC_QuestTakenUserPrompt.empty())
+    {
+        if (g_PBC_DebugEnabled)
+            LOG_INFO("server.loading", "[PBC] HandleQuestTaken: prompts not configured, skipping");
+        return;
+    }
+
+    std::string questTitle          = StripWowTextCodes(quest->GetTitle());
+    std::string questDescription    = StripWowTextCodes(quest->GetDetails());
+    std::string questLogDescription = StripWowTextCodes(quest->GetObjectives());
+    std::string questCompletionLog  = StripWowTextCodes(quest->GetCompletedText());
+
+    if (g_PBC_DebugEnabled)
+        LOG_INFO("server.loading", "[PBC] HandleQuestTaken: leader={} quest='{}' (id={}) giver='{}'",
+                 player->GetName(), questTitle, quest->GetQuestId(), questGiver);
+
+    std::string userPrompt = SubstituteQuestVars(
+        g_PBC_QuestTakenUserPrompt,
+        questTitle, questDescription, questLogDescription, questCompletionLog,
+        /*rewardText=*/"", questGiver, /*questEnder=*/"");
+
+    auto bots = FindGroupBots(player);
+    if (bots.empty()) return;
+
+    PBC_EventItem ev;
+    ev.type               = PBC_EventType::QuestSummarization;
+    ev.chatType           = CHAT_MSG_PARTY;
+    ev.canCreateEvents    = true;
+    ev.questSystemPrompt  = g_PBC_QuestTakenSystemPrompt;
+    ev.questUserPrompt    = userPrompt;
+
+    PBC_EventItem rolled = BuildBotEvent(bots, "", "", g_PBC_ReplyChanceQuestTaken,
+                                         CHAT_MSG_PARTY, /*skipHistoryIfSilent=*/false,
+                                         /*canCreateEvents=*/true,
+                                         /*notifyAnchor=*/player);
+    ev.respondingBots  = std::move(rolled.respondingBots);
+    ev.silentBotGuids  = std::move(rolled.silentBotGuids);
+
+    PBC_PushEvent(std::move(ev));
+}
+
+// ---------------------------------------------------------------------------
+// Quest taken — from creature
+// ---------------------------------------------------------------------------
+PBC_CreatureQuestScript::PBC_CreatureQuestScript()
+    : CreatureScript("PBC_CreatureQuestScript") {}
+
+bool PBC_CreatureQuestScript::OnQuestAccept(Player* player, Creature* creature, Quest const* quest)
+{
+    if (creature && quest && player)
+    {
+        std::string giverName = creature->GetName();
+        HandleQuestTaken(player, quest, giverName);
+    }
+    return false; // don't prevent quest acceptance
+}
+
+// ---------------------------------------------------------------------------
+// Quest taken — from gameobject
+// ---------------------------------------------------------------------------
+PBC_GameObjectQuestScript::PBC_GameObjectQuestScript()
+    : GameObjectScript("PBC_GameObjectQuestScript") {}
+
+bool PBC_GameObjectQuestScript::OnQuestAccept(Player* player, GameObject* go, Quest const* quest)
+{
+    if (go && quest && player)
+    {
+        GameObjectTemplate const* goInfo = go->GetGOInfo();
+        std::string giverName = goInfo ? goInfo->name : go->GetName();
+        HandleQuestTaken(player, quest, giverName);
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// Quest taken — from item
+// ---------------------------------------------------------------------------
+PBC_ItemQuestScript::PBC_ItemQuestScript()
+    : ItemScript("PBC_ItemQuestScript") {}
+
+bool PBC_ItemQuestScript::OnQuestAccept(Player* player, Item* item, Quest const* quest)
+{
+    if (item && quest && player)
+    {
+        ItemTemplate const* itemInfo = item->GetTemplate();
+        std::string giverName = itemInfo ? itemInfo->Name1 : "Unknown Item";
+        HandleQuestTaken(player, quest, giverName);
+    }
+    return false;
 }
