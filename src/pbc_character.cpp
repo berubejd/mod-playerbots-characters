@@ -141,7 +141,7 @@ std::string PBC_BuildCombatStatusStr(Player* bot)
 
 std::string PBC_BuildLosStr(Player* bot)
 {
-    constexpr float kLosRadius = 40.0f;
+    constexpr float kLosRadius = 30.0f;
     std::vector<std::string> entries;
 
     for (auto const& pair : ObjectAccessor::GetPlayers())
