@@ -13,11 +13,11 @@ public:
     PBC_PlayerEvents();
 
     // Chat events
-    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang,
+    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
                             std::string& msg, Player* receiver) override;
-    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang,
+    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
                             std::string& msg) override;
-    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang,
+    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
                             std::string& msg, Group* group) override;
 
     // World events bots may react to

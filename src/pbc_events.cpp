@@ -475,21 +475,21 @@ PBC_PlayerEvents::PBC_PlayerEvents() : PlayerScript("PBC_PlayerEvents",
     PLAYERHOOK_ON_PLAYER_COMPLETE_QUEST,
 }) {}
 
-bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang,
+bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
                                           std::string& msg, Player* receiver)
 {
     HandleChatMessage(player, type, msg, receiver);
     return true;
 }
 
-bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang,
+bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
                                           std::string& msg)
 {
     HandleChatMessage(player, type, msg);
     return true;
 }
 
-bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang,
+bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
                                           std::string& msg, Group* /*group*/)
 {
     HandleChatMessage(player, type, msg);
