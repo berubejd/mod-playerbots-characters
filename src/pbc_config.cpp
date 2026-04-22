@@ -426,11 +426,13 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     {
         // Post deferred "thinks..." notification to the main thread so it
         // appears right before this bot's LLM call, not at event-creation time.
+        // Only posted when PBC.DisplayNarratorEvents is enabled.
+        if (g_PBC_DisplayNarratorEvents)
         {
             PBC_PendingAction action;
-            action.charGuid             = snap.charObjGuid;
-            action.text                = PBC_MakeEventLine(snap.charName + " thinks...");
-            action.isThinkNotification = true;
+            action.charGuid          = snap.charObjGuid;
+            action.text              = PBC_MakeEventLine(snap.charName + " thinks...");
+            action.isNarratorMessage = true;
 
             std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
             g_PBC_PendingActions.push(std::move(action));
@@ -478,13 +480,55 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         // Collect reply for deferred global history write.
         completedReplyLines.push_back(replyLine);
 
-        // Post chat send to main thread.
+        // If the reply starts with a *text* narrator block and narrator events
+        // are enabled, post it as a narrator system message (same delivery as
+        // "thinks..." notifications) and strip it from the in-game chat text.
+        // Only the first *text* block at the start of the reply is extracted —
+        // any subsequent asterisk-delimited blocks remain in the chat text
+        // verbatim.  The full reply (including the narrator block) is always
+        // stored in the character's history as-is.  When PBC.DisplayNarratorEvents
+        // is disabled the block is not extracted and the full reply is sent as
+        // a normal chat message.
+        std::string chatText = res.text;
+        if (g_PBC_DisplayNarratorEvents && res.text.size() >= 2 && res.text[0] == '*')
+        {
+            size_t closingPos = res.text.find('*', 1);
+            if (closingPos != std::string::npos && closingPos > 1)
+            {
+                // Extract the narrator block (e.g. "*looks around nervously*")
+                std::string narratorBlock = res.text.substr(0, closingPos + 1);
+
+                // Post narrator message to real players in the group.
+                {
+                    PBC_PendingAction narrAction;
+                    narrAction.charGuid          = snap.charObjGuid;
+                    narrAction.text              = narratorBlock;
+                    narrAction.isNarratorMessage = true;
+
+                    std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
+                    g_PBC_PendingActions.push(std::move(narrAction));
+                }
+
+                // Strip the narrator block from the chat text.
+                chatText = res.text.substr(closingPos + 1);
+                // Trim leading whitespace so the chat message doesn't start with a space.
+                size_t start = chatText.find_first_not_of(" \t\n\r");
+                if (start != std::string::npos)
+                    chatText = chatText.substr(start);
+                else
+                    chatText.clear();
+            }
+        }
+
+        // Post chat send to main thread (only if there's text remaining
+        // after stripping any leading narrator block).
+        if (!chatText.empty())
         {
             PBC_PendingAction action;
             action.charGuid    = snap.charObjGuid;
             action.targetGuid = snap.whisperTargetGuid;
             action.chatType   = ev.chatType;
-            action.text       = res.text;
+            action.text       = chatText;
 
             std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
             g_PBC_PendingActions.push(std::move(action));
@@ -1207,9 +1251,10 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             {
                 Player* bot = ObjectAccessor::FindPlayer(action.charGuid);
 
-                // "thinks..." narrator notification — send to all real players
-                // in the bot's group.  If the bot is gone, just skip it.
-                if (action.isThinkNotification)
+                // Narrator system message (e.g. "thinks..." notification or a
+                // leading *text* block from the LLM reply) — send to all real
+                // players in the bot's group.  If the bot is gone, skip it.
+                if (action.isNarratorMessage)
                 {
                     if (bot && bot->IsInWorld())
                         PBC_NotifyRealPlayersInGroup(bot, action.text);
