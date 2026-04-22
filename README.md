@@ -174,6 +174,7 @@ These variables can be used in most prompts and character cards. It's recommende
 - `{scene}` — human-readable description of the current time of day, and weather if `mod_weather_vibe` is active, for example "It is currently evening." or "It's currently evening and it's raining lightly."
 - `{char_los}` — human-readable list of nearby characters and NPCs visible to the character, for example "You see John, Jane and Defias Bandit nearby." or "You see Defias Bandit nearby."
 - `{combat_status}` — dynamic combat status, could be "You are not currently in combat." or "You are currently in combat.", or even "You are currently fighting Archimonde.", based on current target
+- `{equipment}` — dynamic equipment description, combining armor quality assessment with weapon details. When bags are at least ~40% full, a bag-space summary is also appended. For example "You have fine equipment made of leather, and wield two rare daggers, called Death's Sting and Deathstriker." or "You have excellent equipment made of plate, and wield an epic two-handed mace called Devastation. Your bags are almost full." or "You have simple equipment, and are unarmed."
 - `{char_group}` — dynamic group status, could be "You are not currently in a group." or "You are currently in a group led by John (male Tauren Druid) with the following members: Jane (female Troll Rogue) and Kevin (male Blood Elf Paladin)."
 
 

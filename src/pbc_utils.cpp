@@ -7,11 +7,11 @@
 // Debug output helpers
 // ---------------------------------------------------------------------------
 
-std::string PBC_TruncateForDebug(const std::string& s, size_t maxLen, size_t halfLen)
+std::string PBC_TruncateForDebug(const std::string& s, size_t maxLen, size_t headLen, size_t tailLen)
 {
     if (s.size() <= maxLen)
         return s;
-    return s.substr(0, halfLen) + " ... " + s.substr(s.size() - halfLen);
+    return s.substr(0, headLen) + " ... " + s.substr(s.size() - tailLen);
 }
 
 std::string PBC_SanitizeForFmt(const std::string& s)

@@ -96,4 +96,10 @@ std::string PBC_BuildCombatStatusStr(Player* bot);
 // Returns the LOS entity list string, e.g. "You see John and Defias Bandit nearby."
 std::string PBC_BuildLosStr(Player* bot);
 
+// Returns equipment description string, e.g.
+// "You have fine equipment made of leather, and wield two rare daggers, called Death's Sting and Deathstriker."
+// When bags are ≥40% full, a bag-space summary is appended, e.g.
+// "You have fine equipment made of leather, and wield two rare daggers, called Death's Sting and Deathstriker. Your bags are almost full."
+std::string PBC_BuildEquipmentStr(Player* bot);
+
 #endif // MOD_PBC_CHARACTER_H

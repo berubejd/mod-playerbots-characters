@@ -129,6 +129,7 @@ struct PBC_CharacterSnapshot
     std::string charGroup;
     std::string charLos;
     std::string combatStatus;
+    std::string equipment;
 
     // The character's history at the moment of snapshotting.
     // The event thread appends its own replies here locally so subsequent

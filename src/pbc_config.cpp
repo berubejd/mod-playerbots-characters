@@ -480,58 +480,126 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         // Collect reply for deferred global history write.
         completedReplyLines.push_back(replyLine);
 
-        // If the reply starts with a *text* narrator block and narrator events
-        // are enabled, post it as a narrator system message (same delivery as
-        // "thinks..." notifications) and strip it from the in-game chat text.
-        // Only the first *text* block at the start of the reply is extracted —
-        // any subsequent asterisk-delimited blocks remain in the chat text
-        // verbatim.  The full reply (including the narrator block) is always
-        // stored in the character's history as-is.  When PBC.DisplayNarratorEvents
-        // is disabled the block is not extracted and the full reply is sent as
-        // a normal chat message.
-        std::string chatText = res.text;
-        if (g_PBC_DisplayNarratorEvents && res.text.size() >= 2 && res.text[0] == '*')
+        // If narrator events are enabled, split the reply into alternating
+        // narrator (*text*) and regular text segments, posting each as a
+        // separate in-game message.  For example, the LLM reply
+        //   *looks around* Hello! *waves* Goodbye!
+        // is posted as four messages:
+        //   *looks around* (narrator system message)
+        //   Hello!         (regular chat)
+        //   *waves*        (narrator system message)
+        //   Goodbye!       (regular chat)
+        //
+        // The full reply (including narrator blocks) is always stored in the
+        // character's history as-is.  When PBC.DisplayNarratorEvents is
+        // disabled the full reply is sent as a single normal chat message.
+        if (g_PBC_DisplayNarratorEvents)
         {
-            size_t closingPos = res.text.find('*', 1);
-            if (closingPos != std::string::npos && closingPos > 1)
+            // Pre-scan: find all valid *text* narrator spans (opening '*'
+            // followed by at least one character and a closing '*').
+            std::vector<std::pair<size_t, size_t>> narrSpans; // [start, end] inclusive
             {
-                // Extract the narrator block (e.g. "*looks around nervously*")
-                std::string narratorBlock = res.text.substr(0, closingPos + 1);
-
-                // Post narrator message to real players in the group.
+                size_t pos = 0;
+                while (pos < res.text.size())
                 {
-                    PBC_PendingAction narrAction;
-                    narrAction.charGuid          = snap.charObjGuid;
-                    narrAction.text              = narratorBlock;
-                    narrAction.isNarratorMessage = true;
+                    if (res.text[pos] == '*')
+                    {
+                        size_t closingPos = res.text.find('*', pos + 1);
+                        if (closingPos != std::string::npos && closingPos > pos + 1)
+                        {
+                            narrSpans.emplace_back(pos, closingPos);
+                            pos = closingPos + 1;
+                            continue;
+                        }
+                    }
+                    pos++;
+                }
+            }
+
+            if (narrSpans.empty())
+            {
+                // No narrator blocks — send the whole reply as one chat message.
+                if (!res.text.empty())
+                {
+                    PBC_PendingAction action;
+                    action.charGuid    = snap.charObjGuid;
+                    action.targetGuid = snap.whisperTargetGuid;
+                    action.chatType   = ev.chatType;
+                    action.text       = res.text;
 
                     std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
-                    g_PBC_PendingActions.push(std::move(narrAction));
+                    g_PBC_PendingActions.push(std::move(action));
+                }
+            }
+            else
+            {
+                // Push alternating narrator / regular segments under a single lock.
+                std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
+
+                size_t lastEnd = 0;
+                for (const auto& span : narrSpans)
+                {
+                    // Regular text before this narrator block.
+                    if (span.first > lastEnd)
+                    {
+                        std::string reg = res.text.substr(lastEnd, span.first - lastEnd);
+                        size_t s = reg.find_first_not_of(" \t\n\r");
+                        size_t e = reg.find_last_not_of(" \t\n\r");
+                        if (s != std::string::npos && e != std::string::npos && s <= e)
+                        {
+                            PBC_PendingAction action;
+                            action.charGuid    = snap.charObjGuid;
+                            action.targetGuid = snap.whisperTargetGuid;
+                            action.chatType   = ev.chatType;
+                            action.text       = reg.substr(s, e - s + 1);
+                            g_PBC_PendingActions.push(std::move(action));
+                        }
+                    }
+
+                    // Narrator block.
+                    {
+                        PBC_PendingAction narrAction;
+                        narrAction.charGuid          = snap.charObjGuid;
+                        narrAction.text              = res.text.substr(span.first, span.second - span.first + 1);
+                        narrAction.isNarratorMessage = true;
+                        g_PBC_PendingActions.push(std::move(narrAction));
+                    }
+
+                    lastEnd = span.second + 1;
                 }
 
-                // Strip the narrator block from the chat text.
-                chatText = res.text.substr(closingPos + 1);
-                // Trim leading whitespace so the chat message doesn't start with a space.
-                size_t start = chatText.find_first_not_of(" \t\n\r");
-                if (start != std::string::npos)
-                    chatText = chatText.substr(start);
-                else
-                    chatText.clear();
+                // Remaining regular text after the last narrator block.
+                if (lastEnd < res.text.size())
+                {
+                    std::string reg = res.text.substr(lastEnd);
+                    size_t s = reg.find_first_not_of(" \t\n\r");
+                    size_t e = reg.find_last_not_of(" \t\n\r");
+                    if (s != std::string::npos && e != std::string::npos && s <= e)
+                    {
+                        PBC_PendingAction action;
+                        action.charGuid    = snap.charObjGuid;
+                        action.targetGuid = snap.whisperTargetGuid;
+                        action.chatType   = ev.chatType;
+                        action.text       = reg.substr(s, e - s + 1);
+                        g_PBC_PendingActions.push(std::move(action));
+                    }
+                }
             }
         }
-
-        // Post chat send to main thread (only if there's text remaining
-        // after stripping any leading narrator block).
-        if (!chatText.empty())
+        else
         {
-            PBC_PendingAction action;
-            action.charGuid    = snap.charObjGuid;
-            action.targetGuid = snap.whisperTargetGuid;
-            action.chatType   = ev.chatType;
-            action.text       = chatText;
+            // Narrator events disabled — send the full reply as one chat message.
+            if (!res.text.empty())
+            {
+                PBC_PendingAction action;
+                action.charGuid    = snap.charObjGuid;
+                action.targetGuid = snap.whisperTargetGuid;
+                action.chatType   = ev.chatType;
+                action.text       = res.text;
 
-            std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
-            g_PBC_PendingActions.push(std::move(action));
+                std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
+                g_PBC_PendingActions.push(std::move(action));
+            }
         }
 
         // Advance the chain: the next character reacts to this bot's reply.
