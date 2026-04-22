@@ -108,7 +108,7 @@ std::string PBC_BuildPlaceName(Player* player)
     if (AreaTableEntry const* z = sAreaTableStore.LookupEntry(zoneId))
         zoneName = z->area_name[0];
     if (!areaName.empty() && !zoneName.empty() && areaName != zoneName)
-        return zoneName + ", " + areaName;
+        return areaName + " (" + zoneName + ")";
     if (!areaName.empty())
         return areaName;
     return zoneName;
@@ -557,7 +557,7 @@ static std::string BuildSceneStr(Player* bot)
             char const* clause = WeatherClause(it->second.state);
             if (clause)
             {
-                timeWeather = "it's currently " + timeLabel + " and " + std::string(clause);
+                timeWeather = "it's " + timeLabel + " and " + std::string(clause);
                 // When indoors, note that the character is sheltered from the weather
                 if (!bot->IsOutdoors())
                     timeWeather += ", but you are inside and sheltered from the weather";
@@ -567,7 +567,7 @@ static std::string BuildSceneStr(Player* bot)
 #endif
 
     if (timeWeather.empty())
-        timeWeather = "it's currently " + timeLabel;
+        timeWeather = "it's " + timeLabel;
 
     // --- Taxi flight ---
     if (bot && bot->IsInFlight())

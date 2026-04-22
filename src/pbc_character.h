@@ -79,7 +79,7 @@ std::string PBC_BuildTargetInfo(const std::string& name);
 // ---------------------------------------------------------------------------
 
 // Returns the place name for a player's current ground location,
-// e.g. "Goldshire in Elwynn Forest" or just "Elwynn Forest".
+// e.g. "Goldshire (Elwynn Forest)" or just "Elwynn Forest".
 std::string PBC_BuildPlaceName(Player* player);
 
 // Returns the taxi destination name for a flying player, or empty string.
