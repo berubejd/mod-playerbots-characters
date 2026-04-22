@@ -206,7 +206,7 @@ static PBC_EventItem BuildCharacterEvent(const std::vector<Player*>& bots,
         if (g_PBC_DebugEnabled)
             LOG_INFO("server.loading", "[PBC] Roll event character={} chance={}% (base={}% mod={}) -> {}",
                      bot->GetName(), effectiveChance, chance,
-                     effectiveChance - chance,
+                     static_cast<int32_t>(effectiveChance) - static_cast<int32_t>(chance),
                      rolled ? "RESPOND" : "silent");
         if (rolled)
             ev.respondingChars.push_back(PBC_SnapshotCharacter(bot));
@@ -1150,6 +1150,7 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     ev.canCreateEvents    = true;
     ev.questSystemPrompt  = g_PBC_QuestCompletedSystemPrompt;
     ev.questUserPrompt    = userPrompt;
+    ev.anchorObjGuid      = player->GetGUID();
 
     PBC_EventItem rolled = BuildCharacterEvent(bots, "", "", g_PBC_ReplyChanceQuestCompleted,
                                          CHAT_MSG_PARTY, /*skipHistoryIfSilent=*/false,
@@ -1197,6 +1198,7 @@ static void HandleQuestTaken(Player* player, Quest const* quest, std::string con
     ev.canCreateEvents    = true;
     ev.questSystemPrompt  = g_PBC_QuestTakenSystemPrompt;
     ev.questUserPrompt    = userPrompt;
+    ev.anchorObjGuid      = player->GetGUID();
 
     PBC_EventItem rolled = BuildCharacterEvent(bots, "", "", g_PBC_ReplyChanceQuestTaken,
                                          CHAT_MSG_PARTY, /*skipHistoryIfSilent=*/false,
@@ -1208,12 +1210,12 @@ static void HandleQuestTaken(Player* player, Quest const* quest, std::string con
 }
 
 // ---------------------------------------------------------------------------
-// Quest taken — from creature
+// Quest taken — from creature (AllCreatureScript fires for ALL creatures)
 // ---------------------------------------------------------------------------
-PBC_CreatureQuestScript::PBC_CreatureQuestScript()
-    : CreatureScript("PBC_CreatureQuestScript") {}
+PBC_AllCreatureQuestScript::PBC_AllCreatureQuestScript()
+    : AllCreatureScript("PBC_AllCreatureQuestScript") {}
 
-bool PBC_CreatureQuestScript::OnQuestAccept(Player* player, Creature* creature, Quest const* quest)
+bool PBC_AllCreatureQuestScript::CanCreatureQuestAccept(Player* player, Creature* creature, Quest const* quest)
 {
     if (creature && quest && player)
     {
@@ -1224,12 +1226,12 @@ bool PBC_CreatureQuestScript::OnQuestAccept(Player* player, Creature* creature, 
 }
 
 // ---------------------------------------------------------------------------
-// Quest taken — from gameobject
+// Quest taken — from gameobject (AllGameObjectScript fires for ALL GOs)
 // ---------------------------------------------------------------------------
-PBC_GameObjectQuestScript::PBC_GameObjectQuestScript()
-    : GameObjectScript("PBC_GameObjectQuestScript") {}
+PBC_AllGameObjectQuestScript::PBC_AllGameObjectQuestScript()
+    : AllGameObjectScript("PBC_AllGameObjectQuestScript") {}
 
-bool PBC_GameObjectQuestScript::OnQuestAccept(Player* player, GameObject* go, Quest const* quest)
+bool PBC_AllGameObjectQuestScript::CanGameObjectQuestAccept(Player* player, GameObject* go, Quest const* quest)
 {
     if (go && quest && player)
     {
@@ -1237,16 +1239,16 @@ bool PBC_GameObjectQuestScript::OnQuestAccept(Player* player, GameObject* go, Qu
         std::string giverName = goInfo ? goInfo->name : go->GetName();
         HandleQuestTaken(player, quest, giverName);
     }
-    return false;
+    return false; // don't prevent quest acceptance
 }
 
 // ---------------------------------------------------------------------------
-// Quest taken — from item
+// Quest taken — from item (AllItemScript fires for ALL items)
 // ---------------------------------------------------------------------------
-PBC_ItemQuestScript::PBC_ItemQuestScript()
-    : ItemScript("PBC_ItemQuestScript") {}
+PBC_AllItemQuestScript::PBC_AllItemQuestScript()
+    : AllItemScript("PBC_AllItemQuestScript") {}
 
-bool PBC_ItemQuestScript::OnQuestAccept(Player* player, Item* item, Quest const* quest)
+bool PBC_AllItemQuestScript::CanItemQuestAccept(Player* player, Item* item, Quest const* quest)
 {
     if (item && quest && player)
     {
@@ -1254,5 +1256,5 @@ bool PBC_ItemQuestScript::OnQuestAccept(Player* player, Item* item, Quest const*
         std::string giverName = itemInfo ? itemInfo->Name1 : "Unknown Item";
         HandleQuestTaken(player, quest, giverName);
     }
-    return false;
+    return true; // true = allow quest acceptance (AllItemScript convention)
 }

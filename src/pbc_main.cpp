@@ -9,8 +9,8 @@ void Addmod_playerbots_charactersScripts()
 
     new PBC_WorldScript();
     new PBC_PlayerEvents();
-    new PBC_CreatureQuestScript();
-    new PBC_GameObjectQuestScript();
-    new PBC_ItemQuestScript();
+    new PBC_AllCreatureQuestScript();
+    new PBC_AllGameObjectQuestScript();
+    new PBC_AllItemQuestScript();
     new PBC_CommandScript();
 }

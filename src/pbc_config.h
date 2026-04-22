@@ -236,6 +236,11 @@ struct PBC_EventItem
     std::string questSystemPrompt;
     std::string questUserPrompt;
 
+    // ObjectGuid of the player who triggered the quest event (party leader).
+    // Used to send the narrator summary message to the correct group after
+    // the LLM generates the summary text.
+    ObjectGuid  anchorObjGuid;
+
     // --- Condensation fields ---
     // The character whose history should be condensed.
     PBC_CharacterSnapshot condensationChar;

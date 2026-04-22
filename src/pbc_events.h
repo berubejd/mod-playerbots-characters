@@ -2,6 +2,9 @@
 #define MOD_PBC_EVENTS_H
 
 #include "ScriptMgr.h"
+#include "AllCreatureScript.h"
+#include "AllGameObjectScript.h"
+#include "AllItemScript.h"
 #include "QuestDef.h"
 #include <string>
 
@@ -28,28 +31,28 @@ public:
     void OnPlayerCompleteQuest(Player* player, Quest const* quest) override;
 };
 
-// Captures quest-accept events from creatures.
-class PBC_CreatureQuestScript : public CreatureScript
+// Captures quest-accept events from all creatures.
+class PBC_AllCreatureQuestScript : public AllCreatureScript
 {
 public:
-    PBC_CreatureQuestScript();
-    bool OnQuestAccept(Player* player, Creature* creature, Quest const* quest) override;
+    PBC_AllCreatureQuestScript();
+    bool CanCreatureQuestAccept(Player* player, Creature* creature, Quest const* quest) override;
 };
 
-// Captures quest-accept events from gameobjects.
-class PBC_GameObjectQuestScript : public GameObjectScript
+// Captures quest-accept events from all gameobjects.
+class PBC_AllGameObjectQuestScript : public AllGameObjectScript
 {
 public:
-    PBC_GameObjectQuestScript();
-    bool OnQuestAccept(Player* player, GameObject* go, Quest const* quest) override;
+    PBC_AllGameObjectQuestScript();
+    bool CanGameObjectQuestAccept(Player* player, GameObject* go, Quest const* quest) override;
 };
 
-// Captures quest-accept events from items.
-class PBC_ItemQuestScript : public ItemScript
+// Captures quest-accept events from all items.
+class PBC_AllItemQuestScript : public AllItemScript
 {
 public:
-    PBC_ItemQuestScript();
-    bool OnQuestAccept(Player* player, Item* item, Quest const* quest) override;
+    PBC_AllItemQuestScript();
+    bool CanItemQuestAccept(Player* player, Item* item, Quest const* quest) override;
 };
 
 // ---------------------------------------------------------------------------

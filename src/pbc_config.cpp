@@ -390,6 +390,20 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
 
         ev.eventLine = PBC_MakeEventLine(summary.text);
         ev.histLine  = PBC_MakeHistLine(summary.text);
+
+        // Send the narrator summary to all real players in the anchor's group,
+        // using the same PBC_PendingAction mechanism as "thinks..." messages.
+        if (g_PBC_DisplayNarratorEvents && !ev.anchorObjGuid.IsEmpty())
+        {
+            PBC_PendingAction narrAction;
+            narrAction.charGuid          = ev.anchorObjGuid;
+            narrAction.text              = ev.eventLine;
+            narrAction.isNarratorMessage = true;
+
+            std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
+            g_PBC_PendingActions.push(std::move(narrAction));
+        }
+
         // Fall through to Normal processing
     }
 
