@@ -1,5 +1,45 @@
 -- mod-playerbots-characters: initial schema
 -- Creates all required tables if they do not already exist.
+-- Also handles migration from the legacy mod_pbc_bot_location table.
+
+-- ============================================================
+-- Migration: mod_pbc_bot_location → mod_pbc_data
+-- If the old table exists and the new one doesn't, rename it
+-- and add the roll_chance_modifier column.
+-- For fresh installs the CREATE TABLE IF NOT EXISTS below
+-- handles everything.
+-- ============================================================
+
+SET @old_exists = (SELECT COUNT(*) FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'mod_pbc_bot_location');
+SET @new_exists = (SELECT COUNT(*) FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'mod_pbc_data');
+
+-- Rename old table to new name (only if old exists and new doesn't)
+SET @sql = IF(@old_exists > 0 AND @new_exists = 0,
+    'RENAME TABLE `mod_pbc_bot_location` TO `mod_pbc_data`',
+    'SELECT ''Skip rename: mod_pbc_data already exists or mod_pbc_bot_location does not exist'' AS status');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add roll_chance_modifier column if it doesn't exist yet (upgrade path)
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'mod_pbc_data' AND column_name = 'roll_chance_modifier');
+
+SET @sql = IF(@col_exists = 0,
+    'ALTER TABLE `mod_pbc_data` ADD COLUMN `roll_chance_modifier` INT NOT NULL DEFAULT 0 COMMENT ''Per-character roll chance modifier (-100 to 100), added to every roll chance'' AFTER `last_location`',
+    'SELECT ''Skip add column: roll_chance_modifier already exists'' AS status');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Update the table comment (safe to run always)
+ALTER TABLE `mod_pbc_data` COMMENT='Per-bot persistent data (location, roll modifier)';
+
+-- ============================================================
+-- Schema: all tables
+-- ============================================================
 
 -- Stores condensed history appended to a character's card (in the DB, not on disk).
 CREATE TABLE IF NOT EXISTS `mod_pbc_character_card_additions` (
