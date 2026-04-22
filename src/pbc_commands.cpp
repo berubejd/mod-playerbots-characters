@@ -458,6 +458,29 @@ static bool HandleCharsApiTest(ChatHandler* handler, Optional<std::string_view> 
 }
 
 // ---------------------------------------------------------------------------
+// .chars context [char_name]
+// ---------------------------------------------------------------------------
+static bool HandleCharsContext(ChatHandler* handler, Optional<std::string_view> nameArg)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+    if ((!nameArg || nameArg->empty()) && !handler->GetSession())
+    {
+        handler->PSendSysMessage("[PBC] Usage from console: chars context <char_name>");
+        return false;
+    }
+    Player* target = FindTarget(handler, nameArg);
+    if (!target)
+    {
+        handler->PSendSysMessage("[PBC] Player not found or not online.");
+        return false;
+    }
+
+    std::string context = PBC_GetCharacterContext(target);
+    handler->PSendSysMessage("[PBC] === {} context ===\n{}", target->GetName(), context);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -475,6 +498,7 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
         { "relationship",        HandleCharsRelationship,       SEC_GAMEMASTER, Console::Yes },
         { "relationship_update", HandleCharsRelationshipUpdate, SEC_GAMEMASTER, Console::Yes },
         { "roll_modifier",       HandleCharsRollModifier,       SEC_GAMEMASTER, Console::Yes },
+        { "context",             HandleCharsContext,            SEC_GAMEMASTER, Console::Yes },
         { "apitest",             HandleCharsApiTest,            SEC_GAMEMASTER, Console::Yes },
     };
 
