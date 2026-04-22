@@ -150,7 +150,7 @@ PBC.DefaultCharacterDescription = "You are a {char_gender} {char_race} {char_cla
 # PBC.CharacterContext
 #     Description: Current context description appended to every prompt, always sent last.
 #                  REQUIRED. The module will be disabled if missing.
-PBC.CharacterContext = "You are {char_name}, a {char_gender} {char_race} {char_class}.\n{char_location}\n{scene}\n{combat_status}\n{equipment}\n{char_group}\n{char_los}"
+PBC.CharacterContext = "You are {char_name}, a {char_gender} {char_race} {char_class}.\n{scene}\n{combat_status}\n{equipment}\n{char_group}\n{char_los}"
 
 
 # --------------------------------------------

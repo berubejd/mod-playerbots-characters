@@ -85,10 +85,6 @@ std::string PBC_BuildPlaceName(Player* player);
 // Returns the taxi destination name for a flying player, or empty string.
 std::string PBC_BuildFlightDestination(Player* bot);
 
-// Returns the full flight location string, e.g.
-// "You are currently flying to Tanaris." or "You are currently flying."
-std::string PBC_BuildFlightLocationString(Player* bot);
-
 // Returns combat status string, e.g. "You are not currently in combat."
 // or "You are currently fighting Onyxia."
 std::string PBC_BuildCombatStatusStr(Player* bot);

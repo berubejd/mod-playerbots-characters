@@ -56,6 +56,12 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
 {
     PBC_LLMResult result{ false, "", 0 };
 
+    // Clean any unknown {token} placeholders and log warnings.
+    std::string sysPrompt  = systemPrompt;
+    std::string usrPrompt  = userPrompt;
+    PBC_CleanUnknownTokens(sysPrompt);
+    PBC_CleanUnknownTokens(usrPrompt);
+
     const bool isAnthropic = IEquals(g_PBC_APIType, "anthropic");
 
     // --- Build URL --------------------------------------------------------
@@ -72,11 +78,11 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
     {
         // Anthropic Messages API format
         // system is a top-level field, not part of the messages array
-        if (!systemPrompt.empty())
-            body["system"] = systemPrompt;
+        if (!sysPrompt.empty())
+            body["system"] = sysPrompt;
 
         json messages = json::array();
-        messages.push_back({ {"role", "user"}, {"content", userPrompt} });
+        messages.push_back({ {"role", "user"}, {"content", usrPrompt} });
         body["messages"] = messages;
 
         // max_tokens is required for Anthropic — unlike OpenAI, it cannot be omitted.
@@ -114,9 +120,9 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
             body["max_tokens"] = g_PBC_MaxResponseTokens;
 
         json messages = json::array();
-        if (!systemPrompt.empty())
-            messages.push_back({ {"role", "system"}, {"content", systemPrompt} });
-        messages.push_back({ {"role", "user"}, {"content", userPrompt} });
+        if (!sysPrompt.empty())
+            messages.push_back({ {"role", "system"}, {"content", sysPrompt} });
+        messages.push_back({ {"role", "user"}, {"content", usrPrompt} });
         body["messages"] = messages;
     }
 

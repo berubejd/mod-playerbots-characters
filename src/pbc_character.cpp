@@ -13,6 +13,9 @@
 #include "Map.h"
 #include "GameTime.h"
 #include "DBCStores.h"
+#include "SpellInfo.h"
+#include "SpellAuraDefines.h"
+#include "SpellAuraEffects.h"
 
 #ifdef MOD_WEATHER_VIBE
 #include "mod_wv_core.h"
@@ -126,13 +129,6 @@ std::string PBC_BuildFlightDestination(Player* bot)
     return {};
 }
 
-std::string PBC_BuildFlightLocationString(Player* bot)
-{
-    std::string dest = PBC_BuildFlightDestination(bot);
-    if (!dest.empty())
-        return "You are currently flying to " + dest + ".";
-    return "You are currently flying.";
-}
 
 std::string PBC_BuildCombatStatusStr(Player* bot)
 {
@@ -546,6 +542,10 @@ static std::string BuildSceneStr(Player* bot)
 {
     std::string timeLabel = TimeOfDayLabel();
 
+    // Build the time/weather suffix (lowercase, no trailing period — it will be
+    // appended after a comma inside a larger sentence).
+    std::string timeWeather;
+
 #ifdef MOD_WEATHER_VIBE
     if (bot && sWeatherVibeCore.IsEnabled())
     {
@@ -557,17 +557,50 @@ static std::string BuildSceneStr(Player* bot)
             char const* clause = WeatherClause(it->second.state);
             if (clause)
             {
-                std::string result = "It's currently " + timeLabel + " and " + std::string(clause);
+                timeWeather = "it's currently " + timeLabel + " and " + std::string(clause);
                 // When indoors, note that the character is sheltered from the weather
                 if (!bot->IsOutdoors())
-                    result += ", but you are inside and sheltered from the weather";
-                return result + ".";
+                    timeWeather += ", but you are inside and sheltered from the weather";
             }
         }
     }
 #endif
 
-    return "It is currently " + timeLabel + ".";
+    if (timeWeather.empty())
+        timeWeather = "it's currently " + timeLabel;
+
+    // --- Taxi flight ---
+    if (bot && bot->IsInFlight())
+    {
+        std::string dest = PBC_BuildFlightDestination(bot);
+        if (!dest.empty())
+            return "You are currently flying to " + dest + ", " + timeWeather + ".";
+        return "You are currently flying, " + timeWeather + ".";
+    }
+
+    // --- Mounted ---
+    if (bot && bot->IsMounted())
+    {
+        std::string place = PBC_BuildPlaceName(bot);
+        auto auraEffects = bot->GetAuraEffectsByType(SPELL_AURA_MOUNTED);
+        if (!auraEffects.empty())
+        {
+            SpellInfo const* spellInfo = auraEffects.front()->GetSpellInfo();
+            std::string mountName = spellInfo->SpellName[0];
+            bool isFlyingMount = (spellInfo->Effects[1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
+                                  spellInfo->Effects[2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED);
+            if (isFlyingMount)
+                return "You are currently flying " + mountName + " in " + place + ", " + timeWeather + ".";
+            else
+                return "You are currently riding " + mountName + " in " + place + ", " + timeWeather + ".";
+        }
+        // Fallback if aura not found
+        return "You are currently riding a mount in " + place + ", " + timeWeather + ".";
+    }
+
+    // --- On foot ---
+    std::string place = PBC_BuildPlaceName(bot);
+    return "You are currently on foot in " + place + ", " + timeWeather + ".";
 }
 
 static std::string RoleStr(Player* bot)
@@ -656,15 +689,7 @@ std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot, const std::
         PBC_ReplaceToken(out, "char_level",  std::to_string(bot->GetLevel()));
         { uint32 m = bot->GetMoney(); PBC_ReplaceToken(out, "char_gold", std::to_string(m / 10000) + "g " + std::to_string((m % 10000) / 100) + "s"); }
 
-        // Location
-        std::string location;
-        if (bot->IsInFlight())
-            location = PBC_BuildFlightLocationString(bot);
-        else
-            location = "You are currently in " + PBC_BuildPlaceName(bot) + ".";
-        PBC_ReplaceToken(out, "char_location", location);
-
-        // Scene (time of day + optional weather)
+        // Scene (location + travel state + time of day + optional weather)
         PBC_ReplaceToken(out, "scene", BuildSceneStr(bot));
 
         // Combat status
@@ -807,7 +832,6 @@ static void ReplaceSnapshotVars(std::string& out, const PBC_CharacterSnapshot& s
     PBC_ReplaceToken(out, "char_role",     snap.charRole);
     PBC_ReplaceToken(out, "char_level",    snap.charLevel);
     PBC_ReplaceToken(out, "char_gold",     snap.charGold);
-    PBC_ReplaceToken(out, "char_location", snap.charLocation);
     PBC_ReplaceToken(out, "scene",         snap.scene);
     PBC_ReplaceToken(out, "char_group",    snap.charGroup);
     PBC_ReplaceToken(out, "char_los",      snap.charLos);
@@ -844,14 +868,8 @@ PBC_CharacterSnapshot PBC_SnapshotCharacter(Player* bot)
     snap.charLevel    = std::to_string(bot->GetLevel());
     { uint32 m = bot->GetMoney(); snap.charGold = std::to_string(m / 10000) + "g " + std::to_string((m % 10000) / 100) + "s"; }
 
-    // Scene (time of day + optional weather)
+    // Scene (location + travel state + time of day + optional weather)
     snap.scene = BuildSceneStr(bot);
-
-    // Location
-    if (bot->IsInFlight())
-        snap.charLocation = PBC_BuildFlightLocationString(bot);
-    else
-        snap.charLocation = "You are currently in " + PBC_BuildPlaceName(bot) + ".";
 
     // Combat status
     snap.combatStatus = PBC_BuildCombatStatusStr(bot);

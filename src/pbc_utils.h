@@ -23,6 +23,10 @@ void PBC_ExpandNewlineEscapes(std::string& s);
 // Replace all occurrences of {key} with value in s, in-place.
 void PBC_ReplaceToken(std::string& s, const std::string& key, const std::string& value);
 
+// Remove any remaining {token} patterns in s, replacing them with "" and
+// logging a warning for each unique unknown token found.
+void PBC_CleanUnknownTokens(std::string& s);
+
 // ---------------------------------------------------------------------------
 // Debug output helpers
 // ---------------------------------------------------------------------------

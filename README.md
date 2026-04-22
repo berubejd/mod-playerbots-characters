@@ -28,7 +28,7 @@ Next, clone this repository into the `modules` directory of your acore sources a
 > 1. Only Linux is officially supported as a build target. Technically nothing should stop you from using the module on Windows, but this is untested and unsupported.
 > 2. The module includes a bundled copy of [nlohmann/json](https://github.com/nlohmann/json) in `deps/nlohmann/json.hpp`, so no external JSON library is required. The build system will use the bundled version by default, falling back to a system-installed version if available.
 
-If [mod_weather_vibe](https://github.com/hermensbas/mod_weather_vibe) is also installed, weather states from it will be used to define the character's scene.
+If [mod_weather_vibe](https://github.com/hermensbas/mod_weather_vibe) is also installed, weather states from it will be included in the character's scene description.
 
 
 ## Configuration
@@ -171,8 +171,7 @@ These variables can be used in most prompts and character cards. It's recommende
 - `{char_role}` — character role
 - `{char_level}` — level of the character in game
 - `{char_gold}` — amount of character's money
-- `{char_location}` — human-readable location of the character in game, as a full sentence. For example "You are currently in Undercity." when on the ground, or "You are currently flying to Ratchet, The Barrens." when in a taxi flight.
-- `{scene}` — human-readable description of the current time of day, and weather if `mod_weather_vibe` is active, for example "It is currently evening." or "It's currently evening and it's raining lightly."
+- `{scene}` — human-readable description of the character's current situation: travel state, location, time of day, and weather (if `mod_weather_vibe` is active). For example "You are currently on foot in Undercity, it's currently evening." or "You are currently riding Gray Kodo in The Barrens, it's currently noon." or "You are currently flying to Crossroads, it's currently morning." or "You are currently on foot in Gadgetzan, Tanaris, it's currently early evening and it's raining lightly."
 - `{char_los}` — human-readable list of nearby characters and NPCs visible to the character, for example "You see John, Jane and Defias Bandit nearby." or "You see Defias Bandit nearby."
 - `{combat_status}` — dynamic combat status, could be "You are not currently in combat." or "You are currently in combat.", or even "You are currently fighting Archimonde.", based on current target
 - `{equipment}` — dynamic equipment description, combining armor quality assessment with weapon details. When bags are at least ~40% full, a bag-space summary is also appended. For example "You have fine equipment made of leather, and wield two rare daggers, called Death's Sting and Deathstriker." or "You have excellent equipment made of plate, and wield an epic two-handed mace called Devastation. Your bags are almost full." or "You have simple equipment, and are unarmed."

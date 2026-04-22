@@ -1,7 +1,10 @@
 #include "pbc_utils.h"
+#include "Log.h"
 
 #include <chrono>
 #include <thread>
+#include <set>
+#include <regex>
 
 // ---------------------------------------------------------------------------
 // Debug output helpers
@@ -50,6 +53,42 @@ void PBC_ReplaceToken(std::string& s, const std::string& key, const std::string&
         s.replace(pos, token.size(), value);
         pos += value.size();
     }
+}
+
+void PBC_CleanUnknownTokens(std::string& s)
+{
+    // Match {word} patterns — any remaining tokens that were not replaced.
+    static const std::regex tokenPattern(R"(\{([a-zA-Z_][a-zA-Z0-9_]*)\})");
+    std::set<std::string> warned;
+    std::smatch match;
+    std::string result;
+    size_t lastPos = 0;
+    size_t searchPos = 0;
+
+    while (std::regex_search(s.cbegin() + searchPos, s.cend(), match, tokenPattern))
+    {
+        size_t matchPos = searchPos + match.position();
+        std::string tokenName = match[1].str();
+
+        // Append text before the match
+        result.append(s, lastPos, matchPos - lastPos);
+
+        // Log warning once per unique unknown token
+        if (warned.insert(tokenName).second)
+            LOG_WARN("server.loading", "[PBC] Unknown template token '{{{}}}' — replaced with empty string", tokenName);
+
+        // Skip the token (replace with "")
+        lastPos = matchPos + match.length();
+        searchPos = lastPos;
+    }
+
+    if (lastPos > 0)
+    {
+        // Append remaining text after the last match
+        result.append(s, lastPos);
+        s = std::move(result);
+    }
+    // If lastPos == 0, no unknown tokens were found — leave s unchanged.
 }
 
 // ---------------------------------------------------------------------------
