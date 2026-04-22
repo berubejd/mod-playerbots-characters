@@ -8,26 +8,26 @@
 // ---------------------------------------------------------------------------
 // Snapshot builder (main-thread only)
 //
-// Captures all data needed from a live Player* into a PBC_BotSnapshot.
+// Captures all data needed from a live Player* into a PBC_CharacterSnapshot.
 // Must be called on the main thread.  The resulting struct is safe to pass
 // to the event thread without further access to game objects.
 // ---------------------------------------------------------------------------
-PBC_BotSnapshot PBC_SnapshotBot(Player* bot);
+PBC_CharacterSnapshot PBC_SnapshotCharacter(Player* bot);
 
 // ---------------------------------------------------------------------------
 // Prompt builder (thread-safe, uses snapshot only)
 //
-// Builds the fully-substituted user prompt string for a bot using only data
+// Builds the fully-substituted user prompt string for a character using only data
 // stored in its snapshot (including its local history copy).  Safe to call
 // from any thread.
 // ---------------------------------------------------------------------------
-std::string PBC_BuildUserPromptFromSnapshot(const PBC_BotSnapshot& snap,
+std::string PBC_BuildUserPromptFromSnapshot(const PBC_CharacterSnapshot& snap,
                                              const std::string& eventLine);
 
 // ---------------------------------------------------------------------------
 // Condensation prompt builder (thread-safe, uses snapshot only)
 // ---------------------------------------------------------------------------
-std::string PBC_BuildCondensationPromptFromSnapshot(const PBC_BotSnapshot& snap,
+std::string PBC_BuildCondensationPromptFromSnapshot(const PBC_CharacterSnapshot& snap,
                                                      const std::string& tmpl);
 
 // ---------------------------------------------------------------------------
@@ -55,17 +55,17 @@ std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot,
                                 bool expandComposites = true);
 
 // ---------------------------------------------------------------------------
-// Push a Condensation event for a bot onto the global event queue.
+// Push a Condensation event for a character onto the global event queue.
 // May be called from the main thread (commands).
 // ---------------------------------------------------------------------------
 void PBC_TriggerCondensation(Player* bot);
 
 // ---------------------------------------------------------------------------
-// Build the relationships block for a bot's prompt (thread-safe).
+// Build the relationships block for a character's prompt (thread-safe).
 // Returns a multi-line string (one entry per party member) to be substituted
 // into {relationships} in the user prompt template.
 // ---------------------------------------------------------------------------
-std::string PBC_GetRelationshipsBlock(const PBC_BotSnapshot& snap);
+std::string PBC_GetRelationshipsBlock(const PBC_CharacterSnapshot& snap);
 
 // ---------------------------------------------------------------------------
 // Build a target info string for a named player, e.g. "DESEVEN, MALE TAUREN SHAMAN".

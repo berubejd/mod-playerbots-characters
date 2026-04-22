@@ -19,7 +19,7 @@
 // Chat history
 // ---------------------------------------------------------------------------
 
-// Insert a single history line for a bot.
+// Insert a single history line for a character.
 inline void DB_InsertHistoryLine(uint64_t botGuid, const std::string& message)
 {
     std::string escaped = message;
@@ -31,8 +31,8 @@ inline void DB_InsertHistoryLine(uint64_t botGuid, const std::string& message)
     );
 }
 
-// Delete all history rows for a bot.
-inline void DB_DeleteHistoryForBot(uint64_t botGuid)
+// Delete all history rows for a character.
+inline void DB_DeleteHistoryForCharacter(uint64_t botGuid)
 {
     CharacterDatabase.Execute(
         "DELETE FROM mod_pbc_chat_history WHERE bot_guid = {}",
@@ -50,7 +50,7 @@ inline void DB_DeleteAllHistory()
 // Character card additions
 // ---------------------------------------------------------------------------
 
-// Insert a condensed addition for a bot.
+// Insert a condensed addition for a character.
 inline void DB_InsertCardAddition(uint64_t botGuid, const std::string& addition)
 {
     std::string escaped = addition;
@@ -62,8 +62,8 @@ inline void DB_InsertCardAddition(uint64_t botGuid, const std::string& addition)
     );
 }
 
-// Delete all card additions for a bot (used by .chars reset).
-inline void DB_DeleteCardAdditionsForBot(uint64_t botGuid)
+// Delete all card additions for a character (used by .chars reset).
+inline void DB_DeleteCardAdditionsForCharacter(uint64_t botGuid)
 {
     CharacterDatabase.Execute(
         "DELETE FROM mod_pbc_character_card_additions WHERE bot_guid = {}",
@@ -71,18 +71,18 @@ inline void DB_DeleteCardAdditionsForBot(uint64_t botGuid)
     );
 }
 
-// Delete all card additions for every bot (used by .chars reset @ALL).
+// Delete all card additions for every character (used by .chars reset @ALL).
 inline void DB_DeleteAllCardAdditions()
 {
     CharacterDatabase.Execute("DELETE FROM mod_pbc_character_card_additions");
 }
 
 // ---------------------------------------------------------------------------
-// Bot data (location + roll chance modifier)
+// Character data (location + roll chance modifier)
 // ---------------------------------------------------------------------------
 
-// Upsert the last stable location for a bot (preserves roll_chance_modifier).
-inline void DB_UpsertBotLocation(uint64_t botGuid, const std::string& location)
+// Upsert the last stable location for a character (preserves roll_chance_modifier).
+inline void DB_UpsertCharacterLocation(uint64_t botGuid, const std::string& location)
 {
     std::string escaped = location;
     CharacterDatabase.EscapeString(escaped);
@@ -95,7 +95,7 @@ inline void DB_UpsertBotLocation(uint64_t botGuid, const std::string& location)
     );
 }
 
-// Upsert the roll chance modifier for a bot (preserves last_location).
+// Upsert the roll chance modifier for a character (preserves last_location).
 // modifier must be in range [-100, 100].
 inline void DB_UpsertRollChanceModifier(uint64_t botGuid, int32_t modifier)
 {
@@ -112,7 +112,7 @@ inline void DB_UpsertRollChanceModifier(uint64_t botGuid, int32_t modifier)
 // Character relationships
 // ---------------------------------------------------------------------------
 
-// Upsert a relationship description for a bot with a named target.
+// Upsert a relationship description for a character with a named target.
 // Also persists mention_count_at_last_update so server restarts don't
 // trigger redundant relationship LLM calls.
 inline void DB_UpsertRelationship(uint64_t botGuid, const std::string& targetName,
@@ -140,8 +140,8 @@ inline void DB_UpsertRelationship(uint64_t botGuid, const std::string& targetNam
     );
 }
 
-// Delete all relationship rows for a bot (used by .chars reset).
-inline void DB_DeleteRelationshipsForBot(uint64_t botGuid)
+// Delete all relationship rows for a character (used by .chars reset).
+inline void DB_DeleteRelationshipsForCharacter(uint64_t botGuid)
 {
     CharacterDatabase.Execute(
         "DELETE FROM mod_pbc_relationships WHERE bot_guid = {}",
@@ -149,7 +149,7 @@ inline void DB_DeleteRelationshipsForBot(uint64_t botGuid)
     );
 }
 
-// Delete all relationship rows for every bot (used by .chars reset @ALL).
+// Delete all relationship rows for every character (used by .chars reset @ALL).
 inline void DB_DeleteAllRelationships()
 {
     CharacterDatabase.Execute("DELETE FROM mod_pbc_relationships");

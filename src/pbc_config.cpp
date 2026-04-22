@@ -95,7 +95,7 @@ std::unordered_map<uint64_t, std::unordered_map<std::string, PBC_RelationshipEnt
 std::mutex g_PBC_RelationshipsMutex;
 
 std::unordered_map<uint64_t, PBC_LocationState> g_PBC_LocationStates;
-std::unordered_map<uint64_t, std::string>        g_PBC_BotLastLocations;
+std::unordered_map<uint64_t, std::string>        g_PBC_CharacterLastLocations;
 std::unordered_map<uint64_t, int32_t>            g_PBC_RollChanceModifiers;
 uint32_t g_PBC_LocationPollAccum = 0;
 
@@ -134,35 +134,35 @@ static std::vector<std::string> SplitByComma(const std::string& s)
 // addition directly (thread-safe), and resets the in-memory history to a
 // short tail.  Does NOT touch any Player* objects.
 // ---------------------------------------------------------------------------
-static void PBC_CondenseInline(PBC_BotSnapshot& snap,
+static void PBC_CondenseInline(PBC_CharacterSnapshot& snap,
                                 const std::string& sysPrompt,
                                 const std::string& userPromptTmpl)
 {
     if (sysPrompt.empty() || userPromptTmpl.empty())
     {
         if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] CondenseInline: prompts not configured, skipping for bot={}", snap.botName);
+            LOG_INFO("server.loading", "[PBC] CondenseInline: prompts not configured, skipping for character={}", snap.charName);
         return;
     }
 
     if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] CondenseInline: bot={} history_lines={}", snap.botName, snap.history.size());
+        LOG_INFO("server.loading", "[PBC] CondenseInline: character={} history_lines={}", snap.charName, snap.history.size());
 
     std::string userPrompt = PBC_BuildCondensationPromptFromSnapshot(snap, userPromptTmpl);
     PBC_LLMResult res = PBC_CallLLM(sysPrompt, userPrompt, /*maxTokensOverride=*/-1);
 
     if (!res.success || res.text.empty())
     {
-        LOG_WARN("server.loading", "[PBC] CondenseInline: LLM failed for bot={}", snap.botName);
+        LOG_WARN("server.loading", "[PBC] CondenseInline: LLM failed for character={}", snap.charName);
         return;
     }
 
     // Write card addition
     {
         std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
-        g_PBC_CardAdditions[snap.botGuidRaw].push_back(res.text);
+        g_PBC_CardAdditions[snap.charGuidRaw].push_back(res.text);
     }
-    DB_InsertCardAddition(snap.botGuidRaw, res.text);
+    DB_InsertCardAddition(snap.charGuidRaw, res.text);
 
     // Keep only the last N lines as the tail (configured via PBC.CondensationPreservedLines)
     const size_t kTailLines = static_cast<size_t>(g_PBC_CondensationPreservedLines);
@@ -174,19 +174,19 @@ static void PBC_CondenseInline(PBC_BotSnapshot& snap,
     // Reset global history
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        g_PBC_ChatHistory[snap.botGuidRaw] = tail;
+        g_PBC_ChatHistory[snap.charGuidRaw] = tail;
     }
     // Delete from DB and re-insert tail
-    DB_DeleteHistoryForBot(snap.botGuidRaw);
+    DB_DeleteHistoryForCharacter(snap.charGuidRaw);
     for (const auto& line : tail)
-        DB_InsertHistoryLine(snap.botGuidRaw, line);
+        DB_InsertHistoryLine(snap.charGuidRaw, line);
 
     // Update snapshot's local history to match
     snap.history = tail;
 
     if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] CondenseInline: condensed bot={} summary_len={} tail_lines={}",
-                 snap.botName, res.text.size(), tail.size());
+        LOG_INFO("server.loading", "[PBC] CondenseInline: condensed character={} summary_len={} tail_lines={}",
+                 snap.charName, res.text.size(), tail.size());
 }
 
 // ---------------------------------------------------------------------------
@@ -250,9 +250,9 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     {
         // Capture the full history snapshot BEFORE condensation truncates it
         // so the relationship LLM calls have complete context.
-        std::deque<std::string> preCondensationHistory = ev.condensationBot.history;
+        std::deque<std::string> preCondensationHistory = ev.condensationChar.history;
 
-        PBC_CondenseInline(ev.condensationBot, condenseSysPrompt, condenseUsrTmpl);
+        PBC_CondenseInline(ev.condensationChar, condenseSysPrompt, condenseUsrTmpl);
 
         // Condensation is always a trigger for relationship updates for all party
         // members — no threshold check needed here.  The history is about to be
@@ -260,7 +260,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         // We pass mention_count=0 to reset the baseline; the normal threshold
         // tracking will accumulate fresh counts from the new post-condensation history.
         {
-            const PBC_BotSnapshot& snap = ev.condensationBot;
+            const PBC_CharacterSnapshot& snap = ev.condensationChar;
             if (!g_PBC_RelationshipUpdateSystemPrompt.empty() &&
                 !g_PBC_RelationshipUpdateUserPrompt.empty() &&
                 !snap.partyMemberNames.empty())
@@ -270,7 +270,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
                     std::string currentRel;
                     {
                         std::lock_guard<std::mutex> lk(g_PBC_RelationshipsMutex);
-                        auto botIt = g_PBC_Relationships.find(snap.botGuidRaw);
+                        auto botIt = g_PBC_Relationships.find(snap.charGuidRaw);
                         if (botIt != g_PBC_Relationships.end())
                         {
                             auto tgtIt = botIt->second.find(memberName);
@@ -282,12 +282,12 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
                         currentRel = PBC_DefaultRelationshipText(memberName);
 
                     // Use the pre-condensation history so the LLM has full context.
-                    PBC_BotSnapshot relSnap = snap;
+                    PBC_CharacterSnapshot relSnap = snap;
                     relSnap.history = preCondensationHistory;
 
                     PBC_EventItem relEv;
                     relEv.type                       = PBC_EventType::RelationshipUpdate;
-                    relEv.relationshipBot            = std::move(relSnap);
+                    relEv.relationshipChar            = std::move(relSnap);
                     relEv.relationshipTargetName     = memberName;
                     relEv.relationshipTargetInfo     = PBC_BuildTargetInfo(memberName);
                     relEv.relationshipCurrentText    = currentRel;
@@ -299,8 +299,8 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
 
                     if (g_PBC_DebugEnabled)
                         LOG_INFO("server.loading",
-                                 "[PBC] Condensation: queuing relationship update for bot={} target={}",
-                                 snap.botName, memberName);
+                                 "[PBC] Condensation: queuing relationship update for character={} target={}",
+                                 snap.charName, memberName);
                 }
             }
         }
@@ -317,23 +317,23 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         if (ev.relationshipSystemPrompt.empty() || ev.relationshipUserPromptTmpl.empty())
         {
             if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] RelationshipUpdate: prompts not configured, skipping for bot={}",
-                         ev.relationshipBot.botName);
+                LOG_INFO("server.loading", "[PBC] RelationshipUpdate: prompts not configured, skipping for character={}",
+                         ev.relationshipChar.charName);
             g_PBC_EventThreadDone.store(true);
             return;
         }
 
         if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] RelationshipUpdate: bot={} target={}",
-                     ev.relationshipBot.botName, ev.relationshipTargetName);
+            LOG_INFO("server.loading", "[PBC] RelationshipUpdate: character={} target={}",
+                     ev.relationshipChar.charName, ev.relationshipTargetName);
 
         // Build the user prompt: substitute {character_card}, {chat_history},
         // {relationship_target}, {target_current_relationship}.
         std::string userPrompt = ev.relationshipUserPromptTmpl;
         PBC_ExpandNewlineEscapes(userPrompt);
 
-        PBC_ReplaceToken(userPrompt, "character_card",           ev.relationshipBot.characterCard);
-        { std::ostringstream histOss; for (const auto& line : ev.relationshipBot.history) histOss << line << "\n"; PBC_ReplaceToken(userPrompt, "chat_history", histOss.str()); }
+        PBC_ReplaceToken(userPrompt, "character_card",           ev.relationshipChar.characterCard);
+        { std::ostringstream histOss; for (const auto& line : ev.relationshipChar.history) histOss << line << "\n"; PBC_ReplaceToken(userPrompt, "chat_history", histOss.str()); }
         PBC_ReplaceToken(userPrompt, "relationship_target",      ev.relationshipTargetInfo);
         PBC_ReplaceToken(userPrompt, "target_current_relationship", ev.relationshipCurrentText);
 
@@ -341,8 +341,8 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
 
         if (!res.success || res.text.empty())
         {
-            LOG_WARN("server.loading", "[PBC] RelationshipUpdate: LLM failed for bot={} target={}",
-                     ev.relationshipBot.botName, ev.relationshipTargetName);
+            LOG_WARN("server.loading", "[PBC] RelationshipUpdate: LLM failed for character={} target={}",
+                     ev.relationshipChar.charName, ev.relationshipTargetName);
             g_PBC_EventThreadDone.store(true);
             return;
         }
@@ -351,16 +351,16 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         // update, so server restarts don't trigger redundant LLM calls.
         {
             std::lock_guard<std::mutex> lk(g_PBC_RelationshipsMutex);
-            auto& entry = g_PBC_Relationships[ev.relationshipBot.botGuidRaw][ev.relationshipTargetName];
+            auto& entry = g_PBC_Relationships[ev.relationshipChar.charGuidRaw][ev.relationshipTargetName];
             entry.text = res.text;
             entry.mentionCountAtLastUpdate = ev.relationshipMentionTotal;
         }
-        DB_UpsertRelationship(ev.relationshipBot.botGuidRaw, ev.relationshipTargetName,
+        DB_UpsertRelationship(ev.relationshipChar.charGuidRaw, ev.relationshipTargetName,
                               res.text, ev.relationshipMentionTotal);
 
         if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] RelationshipUpdate: updated bot={} target={} mentions={} text=\"{}\"",
-                     ev.relationshipBot.botName, ev.relationshipTargetName,
+            LOG_INFO("server.loading", "[PBC] RelationshipUpdate: updated character={} target={} mentions={} text=\"{}\"",
+                     ev.relationshipChar.charName, ev.relationshipTargetName,
                      ev.relationshipMentionTotal, PBC_SanitizeForFmt(res.text));
 
         g_PBC_EventThreadDone.store(true);
@@ -397,8 +397,8 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     // Normal event processing
     // -----------------------------------------------------------------------
     if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] ProcessEvent: type={} respondingBots={} silentBots={} event=\"{}\"",
-                 static_cast<int>(ev.type), ev.respondingBots.size(), ev.silentBotGuids.size(), ev.eventLine);
+        LOG_INFO("server.loading", "[PBC] ProcessEvent: type={} respondingChars={} silentChars={} event=\"{}\"",
+                 static_cast<int>(ev.type), ev.respondingChars.size(), ev.silentCharGuids.size(), ev.eventLine);
 
     // The "current event" for the first bot is the original event line.
     // After each bot responds, the current event for the next bot becomes
@@ -413,8 +413,8 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     std::string lastEventLine;   // "<BotName> says: <text>" (event format)
 
     // Collects every reply line in the order they are generated.
-    // Global history writes for responding bots are deferred until after the
-    // loop so that every bot receives the complete, correctly-ordered
+    // Global history writes for responding characters are deferred until after the
+    // loop so that every character receives the complete, correctly-ordered
     // conversation (histLine + ALL replies) rather than only the replies from
     // bots that preceded it.
     //
@@ -422,14 +422,14 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     // next bot in the chain sees the previous reply when building its prompt.
     std::vector<std::string> completedReplyLines;
 
-    for (PBC_BotSnapshot& snap : ev.respondingBots)
+    for (PBC_CharacterSnapshot& snap : ev.respondingChars)
     {
         // Post deferred "thinks..." notification to the main thread so it
         // appears right before this bot's LLM call, not at event-creation time.
         {
             PBC_PendingAction action;
-            action.botGuid             = snap.botObjGuid;
-            action.text                = PBC_MakeEventLine(snap.botName + " thinks...");
+            action.charGuid             = snap.charObjGuid;
+            action.text                = PBC_MakeEventLine(snap.charName + " thinks...");
             action.isThinkNotification = true;
 
             std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
@@ -437,7 +437,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         }
 
         // Condense inline if over token budget before building the prompt.
-        int histTokens = PBC_EstimateHistoryTokens(snap.botGuidRaw);
+        int histTokens = PBC_EstimateHistoryTokens(snap.charGuidRaw);
         if (histTokens > static_cast<int>(g_PBC_MaxCtx))
         {
             PBC_CondenseInline(snap, condenseSysPrompt, condenseUsrTmpl);
@@ -448,27 +448,27 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         std::string userPrompt = PBC_BuildUserPromptFromSnapshot(snap, currentEvent);
 
         if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] ProcessEvent: calling LLM for bot={} event=\"{}\"",
-                     snap.botName, currentEvent);
+            LOG_INFO("server.loading", "[PBC] ProcessEvent: calling LLM for character={} event=\"{}\"",
+                     snap.charName, currentEvent);
 
         PBC_LLMResult res = PBC_CallLLM(sysPrompt, userPrompt);
 
         if (!res.success || res.text.empty())
         {
-            LOG_WARN("server.loading", "[PBC] ProcessEvent: LLM failed/empty for bot={}", snap.botName);
-            // Don't advance currentEvent — the next bot reacts to the same event.
-            // Global history for this bot is handled in the deferred write below.
+            LOG_WARN("server.loading", "[PBC] ProcessEvent: LLM failed/empty for character={}", snap.charName);
+            // Don't advance currentEvent — the next character reacts to the same event.
+            // Global history for this character is handled in the deferred write below.
             continue;
         }
 
         // Build the history line for this bot's own reply.
         std::string replyLine;
         if (ev.chatType == CHAT_MSG_WHISPER && !snap.whisperTargetName.empty())
-            replyLine = snap.botName + " (privately to " + snap.whisperTargetName + "): " + res.text;
+            replyLine = snap.charName + " (privately to " + snap.whisperTargetName + "): " + res.text;
         else
-            replyLine = snap.botName + ": " + res.text;
+            replyLine = snap.charName + ": " + res.text;
 
-        // Update the snapshot's local history so subsequent bots in the chain
+        // Update the snapshot's local history so subsequent characters in the chain
         // see all previous replies when building their prompts.
         // Global history is written in the deferred pass after the loop.
         if (!ev.histLine.empty())
@@ -481,7 +481,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         // Post chat send to main thread.
         {
             PBC_PendingAction action;
-            action.botGuid    = snap.botObjGuid;
+            action.charGuid    = snap.charObjGuid;
             action.targetGuid = snap.whisperTargetGuid;
             action.chatType   = ev.chatType;
             action.text       = res.text;
@@ -490,20 +490,20 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
             g_PBC_PendingActions.push(std::move(action));
         }
 
-        // Advance the chain: the next bot reacts to this bot's reply.
-        currentEvent = snap.botName + " says: " + res.text;
+        // Advance the chain: the next character reacts to this bot's reply.
+        currentEvent = snap.charName + " says: " + res.text;
 
         // Remember the last successful reply details for the secondary event.
-        lastResponderGuid = snap.botGuidRaw;
+        lastResponderGuid = snap.charGuidRaw;
         lastReplyLine     = replyLine;
         lastEventLine     = currentEvent;
 
         if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] ProcessEvent: bot={} replied", snap.botName);
+            LOG_INFO("server.loading", "[PBC] ProcessEvent: character={} replied", snap.charName);
     }
 
     // -----------------------------------------------------------------------
-    // Deferred global history write for all responding bots.
+    // Deferred global history write for all responding characters.
     //
     // Every responding bot (whether it replied successfully or failed) ends up
     // with the full conversation in its history:
@@ -514,35 +514,35 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     // -----------------------------------------------------------------------
     if (!ev.histLine.empty() || !completedReplyLines.empty())
     {
-        for (const PBC_BotSnapshot& snap : ev.respondingBots)
+        for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
         {
             if (!ev.histLine.empty())
-                PBC_AppendHistory(snap.botGuidRaw, ev.histLine);
+                PBC_AppendHistory(snap.charGuidRaw, ev.histLine);
             for (const auto& replyLine : completedReplyLines)
-                PBC_AppendHistory(snap.botGuidRaw, replyLine);
+                PBC_AppendHistory(snap.charGuidRaw, replyLine);
         }
     }
 
     // -----------------------------------------------------------------------
     // Secondary event: if this event can spawn message events and at least
     // one bot replied, ask the main thread to push a new message event for
-    // any other group bots that did NOT participate in this event.  We post
+    // any other group characters that did NOT participate in this event.  We post
     // exactly ONE request here — after the full responder chain — using the
     // last successful reply as the trigger.  This prevents intermediate
     // replies from generating extra events when multiple bots responded.
     //
-    // Note: we do NOT require silentBotGuids to be non-empty.  Bot-specific
-    // events (e.g. location) have no silent bots in the original event but
-    // other group bots still need to hear the reply.  OnUpdate handles the
+    // Note: we do NOT require silentCharGuids to be non-empty.  Character-specific
+    // events (e.g. location) have no silent characters in the original event but
+    // other group characters still need to hear the reply.  OnUpdate handles the
     // case where there are no eligible targets gracefully (pushes nothing).
     // -----------------------------------------------------------------------
     if (ev.canCreateEvents && lastResponderGuid != 0)
     {
         // Excluded = every bot that already participated (responders + silent).
         std::unordered_set<uint64_t> excluded;
-        for (const auto& rs : ev.respondingBots)
-            excluded.insert(rs.botGuidRaw);
-        for (uint64_t g : ev.silentBotGuids)
+        for (const auto& rs : ev.respondingChars)
+            excluded.insert(rs.charGuidRaw);
+        for (uint64_t g : ev.silentCharGuids)
             excluded.insert(g);
 
         PBC_PendingEventRequest req;
@@ -550,16 +550,16 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         req.histLine         = lastReplyLine;   // "<LastBot>: <text>"
         req.originHistLine   = ev.histLine;     // original trigger (Narrator line, etc.)
         req.chatType         = ev.chatType;
-        req.anchorBotGuid    = lastResponderGuid;
+        req.anchorCharGuid    = lastResponderGuid;
         // Collect the GUIDs of all original responders so OnUpdate can pass
-        // them as replyOnlyBotGuids on the secondary event — they already have
+        // them as replyOnlyCharGuids on the secondary event — they already have
         // histLine but still need to receive any new replies.
-        for (const auto& rs : ev.respondingBots)
-            req.originBotGuids.push_back(rs.botGuidRaw);
-        req.excludedBotGuids = std::move(excluded);
+        for (const auto& rs : ev.respondingChars)
+            req.originCharGuids.push_back(rs.charGuidRaw);
+        req.excludedCharGuids = std::move(excluded);
 
         // Capture debug values before the move.
-        size_t dbgExcluded = req.excludedBotGuids.size();
+        size_t dbgExcluded = req.excludedCharGuids.size();
         std::string dbgEvent = req.eventLine;
 
         {
@@ -573,32 +573,32 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
                      "excluded={} silent={} event=\"{}\"",
                      lastResponderGuid,
                      dbgExcluded,
-                     ev.silentBotGuids.size(),
+                     ev.silentCharGuids.size(),
                      dbgEvent);
     }
 
     // -----------------------------------------------------------------------
-    // Update silent bots' history.
+    // Update silent characters' history.
     // For low-chance events (combat, location, level-up) with no responders
     // we skip this entirely to avoid cluttering history with silent entries.
     // -----------------------------------------------------------------------
-    if (ev.skipHistoryIfSilent && ev.respondingBots.empty())
+    if (ev.skipHistoryIfSilent && ev.respondingChars.empty())
     {
         if (g_PBC_DebugEnabled)
             LOG_INFO("server.loading", "[PBC] ProcessEvent: no responders and skipHistoryIfSilent=true — skipping silent history");
     }
     else if (!ev.histLine.empty())
     {
-        for (uint64_t guid : ev.silentBotGuids)
+        for (uint64_t guid : ev.silentCharGuids)
             PBC_AppendHistory(guid, ev.histLine);
 
-        // Propagate all responding bots' replies to silent peers so their
+        // Propagate all responding characters' replies to silent peers so their
         // history stays current.  completedReplyLines holds every reply line
         // in the order they were generated, which is exactly what silent bots
         // need to see.
         if (!completedReplyLines.empty() && ev.chatType != CHAT_MSG_WHISPER)
         {
-            for (uint64_t guid : ev.silentBotGuids)
+            for (uint64_t guid : ev.silentCharGuids)
             {
                 for (const auto& replyLine : completedReplyLines)
                     PBC_AppendHistory(guid, replyLine);
@@ -607,15 +607,15 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     }
 
     // -----------------------------------------------------------------------
-    // Propagate replies to replyOnlyBotGuids.
-    // These bots already have histLine in their history (they were the
+    // Propagate replies to replyOnlyCharGuids.
+    // These characters already have histLine in their history (they were the
     // original responders that triggered this secondary event) but still need
     // to receive any new replies generated here.  histLine is NOT re-written.
     // -----------------------------------------------------------------------
-    if (!completedReplyLines.empty() && !ev.replyOnlyBotGuids.empty()
+    if (!completedReplyLines.empty() && !ev.replyOnlyCharGuids.empty()
         && ev.chatType != CHAT_MSG_WHISPER)
     {
-        for (uint64_t guid : ev.replyOnlyBotGuids)
+        for (uint64_t guid : ev.replyOnlyCharGuids)
         {
             for (const auto& replyLine : completedReplyLines)
                 PBC_AppendHistory(guid, replyLine);
@@ -635,9 +635,9 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     if (g_PBC_RelationshipUpdateThreshold > 0 &&
         !g_PBC_RelationshipUpdateSystemPrompt.empty() &&
         !g_PBC_RelationshipUpdateUserPrompt.empty() &&
-        !ev.respondingBots.empty())
+        !ev.respondingChars.empty())
     {
-        for (const PBC_BotSnapshot& snap : ev.respondingBots)
+        for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
         {
             if (snap.partyMemberNames.empty()) continue;
 
@@ -645,7 +645,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
             std::deque<std::string> fullHistory;
             {
                 std::lock_guard<std::mutex> lh(g_PBC_HistoryMutex);
-                auto hIt = g_PBC_ChatHistory.find(snap.botGuidRaw);
+                auto hIt = g_PBC_ChatHistory.find(snap.charGuidRaw);
                 if (hIt != g_PBC_ChatHistory.end())
                     fullHistory = hIt->second;
             }
@@ -661,7 +661,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
                 std::string currentRel;
                 {
                     std::lock_guard<std::mutex> lk(g_PBC_RelationshipsMutex);
-                    auto botIt = g_PBC_Relationships.find(snap.botGuidRaw);
+                    auto botIt = g_PBC_Relationships.find(snap.charGuidRaw);
                     if (botIt != g_PBC_Relationships.end())
                     {
                         auto tgtIt = botIt->second.find(memberName);
@@ -685,12 +685,12 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
                 // Build a snapshot for the relationship event.  Use the
                 // current responding bot's snapshot but refresh its history
                 // to the full global history we just read.
-                PBC_BotSnapshot relSnap = snap;
+                PBC_CharacterSnapshot relSnap = snap;
                 relSnap.history         = fullHistory;
 
                 PBC_EventItem relEv;
                 relEv.type                       = PBC_EventType::RelationshipUpdate;
-                relEv.relationshipBot            = std::move(relSnap);
+                relEv.relationshipChar            = std::move(relSnap);
                 relEv.relationshipTargetName     = memberName;
                 relEv.relationshipTargetInfo     = PBC_BuildTargetInfo(memberName);
                 relEv.relationshipCurrentText    = currentRel;
@@ -703,8 +703,8 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
 
                 if (g_PBC_DebugEnabled)
                     LOG_INFO("server.loading",
-                             "[PBC] MentionTracker: bot={} target={} total_mentions={} new_since_last={} — relationship update queued",
-                             snap.botName, memberName, total, newMentions);
+                             "[PBC] MentionTracker: character={} target={} total_mentions={} new_since_last={} — relationship update queued",
+                             snap.charName, memberName, total, newMentions);
             }
         }
     }
@@ -932,13 +932,13 @@ void PBC_SaveCardAdditionsToDB()
     // This stub exists for API completeness.
 }
 
-void PBC_LoadBotDataFromDB()
+void PBC_LoadCharacterDataFromDB()
 {
     QueryResult result = CharacterDatabase.Query(
         "SELECT bot_guid, last_location, roll_chance_modifier FROM mod_pbc_data"
     );
 
-    g_PBC_BotLastLocations.clear();
+    g_PBC_CharacterLastLocations.clear();
     g_PBC_RollChanceModifiers.clear();
 
     if (!result)
@@ -951,13 +951,13 @@ void PBC_LoadBotDataFromDB()
         uint64_t    botGuid  = (*result)[0].Get<uint64_t>();
         std::string location = (*result)[1].Get<std::string>();
         int32_t     rollMod  = (*result)[2].Get<int32_t>();
-        g_PBC_BotLastLocations[botGuid] = std::move(location);
+        g_PBC_CharacterLastLocations[botGuid] = std::move(location);
         if (rollMod != 0)
             g_PBC_RollChanceModifiers[botGuid] = rollMod;
     } while (result->NextRow());
 
     LOG_INFO("server.loading", "[PBC] Characters data loaded from DB ({} entries, {} with roll modifier).",
-             g_PBC_BotLastLocations.size(), g_PBC_RollChanceModifiers.size());
+             g_PBC_CharacterLastLocations.size(), g_PBC_RollChanceModifiers.size());
 }
 
 // ---------------------------------------------------------------------------
@@ -1025,7 +1025,7 @@ void PBC_WorldScript::OnStartup()
     PBC_LoadCardAdditionsFromDB();
     PBC_LoadHistoryFromDB();
     PBC_LoadRelationshipsFromDB();
-    PBC_LoadBotDataFromDB();
+    PBC_LoadCharacterDataFromDB();
 
     g_PBC_EventThreadDone.store(true);
 
@@ -1078,7 +1078,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 if (!p || !p->IsInWorld()) continue;
                 WorldSession* s = p->GetSession();
                 if (!s || !s->IsBot()) continue;
-                if (p->GetGUID().GetCounter() == req.anchorBotGuid)
+                if (p->GetGUID().GetCounter() == req.anchorCharGuid)
                 {
                     anchor = p;
                     break;
@@ -1097,7 +1097,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                     WorldSession* ms = member->GetSession();
                     if (!ms || !ms->IsBot()) return;
                     uint64_t guid = member->GetGUID().GetCounter();
-                    if (req.excludedBotGuids.count(guid)) return;
+                    if (req.excludedCharGuids.count(guid)) return;
                     targets.push_back(member);
                 };
 
@@ -1131,7 +1131,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                     newEv.canCreateEvents  = false; // message events never spawn further events
                     // Original responders already have histLine; they only need
                     // to receive any new replies produced by this secondary event.
-                    newEv.replyOnlyBotGuids = req.originBotGuids;
+                    newEv.replyOnlyCharGuids = req.originCharGuids;
 
                     // Shuffle targets so the penalty doesn't always favour the
                     // same character — same approach as the primary chat handler.
@@ -1149,9 +1149,9 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                         {
                             if (g_PBC_DebugEnabled)
                                 LOG_INFO("server.loading",
-                                         "[PBC] SecondaryEvent: roll bot={} chance=0% -> silent (no chance left)",
+                                         "[PBC] SecondaryEvent: roll character={} chance=0% -> silent (no chance left)",
                                          bot->GetName());
-                            newEv.silentBotGuids.push_back(bot->GetGUID().GetCounter());
+                            newEv.silentCharGuids.push_back(bot->GetGUID().GetCounter());
                             continue;
                         }
 
@@ -1159,18 +1159,18 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                         bool rolled = PBC_RollChance(effectiveChance);
                         if (g_PBC_DebugEnabled)
                             LOG_INFO("server.loading",
-                                     "[PBC] SecondaryEvent: roll bot={} chance={}% (base={}% mod={}) -> {}",
+                                     "[PBC] SecondaryEvent: roll character={} chance={}% (base={}% mod={}) -> {}",
                                      bot->GetName(), effectiveChance, currentChance,
                                      static_cast<int32_t>(effectiveChance) - static_cast<int32_t>(currentChance),
                                      rolled ? "RESPOND" : "silent");
                         if (rolled)
                         {
-                            newEv.respondingBots.push_back(PBC_SnapshotBot(bot));
+                            newEv.respondingChars.push_back(PBC_SnapshotCharacter(bot));
                             currentChance = currentChance > g_PBC_RollPenaltyOnAnswer
                                 ? currentChance - g_PBC_RollPenaltyOnAnswer : 0;
                         }
                         else
-                            newEv.silentBotGuids.push_back(bot->GetGUID().GetCounter());
+                            newEv.silentCharGuids.push_back(bot->GetGUID().GetCounter());
                     }
 
                     if (g_PBC_DebugEnabled)
@@ -1178,8 +1178,8 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                                  "[PBC] OnUpdate: secondary event materialised — "
                                  "targets={} responding={} silent={} event=\"{}\"",
                                  targets.size(),
-                                 newEv.respondingBots.size(),
-                                 newEv.silentBotGuids.size(),
+                                 newEv.respondingChars.size(),
+                                 newEv.silentCharGuids.size(),
                                  newEv.eventLine);
 
                     PBC_PushEvent(std::move(newEv));
@@ -1205,7 +1205,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
             if (!action.text.empty())
             {
-                Player* bot = ObjectAccessor::FindPlayer(action.botGuid);
+                Player* bot = ObjectAccessor::FindPlayer(action.charGuid);
 
                 // "thinks..." narrator notification — send to all real players
                 // in the bot's group.  If the bot is gone, just skip it.
@@ -1267,7 +1267,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                     }
 
                     if (g_PBC_DebugEnabled)
-                        LOG_INFO("server.loading", "[PBC] OnUpdate: sent chat for bot={} type={}",
+                        LOG_INFO("server.loading", "[PBC] OnUpdate: sent chat for character={} type={}",
                                  bot->GetName(), ct);
                 }
             }
@@ -1308,15 +1308,15 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                                  static_cast<int>(nextEvent.type), nextEvent.eventLine);
                         break;
                     case PBC_EventType::Condensation:
-                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type=Condensation bot=\"{}\"",
-                                 nextEvent.condensationBot.botName);
+                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type=Condensation character=\"{}\"",
+                                 nextEvent.condensationChar.charName);
                         break;
                     case PBC_EventType::HistoryReload:
                         LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type=HistoryReload");
                         break;
                     case PBC_EventType::RelationshipUpdate:
-                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type=RelationshipUpdate bot=\"{}\" target=\"{}\"",
-                                 nextEvent.relationshipBot.botName, nextEvent.relationshipTargetName);
+                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type=RelationshipUpdate character=\"{}\" target=\"{}\"",
+                                 nextEvent.relationshipChar.charName, nextEvent.relationshipTargetName);
                         break;
                 }
             }
@@ -1337,7 +1337,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
     {
         g_PBC_LocationPollAccum -= kPollIntervalMs;
 
-        std::unordered_set<uint64_t> activeBotGuids;
+        std::unordered_set<uint64_t> activeCharGuids;
 
         for (auto const& pair : ObjectAccessor::GetPlayers())
         {
@@ -1357,9 +1357,9 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 if (!ms || !ms->IsBot()) continue;
 
                 uint64_t botGuid = member->GetGUID().GetCounter();
-                if (!activeBotGuids.insert(botGuid).second) continue;
+                if (!activeCharGuids.insert(botGuid).second) continue;
 
-                // Determine the bot's current location string.
+                // Determine the character's current location string.
                 // For taxi flights we use the destination name as the stable
                 // location key so the event fires once per flight (not every
                 // poll tick as the ground zone changes mid-air).
@@ -1386,8 +1386,8 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
                 if (state.lastLocation.empty() && state.firedLocation.empty())
                 {
-                    auto dbIt = g_PBC_BotLastLocations.find(botGuid);
-                    if (dbIt != g_PBC_BotLastLocations.end())
+                    auto dbIt = g_PBC_CharacterLastLocations.find(botGuid);
+                    if (dbIt != g_PBC_CharacterLastLocations.end())
                         state.firedLocation = dbIt->second;
                 }
 
@@ -1395,7 +1395,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 {
                     if (g_PBC_DebugEnabled)
                         LOG_INFO("server.loading",
-                                 "[PBC] LocationPoll: bot={} moved to '{}' (was '{}'), resetting cycles",
+                                 "[PBC] LocationPoll: character={} moved to '{}' (was '{}'), resetting cycles",
                                  member->GetName(), location, state.lastLocation);
                     state.lastLocation  = location;
                     state.stableCycles  = 1;
@@ -1406,7 +1406,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
                     if (g_PBC_DebugEnabled && state.stableCycles <= kStableCycles)
                         LOG_INFO("server.loading",
-                                 "[PBC] LocationPoll: bot={} stable at '{}' cycles={}/{}",
+                                 "[PBC] LocationPoll: character={} stable at '{}' cycles={}/{}",
                                  member->GetName(), location, state.stableCycles, kStableCycles);
 
                     if (state.stableCycles >= kStableCycles)
@@ -1416,18 +1416,18 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                             // Already fired for this location — log once when we first hit the threshold.
                             if (g_PBC_DebugEnabled && state.stableCycles == kStableCycles)
                                 LOG_INFO("server.loading",
-                                         "[PBC] LocationPoll: bot={} stable at '{}' — already fired, skipping",
+                                         "[PBC] LocationPoll: character={} stable at '{}' — already fired, skipping",
                                          member->GetName(), location);
                         }
                         else
                         {
                             state.firedLocation = location;
-                            g_PBC_BotLastLocations[botGuid] = location;
-                            DB_UpsertBotLocation(botGuid, location);
+                            g_PBC_CharacterLastLocations[botGuid] = location;
+                            DB_UpsertCharacterLocation(botGuid, location);
 
                             if (g_PBC_DebugEnabled)
                                 LOG_INFO("server.loading",
-                                         "[PBC] LocationPoll: firing location event for bot={} location='{}' chance={}%",
+                                         "[PBC] LocationPoll: firing location event for character={} location='{}' chance={}%",
                                          member->GetName(), location, g_PBC_ReplyChanceLocation);
 
                             std::string eventLine, histLine;
@@ -1445,7 +1445,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                                 histLine  = PBC_MakeHistLine("You visited " + location);
                             }
 
-                            PBC_DispatchBotEvent(member,
+                            PBC_DispatchCharacterEvent(member,
                                 eventLine,
                                 histLine,
                                 g_PBC_ReplyChanceLocation,
@@ -1460,7 +1460,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         // Prune location state for bots that are no longer tracked.
         for (auto it = g_PBC_LocationStates.begin(); it != g_PBC_LocationStates.end(); )
         {
-            if (activeBotGuids.find(it->first) == activeBotGuids.end())
+            if (activeCharGuids.find(it->first) == activeCharGuids.end())
                 it = g_PBC_LocationStates.erase(it);
             else
                 ++it;

@@ -176,7 +176,7 @@ PBC.CondensationUserPrompt = "[CHARACTER DESCRIPTION]\n{character_card}\n\n[HIST
 # PBC.QuestTakenSystemPrompt
 #     Description: System prompt used for the preliminary LLM call that summarises a
 #                  newly accepted quest into a single narrative line. The result is then
-#                  used as the [CURRENT EVENT] for each bot's normal reply prompt.
+#                  used as the [CURRENT EVENT] for each character's normal reply prompt.
 #                  REQUIRED. The module will be disabled if missing.
 PBC.QuestTakenSystemPrompt = "The party has accepted a new quest. Create a short description of it for a history log. Mention who or what gave the quest and what needs to be done, using the provided quest details. Describe everything as it would be known by inhabitants of Azeroth — use in-universe language and avoid game terminology. Output only the summary in one line of plain text — no comments, no formatting, no meta.\n\nFor example:\nThe party accepted a task from Gryan Stoutmantle to slay the Defias Brotherhood leader and recover stolen goods."
 
@@ -190,7 +190,7 @@ PBC.QuestTakenUserPrompt = "[TITLE]\n{quest_title}\n\n[QUEST GIVER]\n{quest_give
 # PBC.QuestCompletedSystemPrompt
 #     Description: System prompt used for the preliminary LLM call that summarises a
 #                  completed quest into a single narrative line. The result is then used
-#                  as the [CURRENT EVENT] for each bot's normal reply prompt.
+#                  as the [CURRENT EVENT] for each character's normal reply prompt.
 #                  REQUIRED. The module will be disabled if missing.
 PBC.QuestCompletedSystemPrompt = "The party has completed a quest and is reporting back. Create a short description of it for a history log. Mention who or what the party reported to and what was accomplished, using the provided quest details. Note that the objectives may have been completed earlier — the party is now delivering the final report. Describe everything as it would be known by inhabitants of Azeroth — use in-universe language and avoid game terminology. Output only the summary in one line of plain text — no comments, no formatting, no meta.\n\nFor example:\nThe party reported to Gryan Stoutmantle that they successfully slew the Defias Brotherhood leader and recovered the stolen goods."
 
@@ -215,10 +215,10 @@ PBC.RelationshipUpdateSystemPrompt = "You are an inhabitant of Azeroth. You will
 PBC.RelationshipUpdateUserPrompt = "[CHARACTER DESCRIPTION]\n{character_card}\n\n[HISTORY]\n{chat_history}\n\n[RELATIONSHIP WITH {relationship_target}]\n{target_current_relationship}"
 
 # PBC.RelationshipUpdateThreshold
-#     Description: Number of new mentions of a character name in a bot's history
+#     Description: Number of new mentions of a character name in a character's history
 #                  since the last relationship update before a new update is triggered.
 #                  For example, if set to 100, a relationship update will be triggered
-#                  every 100 new occurrences of the target's name in the bot's history.
+#                  every 100 new occurrences of the target's name in the character's history.
 #                  Set to 0 to disable relationship updates entirely.
 #     Default:     100
 PBC.RelationshipUpdateThreshold = 100
@@ -247,10 +247,10 @@ PBC.ReplyChanceMention = 100
 PBC.ReplyChanceMessage = 100
 
 # PBC.RollPenaltyOnAnswer
-#     Description: The percent penalty applied to the roll chance after a bot successfully rolls
+#     Description: The percent penalty applied to the roll chance after a character successfully rolls
 #                  to answer. For example, if ReplyChanceMessage is 100% and RollPenaltyOnAnswer
-#                  is 45%, the first bot rolls at 100%, the second at 55%, the third at 10%,
-#                  and the fourth at 0% (no chance). If a bot fails its roll, the next bot
+#                  is 45%, the first character rolls at 100%, the second at 55%, the third at 10%,
+#                  and the fourth at 0% (no chance). If a character fails its roll, the next character
 #                  rolls at the same chance without penalty.
 #     Default:     45
 PBC.RollPenaltyOnAnswer = 45
@@ -291,7 +291,7 @@ PBC.ReplyChanceBossKill = 35
 # PBC.ReplyChanceQuestCompleted
 #     Description: The percent chance (0-100) that each character in the party would react
 #                  when the party leader completes a quest. The LLM first generates a short
-#                  summary of the quest, then each bot independently rolls this chance to
+#                  summary of the quest, then each character independently rolls this chance to
 #                  either use the summary as their current event (and reply) or write it
 #                  directly into their history.
 #     Default:     20
@@ -300,7 +300,7 @@ PBC.ReplyChanceQuestCompleted = 20
 # PBC.ReplyChanceQuestTaken
 #     Description: The percent chance (0-100) that each character in the party would react
 #                  when the party leader accepts a new quest. The LLM first generates a
-#                  short summary of the quest, then each bot independently rolls this
+#                  short summary of the quest, then each character independently rolls this
 #                  chance to either use the summary as their current event (and reply) or
 #                  write it directly into their history.
 #     Default:     10

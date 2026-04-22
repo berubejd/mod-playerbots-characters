@@ -24,7 +24,7 @@
 // ---------------------------------------------------------------------------
 // PBC_TriggerCondensation  (main-thread only)
 //
-// Pushes a Condensation event for the given bot onto the global event queue.
+// Pushes a Condensation event for the given character onto the global event queue.
 // The event thread will call PBC_CondenseInline when it processes the item.
 // ---------------------------------------------------------------------------
 void PBC_TriggerCondensation(Player* bot)
@@ -32,11 +32,11 @@ void PBC_TriggerCondensation(Player* bot)
     if (!bot) return;
 
     if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] TriggerCondensation: queuing condensation for bot={}", bot->GetName());
+        LOG_INFO("server.loading", "[PBC] TriggerCondensation: queuing condensation for character={}", bot->GetName());
 
     PBC_EventItem ev;
     ev.type                      = PBC_EventType::Condensation;
-    ev.condensationBot           = PBC_SnapshotBot(bot);
+    ev.condensationChar          = PBC_SnapshotCharacter(bot);
     ev.condensationSystemPrompt  = g_PBC_CondensationSystemPrompt;
     ev.condensationUserPrompt    = g_PBC_CondensationUserPrompt;
 
@@ -468,7 +468,7 @@ int PBC_EstimateHistoryTokens(uint64_t botGuid)
 // PBC_BuildCondensationPromptFromSnapshot to avoid duplicating the
 // variable list.
 // ---------------------------------------------------------------------------
-static void ReplaceSnapshotVars(std::string& out, const PBC_BotSnapshot& snap,
+static void ReplaceSnapshotVars(std::string& out, const PBC_CharacterSnapshot& snap,
                                 const std::string& eventLine)
 {
     // Composite vars
@@ -479,7 +479,7 @@ static void ReplaceSnapshotVars(std::string& out, const PBC_BotSnapshot& snap,
     { std::ostringstream histOss; for (const auto& line : snap.history) histOss << line << "\n"; PBC_ReplaceToken(out, "chat_history", histOss.str()); }
 
     // Basic vars
-    PBC_ReplaceToken(out, "char_name",     snap.botName);
+    PBC_ReplaceToken(out, "char_name",     snap.charName);
     PBC_ReplaceToken(out, "char_gender",   snap.charGender);
     PBC_ReplaceToken(out, "char_race",     snap.charRace);
     PBC_ReplaceToken(out, "char_class",    snap.charClass);
@@ -496,18 +496,18 @@ static void ReplaceSnapshotVars(std::string& out, const PBC_BotSnapshot& snap,
 }
 
 // ---------------------------------------------------------------------------
-// PBC_SnapshotBot  (main-thread only)
+// PBC_SnapshotCharacter  (main-thread only)
 //
-// Captures all live Player* data into a PBC_BotSnapshot.  The result is safe
+// Captures all live Player* data into a PBC_CharacterSnapshot.  The result is safe
 // to hand off to an event thread without further access to game objects.
 // ---------------------------------------------------------------------------
 
-PBC_BotSnapshot PBC_SnapshotBot(Player* bot)
+PBC_CharacterSnapshot PBC_SnapshotCharacter(Player* bot)
 {
-    PBC_BotSnapshot snap;
-    snap.botObjGuid = bot->GetGUID();
-    snap.botGuidRaw = bot->GetGUID().GetCounter();
-    snap.botName    = bot->GetName();
+    PBC_CharacterSnapshot snap;
+    snap.charObjGuid  = bot->GetGUID();
+    snap.charGuidRaw  = bot->GetGUID().GetCounter();
+    snap.charName     = bot->GetName();
 
     // Pre-render the character card and context once here so the event thread
     // never needs to call into game data.
@@ -543,7 +543,7 @@ PBC_BotSnapshot PBC_SnapshotBot(Player* bot)
     // Capture the current global history into the snapshot's local copy.
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        auto it = g_PBC_ChatHistory.find(snap.botGuidRaw);
+        auto it = g_PBC_ChatHistory.find(snap.charGuidRaw);
         if (it != g_PBC_ChatHistory.end())
             snap.history = it->second;
     }
@@ -605,32 +605,32 @@ std::string PBC_BuildTargetInfo(const std::string& name)
 // ---------------------------------------------------------------------------
 // PBC_GetRelationshipsBlock  (thread-safe)
 //
-// Builds the [RELATIONSHIPS] text block for a bot's user prompt.
+// Builds the [RELATIONSHIPS] text block for a character's user prompt.
 // Every entry uses the format:
 //   "Your relationship with <name>: <description>"
 //
 // Two scenarios:
 //
-// 1. Bot is NOT in a group with a real player (hasRealPlayerInGroup == false):
+// 1. Character is NOT in a group with a real player (hasRealPlayerInGroup == false):
 //    Only the whispering player's relationship line is emitted (or the
 //    fallback if they are unknown).
 //
-// 2. Bot IS in a group with a real player (hasRealPlayerInGroup == true):
+// 2. Character IS in a group with a real player (hasRealPlayerInGroup == true):
 //    One line per party member (excluding this bot). If the whisper target
 //    is not already a party member (i.e. an outside player whispering in),
 //    their relationship line is appended as well.
 // ---------------------------------------------------------------------------
 
-std::string PBC_GetRelationshipsBlock(const PBC_BotSnapshot& snap)
+std::string PBC_GetRelationshipsBlock(const PBC_CharacterSnapshot& snap)
 {
-    // Read all relationship entries for this bot under a single lock.
+    // Read all relationship entries for this character under a single lock.
     std::unordered_map<std::string, std::string> relTexts;
     {
         std::lock_guard<std::mutex> lk(g_PBC_RelationshipsMutex);
-        auto botIt = g_PBC_Relationships.find(snap.botGuidRaw);
-        if (botIt != g_PBC_Relationships.end())
+        auto charIt = g_PBC_Relationships.find(snap.charGuidRaw);
+        if (charIt != g_PBC_Relationships.end())
         {
-            for (const auto& kv : botIt->second)
+            for (const auto& kv : charIt->second)
                 relTexts[kv.first] = kv.second.text;
         }
     }
@@ -691,7 +691,7 @@ std::string PBC_GetRelationshipsBlock(const PBC_BotSnapshot& snap)
 // any replies posted to history by earlier bots in the same event are visible.
 // ---------------------------------------------------------------------------
 
-std::string PBC_BuildUserPromptFromSnapshot(const PBC_BotSnapshot& snap,
+std::string PBC_BuildUserPromptFromSnapshot(const PBC_CharacterSnapshot& snap,
                                              const std::string& eventLine)
 {
     std::string out = g_PBC_UserPrompt;
@@ -714,7 +714,7 @@ std::string PBC_BuildUserPromptFromSnapshot(const PBC_BotSnapshot& snap,
 // snapshot rather than the global history map.
 // ---------------------------------------------------------------------------
 
-std::string PBC_BuildCondensationPromptFromSnapshot(const PBC_BotSnapshot& snap,
+std::string PBC_BuildCondensationPromptFromSnapshot(const PBC_CharacterSnapshot& snap,
                                                      const std::string& tmpl)
 {
     std::string out = tmpl;

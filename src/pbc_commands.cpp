@@ -42,7 +42,7 @@ static bool HandleCharsReload(ChatHandler* handler, Optional<std::string_view>)
     PBC_LoadConfig();
     PBC_LoadCharacterCards();
     PBC_LoadCardAdditionsFromDB();
-    PBC_LoadBotDataFromDB();
+    PBC_LoadCharacterDataFromDB();
 
     // Reload history (and relationships) from DB safely by posting a
     // HistoryReload event onto the queue.  It will be processed after all
@@ -182,9 +182,9 @@ static bool HandleCharsReset(ChatHandler* handler, Optional<std::string_view> na
 
     uint64_t botGuid = target->GetGUID().GetCounter();
 
-    DB_DeleteHistoryForBot(botGuid);
-    DB_DeleteCardAdditionsForBot(botGuid);
-    DB_DeleteRelationshipsForBot(botGuid);
+    DB_DeleteHistoryForCharacter(botGuid);
+    DB_DeleteCardAdditionsForCharacter(botGuid);
+    DB_DeleteRelationshipsForCharacter(botGuid);
 
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
@@ -356,11 +356,11 @@ static bool HandleCharsRelationshipUpdate(ChatHandler* handler,
             total = PBC_CountMentions(hIt->second, targetName);
     }
 
-    PBC_BotSnapshot snap = PBC_SnapshotBot(bot);
+    PBC_CharacterSnapshot snap = PBC_SnapshotCharacter(bot);
 
     PBC_EventItem relEv;
     relEv.type                       = PBC_EventType::RelationshipUpdate;
-    relEv.relationshipBot            = std::move(snap);
+    relEv.relationshipChar            = std::move(snap);
     relEv.relationshipTargetName     = targetName;
     relEv.relationshipTargetInfo     = targetName;
     relEv.relationshipCurrentText    = currentRel;

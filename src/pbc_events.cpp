@@ -168,22 +168,22 @@ static bool BotIsGroupedWithRealPlayer(Player* bot)
     return false;
 }
 
-static bool MentionsBot(const std::string& msg, const std::string& botName)
+static bool MentionsCharacter(const std::string& msg, const std::string& charName)
 {
-    std::string lower = msg, lname = botName;
+    std::string lower = msg, lname = charName;
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
     std::transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
     return lower.find(lname) != std::string::npos;
 }
 
 // ---------------------------------------------------------------------------
-// BuildBotEvent
+// BuildCharacterEvent
 //
-// Rolls chance for each bot in the provided list, builds snapshots for
-// responders, collects GUIDs for silent bots, and returns a ready-to-push
+// Rolls chance for each character in the provided list, builds snapshots for
+// responders, collects GUIDs for silent characters, and returns a ready-to-push
 // PBC_EventItem.  chatType and combatSkip are passed through.
 // ---------------------------------------------------------------------------
-static PBC_EventItem BuildBotEvent(const std::vector<Player*>& bots,
+static PBC_EventItem BuildCharacterEvent(const std::vector<Player*>& bots,
                                     const std::string& eventLine,
                                     const std::string& histLine,
                                     uint32_t chance,
@@ -204,14 +204,14 @@ static PBC_EventItem BuildBotEvent(const std::vector<Player*>& bots,
         uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), chance);
         bool rolled = PBC_RollChance(effectiveChance);
         if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] Roll event bot={} chance={}% (base={}% mod={}) -> {}",
+            LOG_INFO("server.loading", "[PBC] Roll event character={} chance={}% (base={}% mod={}) -> {}",
                      bot->GetName(), effectiveChance, chance,
                      effectiveChance - chance,
                      rolled ? "RESPOND" : "silent");
         if (rolled)
-            ev.respondingBots.push_back(PBC_SnapshotBot(bot));
+            ev.respondingChars.push_back(PBC_SnapshotCharacter(bot));
         else
-            ev.silentBotGuids.push_back(bot->GetGUID().GetCounter());
+            ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
     }
 
     return ev;
@@ -248,23 +248,23 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
         LOG_INFO("server.loading", "[PBC] DispatchGroupEvent: anchor={} bots={} chance={}% event=\"{}\"",
                  anchor->GetName(), bots.size(), chance, eventLine);
 
-    PBC_EventItem ev = BuildBotEvent(bots, eventLine, histLine, chance, CHAT_MSG_PARTY,
+    PBC_EventItem ev = BuildCharacterEvent(bots, eventLine, histLine, chance, CHAT_MSG_PARTY,
                                      /*skipHistoryIfSilent=*/false, /*canCreateEvents=*/true);
 
     // If the anchor is itself a bot (e.g. a bot leveling up), it was excluded
     // from FindGroupBots() but still needs to receive the histLine and any
     // responder replies in its own history.
     if (anchorIsBot)
-        ev.silentBotGuids.push_back(anchor->GetGUID().GetCounter());
+        ev.silentCharGuids.push_back(anchor->GetGUID().GetCounter());
 
     PBC_PushEvent(std::move(ev));
 }
 
 // ---------------------------------------------------------------------------
-// PBC_DispatchBotEvent
+// PBC_DispatchCharacterEvent
 // ---------------------------------------------------------------------------
 
-void PBC_DispatchBotEvent(Player* bot, const std::string& eventLine,
+void PBC_DispatchCharacterEvent(Player* bot, const std::string& eventLine,
                           const std::string& histLine, uint32_t chance,
                           bool skipHistoryIfSilent,
                           bool notifyRealPlayers)
@@ -275,10 +275,10 @@ void PBC_DispatchBotEvent(Player* bot, const std::string& eventLine,
         PBC_NotifyRealPlayersInGroup(bot, eventLine);
 
     if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] DispatchBotEvent: bot={} chance={}% event=\"{}\"",
+        LOG_INFO("server.loading", "[PBC] DispatchCharacterEvent: character={} chance={}% event=\"{}\"",
                  bot->GetName(), chance, eventLine);
 
-    PBC_PushEvent(BuildBotEvent({ bot }, eventLine, histLine, chance, CHAT_MSG_PARTY,
+    PBC_PushEvent(BuildCharacterEvent({ bot }, eventLine, histLine, chance, CHAT_MSG_PARTY,
                                 skipHistoryIfSilent, /*canCreateEvents=*/true));
 }
 
@@ -320,14 +320,14 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
 
         if (PBC_RollChance(g_PBC_ReplyChanceWhisper))
         {
-            PBC_BotSnapshot snap = PBC_SnapshotBot(whisperTarget);
+            PBC_CharacterSnapshot snap = PBC_SnapshotCharacter(whisperTarget);
             snap.whisperTargetGuid = sender->GetGUID();
             snap.whisperTargetName = senderName;
-            ev.respondingBots.push_back(std::move(snap));
+            ev.respondingChars.push_back(std::move(snap));
         }
         else
         {
-            ev.silentBotGuids.push_back(whisperTarget->GetGUID().GetCounter());
+            ev.silentCharGuids.push_back(whisperTarget->GetGUID().GetCounter());
         }
 
         PBC_PushEvent(std::move(ev));
@@ -357,7 +357,7 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
     if (!senderIsBot)
     {
         for (Player* bot : bots)
-            if (MentionsBot(msg, bot->GetName())) { anyMention = true; break; }
+            if (MentionsCharacter(msg, bot->GetName())) { anyMention = true; break; }
     }
 
     PBC_EventItem ev;
@@ -392,21 +392,21 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
             mentionedGuids.insert(bot->GetGUID().GetCounter());
             bool rolled = PBC_RollChance(g_PBC_ReplyChanceMention);
             if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] Roll mention bot={} chance={}% -> {}",
+                LOG_INFO("server.loading", "[PBC] Roll mention character={} chance={}% -> {}",
                          bot->GetName(), g_PBC_ReplyChanceMention, rolled ? "RESPOND" : "silent");
             if (rolled)
             {
-                ev.respondingBots.push_back(PBC_SnapshotBot(bot));
+                ev.respondingChars.push_back(PBC_SnapshotCharacter(bot));
             }
             else
-                ev.silentBotGuids.push_back(bot->GetGUID().GetCounter());
+                ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
         }
 
         // Non-mentioned bots hear the message but always stay silent.
         for (Player* bot : bots)
         {
             if (mentionedGuids.count(bot->GetGUID().GetCounter())) continue;
-            ev.silentBotGuids.push_back(bot->GetGUID().GetCounter());
+            ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
         }
     }
     else
@@ -426,35 +426,35 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
             if (currentChance == 0)
             {
                 if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] Roll message bot={} chance=0% -> silent (no chance left)",
+                    LOG_INFO("server.loading", "[PBC] Roll message character={} chance=0% -> silent (no chance left)",
                              bot->GetName());
-                ev.silentBotGuids.push_back(bot->GetGUID().GetCounter());
+                ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
                 continue;
             }
 
             uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), currentChance);
             bool rolled = PBC_RollChance(effectiveChance);
             if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] Roll message bot={} chance={}% (base={}% mod={}) -> {}",
+                LOG_INFO("server.loading", "[PBC] Roll message character={} chance={}% (base={}% mod={}) -> {}",
                          bot->GetName(), effectiveChance, currentChance,
                          static_cast<int32_t>(effectiveChance) - static_cast<int32_t>(currentChance),
                          rolled ? "RESPOND" : "silent");
             if (rolled)
             {
-                ev.respondingBots.push_back(PBC_SnapshotBot(bot));
+                ev.respondingChars.push_back(PBC_SnapshotCharacter(bot));
                 currentChance = currentChance > g_PBC_RollPenaltyOnAnswer
                     ? currentChance - g_PBC_RollPenaltyOnAnswer : 0;
             }
             else
             {
-                ev.silentBotGuids.push_back(bot->GetGUID().GetCounter());
+                ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
             }
         }
     }
 
     if (g_PBC_DebugEnabled)
         LOG_INFO("server.loading", "[PBC] Chat from {} type={} -> {}/{} bots will respond",
-                 senderName, type, ev.respondingBots.size(), bots.size());
+                 senderName, type, ev.respondingChars.size(), bots.size());
 
     PBC_PushEvent(std::move(ev));
 }
@@ -844,12 +844,12 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
         LOG_INFO("server.loading", "[PBC] OnPlayerLevelChanged: player={} level={} bots={} chance={}%",
                  player->GetName(), player->GetLevel(), bots.size(), g_PBC_ReplyChanceLevelUp);
 
-    PBC_EventItem ev = BuildBotEvent(bots, eventLine, histLine,
+    PBC_EventItem ev = BuildCharacterEvent(bots, eventLine, histLine,
                                      g_PBC_ReplyChanceLevelUp, CHAT_MSG_PARTY,
                                      /*skipHistoryIfSilent=*/true, /*canCreateEvents=*/true);
 
     if (anchorIsBot)
-        ev.silentBotGuids.push_back(player->GetGUID().GetCounter());
+        ev.silentCharGuids.push_back(player->GetGUID().GetCounter());
 
     PBC_PushEvent(std::move(ev));
 }
@@ -939,14 +939,14 @@ void PBC_PlayerEvents::OnPlayerCreatureKill(Player* killer, Creature* killed)
     PBC_NotifyRealPlayersInGroup(killer, eventLine);
 
     // skipHistoryIfSilent=false: boss kills are always written to all histories.
-    PBC_EventItem ev = BuildBotEvent(bots, eventLine, histLine,
+    PBC_EventItem ev = BuildCharacterEvent(bots, eventLine, histLine,
                                      g_PBC_ReplyChanceBossKill, CHAT_MSG_PARTY,
                                      /*skipHistoryIfSilent=*/false, /*canCreateEvents=*/true);
 
     // If the killer is itself a bot it was excluded from FindGroupBots() but
     // still needs to receive the event in its own history.
     if (killerIsBot)
-        ev.silentBotGuids.push_back(killer->GetGUID().GetCounter());
+        ev.silentCharGuids.push_back(killer->GetGUID().GetCounter());
 
     PBC_PushEvent(std::move(ev));
 }
@@ -1151,11 +1151,11 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     ev.questSystemPrompt  = g_PBC_QuestCompletedSystemPrompt;
     ev.questUserPrompt    = userPrompt;
 
-    PBC_EventItem rolled = BuildBotEvent(bots, "", "", g_PBC_ReplyChanceQuestCompleted,
+    PBC_EventItem rolled = BuildCharacterEvent(bots, "", "", g_PBC_ReplyChanceQuestCompleted,
                                          CHAT_MSG_PARTY, /*skipHistoryIfSilent=*/false,
                                          /*canCreateEvents=*/true);
-    ev.respondingBots  = std::move(rolled.respondingBots);
-    ev.silentBotGuids  = std::move(rolled.silentBotGuids);
+    ev.respondingChars  = std::move(rolled.respondingChars);
+    ev.silentCharGuids  = std::move(rolled.silentCharGuids);
 
     PBC_PushEvent(std::move(ev));
 }
@@ -1198,11 +1198,11 @@ static void HandleQuestTaken(Player* player, Quest const* quest, std::string con
     ev.questSystemPrompt  = g_PBC_QuestTakenSystemPrompt;
     ev.questUserPrompt    = userPrompt;
 
-    PBC_EventItem rolled = BuildBotEvent(bots, "", "", g_PBC_ReplyChanceQuestTaken,
+    PBC_EventItem rolled = BuildCharacterEvent(bots, "", "", g_PBC_ReplyChanceQuestTaken,
                                          CHAT_MSG_PARTY, /*skipHistoryIfSilent=*/false,
                                          /*canCreateEvents=*/true);
-    ev.respondingBots  = std::move(rolled.respondingBots);
-    ev.silentBotGuids  = std::move(rolled.silentBotGuids);
+    ev.respondingChars  = std::move(rolled.respondingChars);
+    ev.silentCharGuids  = std::move(rolled.silentCharGuids);
 
     PBC_PushEvent(std::move(ev));
 }

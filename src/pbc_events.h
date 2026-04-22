@@ -5,7 +5,7 @@
 #include "QuestDef.h"
 #include <string>
 
-// Listens to player / world events and feeds them to the bot character system.
+// Listens to player / world events and feeds them to the character system.
 
 class PBC_PlayerEvents : public PlayerScript
 {
@@ -77,14 +77,14 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
                              bool notifyRealPlayers = true);
 
 // ---------------------------------------------------------------------------
-// Dispatch an event to a single specific bot.
-// skipHistoryIfSilent=true: if the bot does not respond, the histLine is NOT
+// Dispatch an event to a single specific character.
+// skipHistoryIfSilent=true: if the character does not respond, the histLine is NOT
 // written to its history (avoids noise from frequent low-chance events).
 // notifyRealPlayers=false: suppress the narrator system message sent to real
 // players in the group (used for location events, which fire per individual
-// bot and would be noisy if shown for each one).
+// character and would be noisy if shown for each one).
 // ---------------------------------------------------------------------------
-void PBC_DispatchBotEvent(Player* bot, const std::string& eventLine,
+void PBC_DispatchCharacterEvent(Player* bot, const std::string& eventLine,
                           const std::string& histLine, uint32_t chance,
                           bool skipHistoryIfSilent = false,
                           bool notifyRealPlayers = true);

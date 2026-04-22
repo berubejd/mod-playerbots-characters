@@ -100,18 +100,18 @@ extern std::vector<std::string> g_PBC_Blacklist;
 extern std::unordered_map<uint64_t, int32_t> g_PBC_RollChanceModifiers;
 
 // ---------------------------------------------------------------------------
-// Snapshot of a single bot's state, taken on the main thread at the moment
+// Snapshot of a single character's state, taken on the main thread at the moment
 // an event is pushed to the queue.  The event thread works exclusively with
 // these snapshots — it never touches live Player* objects.
 //
-// Includes a mutable local copy of the bot's history so the thread can
-// append replies and have subsequent bots see them in the same event.
+// Includes a mutable local copy of the character's history so the thread can
+// append replies and have subsequent characters see them in the same event.
 // ---------------------------------------------------------------------------
-struct PBC_BotSnapshot
+struct PBC_CharacterSnapshot
 {
-    ObjectGuid  botObjGuid;
-    uint64_t    botGuidRaw  = 0;
-    std::string botName;
+    ObjectGuid  charObjGuid;
+    uint64_t    charGuidRaw = 0;
+    std::string charName;
 
     // --- Pre-rendered prompt fragments (captured on main thread) ---
     std::string characterCard;
@@ -130,20 +130,21 @@ struct PBC_BotSnapshot
     std::string charLos;
     std::string combatStatus;
 
-    // The bot's history at the moment of snapshotting.
+    // The character's history at the moment of snapshotting.
     // The event thread appends its own replies here locally so subsequent
-    // bots in the same event see a fully up-to-date history.
+    // characters in the same event see a fully up-to-date history.
     std::deque<std::string> history;
 
     // For whisper responses
     ObjectGuid  whisperTargetGuid;
     std::string whisperTargetName;
 
-    // Names of all other party members (including real players, excluding this bot).
+    // Names of all other party members (including real players, excluding this character).
     // Used for relationship block rendering and mention tracking.
     std::vector<std::string> partyMemberNames;
 
     // True if at least one group member is a real (non-bot) player.
+    // (The term "bot" here refers to the mod-playerbots entity, not the character layer.)
     // Determines whether the [RELATIONSHIPS] block lists all party members
     // or falls back to the "You don't know much about X" whisper default.
     bool hasRealPlayerInGroup = false;
@@ -154,27 +155,27 @@ struct PBC_BotSnapshot
 // ---------------------------------------------------------------------------
 enum class PBC_EventType : uint8_t
 {
-    // A normal world/chat event: one or more bots may respond.
+    // A normal world/chat event: one or more characters may respond.
     Normal,
 
     // Quest-completion summarization: the worker first calls the LLM with
     // questSystemPrompt/questUserPrompt to generate a narrative summary,
-    // then processes each responding bot against that summary.
+    // then processes each responding character against that summary.
     QuestSummarization,
 
-    // Condensation: summarize one bot's history into a card addition and
+    // Condensation: summarize one character's history into a card addition and
     // replace history with a short tail.  Used by .chars condense command
     // and by the event thread itself when it detects history overflow.
     Condensation,
 
-    // HistoryReload: reload all bot histories from the database, replacing
+    // HistoryReload: reload all character histories from the database, replacing
     // the in-memory maps.  Pushed by .chars reload so the reload happens
     // after all in-flight events have been fully processed.
     HistoryReload,
 
-    // RelationshipUpdate: ask the LLM to update one bot's relationship
+    // RelationshipUpdate: ask the LLM to update one character's relationship
     // description with a specific target character.  Triggered when the
-    // number of new "about target" mentions in the bot's history reaches
+    // number of new "about target" mentions in the character's history reaches
     // g_PBC_RelationshipUpdateThreshold since the last update.
     RelationshipUpdate,
 };
@@ -185,7 +186,7 @@ enum class PBC_EventType : uint8_t
 // Pushed from the main thread (game hooks, location poll, commands).
 // Popped by OnUpdate — one event at a time.  OnUpdate spawns a thread for
 // the front item only when g_PBC_EventThreadDone is true.  The thread
-// processes all responding bots sequentially (LLM calls, history writes
+// processes all responding characters sequentially (LLM calls, history writes
 // directly — all thread-safe), then posts PBC_PendingActions for any chat
 // sends that require main-thread Player* access.  When done it sets
 // g_PBC_EventThreadDone = true so the next event can start.
@@ -205,25 +206,25 @@ struct PBC_EventItem
     // Chat channel for bot replies (CHAT_MSG_PARTY, CHAT_MSG_WHISPER, etc.)
     uint32_t    chatType = 0;
 
-    // Bots that rolled to respond — processed one at a time in order.
-    // Each bot sees all preceding bots' replies in its local history copy.
-    std::vector<PBC_BotSnapshot> respondingBots;
+    // Characters that rolled to respond — processed one at a time in order.
+    // Each character sees all preceding characters' replies in its local history copy.
+    std::vector<PBC_CharacterSnapshot> respondingChars;
 
-    // GUIDs of bots that did NOT roll — receive histLine in history after
-    // all responding bots have been processed.
-    // When skipHistoryIfSilent=true and respondingBots is empty,
-    // silent bots are skipped entirely (avoids noise from frequent low-chance events).
-    std::vector<uint64_t> silentBotGuids;
+    // GUIDs of characters that did NOT roll — receive histLine in history after
+    // all responding characters have been processed.
+    // When skipHistoryIfSilent=true and respondingChars is empty,
+    // silent characters are skipped entirely (avoids noise from frequent low-chance events).
+    std::vector<uint64_t> silentCharGuids;
     bool skipHistoryIfSilent = false;
 
-    // GUIDs of bots that already have histLine in their history (they were the
+    // GUIDs of characters that already have histLine in their history (they were the
     // original responders that triggered this secondary event) but still need
     // to receive the completedReplyLines from this event.  histLine is NOT
-    // re-written to these bots — only the new replies are appended.
-    std::vector<uint64_t> replyOnlyBotGuids;
+    // re-written to these characters — only the new replies are appended.
+    std::vector<uint64_t> replyOnlyCharGuids;
 
-    // When true, each bot that successfully replies triggers a secondary
-    // PBC_PendingEventRequest (a message event) for all other bots in the
+    // When true, each character that successfully replies triggers a secondary
+    // PBC_PendingEventRequest (a message event) for all other characters in the
     // group that have not yet participated.  Must NOT be set on chat-message
     // events to prevent infinite reply loops.
     bool canCreateEvents = false;
@@ -235,22 +236,22 @@ struct PBC_EventItem
     std::string questUserPrompt;
 
     // --- Condensation fields ---
-    // The bot whose history should be condensed.
-    PBC_BotSnapshot condensationBot;
+    // The character whose history should be condensed.
+    PBC_CharacterSnapshot condensationChar;
     // Prompts for the condensation LLM call (copied from config at push time
     // so the worker is not sensitive to a concurrent .chars reload).
     std::string condensationSystemPrompt;
     std::string condensationUserPrompt;
 
     // --- RelationshipUpdate fields ---
-    // The bot whose relationship with a target should be updated.
-    PBC_BotSnapshot relationshipBot;
+    // The character whose relationship with a target should be updated.
+    PBC_CharacterSnapshot relationshipChar;
     // Name of the target character (e.g. "Jon").
     std::string     relationshipTargetName;
     // Brief info about the target used in {relationship_target} placeholder,
     // e.g. "JON, MALE ORC WARRIOR".
     std::string     relationshipTargetInfo;
-    // The bot's current relationship text with the target (may be the default
+    // The character's current relationship text with the target (may be the default
     // "You don't know much about X" if no data exists yet).
     std::string     relationshipCurrentText;
     // Total mention count in the full history at the moment this event was
@@ -272,7 +273,7 @@ struct PBC_EventItem
 // ---------------------------------------------------------------------------
 struct PBC_PendingAction
 {
-    ObjectGuid  botGuid;
+    ObjectGuid  charGuid;
     ObjectGuid  targetGuid;   // Non-empty = whisper target
     uint32_t    chatType = 0;
     std::string text;         // LLM reply text to send; empty = no-op
@@ -298,24 +299,24 @@ struct PBC_PendingEventRequest
     std::string histLine;
 
     // Optional: the original triggering event's histLine (e.g. a Narrator line)
-    // that should be written to all target bots before the secondary event runs.
-    // Ensures bots that were not in the original event's silentBotGuids (e.g.
-    // single-bot location events) still receive the full conversation context.
+    // that should be written to all target characters before the secondary event runs.
+    // Ensures characters that were not in the original event's silentCharGuids (e.g.
+    // single-character location events) still receive the full conversation context.
     std::string originHistLine;
 
-    // Chat channel to use for bot replies.
+    // Chat channel to use for character replies.
     uint32_t chatType = 0;
 
     // GUID of any current group member — used by OnUpdate to find the group.
-    uint64_t anchorBotGuid = 0;
+    uint64_t anchorCharGuid = 0;
 
-    // GUIDs of bots that already participated and should be excluded.
-    std::unordered_set<uint64_t> excludedBotGuids;
+    // GUIDs of characters that already participated and should be excluded.
+    std::unordered_set<uint64_t> excludedCharGuids;
 
     // GUIDs of the original responders that triggered this secondary event.
     // They already have histLine in their history but still need to receive
     // any new replies generated by this secondary event.
-    std::vector<uint64_t> originBotGuids;
+    std::vector<uint64_t> originCharGuids;
 };
 
 extern std::queue<PBC_PendingEventRequest> g_PBC_PendingEventRequests;
@@ -350,7 +351,7 @@ extern std::mutex g_PBC_CardMutex;
 
 // ---------------------------------------------------------------------------
 // One relationship entry: the LLM-generated text and the total mention count
-// in the bot's history at the time the relationship was last updated.
+// in the character's history at the time the relationship was last updated.
 // ---------------------------------------------------------------------------
 struct PBC_RelationshipEntry
 {
@@ -366,12 +367,12 @@ extern std::unordered_map<uint64_t, std::unordered_map<std::string, PBC_Relation
 extern std::mutex g_PBC_RelationshipsMutex;
 
 // ---------------------------------------------------------------------------
-// Character cards loaded from disk: bot name -> card text
+// Character cards loaded from disk: character name -> card text
 // ---------------------------------------------------------------------------
 extern std::unordered_map<std::string, std::string> g_PBC_CharacterCards;
 
 // ---------------------------------------------------------------------------
-// Per-bot location polling state.
+// Per-character location polling state.
 // ---------------------------------------------------------------------------
 struct PBC_LocationState
 {
@@ -381,7 +382,7 @@ struct PBC_LocationState
 };
 
 extern std::unordered_map<uint64_t, PBC_LocationState> g_PBC_LocationStates;
-extern std::unordered_map<uint64_t, std::string>        g_PBC_BotLastLocations;
+extern std::unordered_map<uint64_t, std::string>        g_PBC_CharacterLastLocations;
 extern uint32_t g_PBC_LocationPollAccum;
 
 // ---------------------------------------------------------------------------
@@ -394,7 +395,7 @@ void PBC_PushEvent(PBC_EventItem item);
 // Per-character roll chance helper (main-thread only)
 // ---------------------------------------------------------------------------
 
-// Returns the effective roll chance for a bot after applying its per-character
+// Returns the effective roll chance for a character after applying its per-character
 // modifier.  The result is clamped to [0, 100].
 uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance);
 
@@ -406,7 +407,7 @@ void PBC_LoadCharacterCards();
 void PBC_LoadHistoryFromDB();
 void PBC_LoadCardAdditionsFromDB();
 void PBC_SaveCardAdditionsToDB();
-void PBC_LoadBotDataFromDB();
+void PBC_LoadCharacterDataFromDB();
 void PBC_LoadRelationshipsFromDB();
 
 class PBC_WorldScript : public WorldScript
