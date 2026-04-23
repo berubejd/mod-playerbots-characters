@@ -3,6 +3,7 @@
 #include "pbc_database.h"
 #include "pbc_llm.h"
 #include "pbc_events.h"
+#include "pbc_http.h"
 #include "pbc_utils.h"
 #include "Config.h"
 #include "Log.h"
@@ -72,6 +73,11 @@ std::string g_PBC_QuestTakenSystemPrompt;
 std::string g_PBC_QuestTakenUserPrompt;
 
 std::vector<std::string> g_PBC_Blacklist;
+
+int         g_PBC_HttpServerPort     = 0;
+std::string g_PBC_HttpServerBind     = "127.0.0.1";
+int         g_PBC_HttpServerTimeout  = 15;
+std::string g_PBC_HttpServerBaseUrl  = "http://127.0.0.1:8501";
 
 std::queue<PBC_PendingAction> g_PBC_PendingActions;
 std::mutex                    g_PBC_PendingActionsMutex;
@@ -895,6 +901,11 @@ void PBC_LoadConfig(bool /*isStartup*/)
     std::string blacklistStr = sConfigMgr->GetOption<std::string>("PBC.Blacklist", "");
     g_PBC_Blacklist = SplitByComma(blacklistStr);
 
+    g_PBC_HttpServerPort    = sConfigMgr->GetOption<int>("PBC.HttpServerPort", 0);
+    g_PBC_HttpServerBind    = sConfigMgr->GetOption<std::string>("PBC.HttpServerBind", "127.0.0.1");
+    g_PBC_HttpServerTimeout = sConfigMgr->GetOption<int>("PBC.HttpServerTimeout", 15);
+    g_PBC_HttpServerBaseUrl = sConfigMgr->GetOption<std::string>("PBC.HttpServerBaseUrl", "http://127.0.0.1:8501");
+
     // -----------------------------------------------------------------------
     // Validate required settings when the module is enabled.
     //
@@ -962,6 +973,10 @@ void PBC_LoadConfig(bool /*isStartup*/)
         g_PBC_ReplyChanceItem,
         g_PBC_ReplyChanceDuel, g_PBC_ReplyChanceLevelUp, g_PBC_ReplyChanceLocation,
         g_PBC_ReplyChanceBossKill, g_PBC_ReplyChanceQuestCompleted, g_PBC_ReplyChanceQuestTaken);
+
+    LOG_INFO("server.loading",
+        "[PBC] HTTP Server: Port={} Bind='{}' Timeout={}s BaseUrl='{}'",
+        g_PBC_HttpServerPort, g_PBC_HttpServerBind, g_PBC_HttpServerTimeout, g_PBC_HttpServerBaseUrl);
 }
 
 // ---------------------------------------------------------------------------
@@ -1155,11 +1170,35 @@ void PBC_WorldScript::OnStartup()
 
     g_PBC_EventThreadDone.store(true);
 
+    // Start the HTTP/WS server if a port is configured.
+    if (g_PBC_HttpServerPort > 0)
+    {
+        if (!PBC_HttpServerStart(g_PBC_HttpServerBind, g_PBC_HttpServerPort, g_PBC_HttpServerTimeout))
+        {
+            LOG_ERROR("server.loading",
+                      "[PBC] HTTP server could not be started on {}:{} — treating as disabled. "
+                      "The rest of the module continues normally.",
+                      g_PBC_HttpServerBind, g_PBC_HttpServerPort);
+            g_PBC_HttpServerPort = 0; // treat as disabled
+        }
+    }
+    else
+    {
+        LOG_INFO("server.loading", "[PBC] HTTP server disabled (PBC.HttpServerPort = 0).");
+    }
+
     LOG_INFO("server.loading", "[PBC] Module started.");
 }
 
 void PBC_WorldScript::OnShutdown()
 {
+    // Stop the HTTP/WS server if it is running.
+    if (PBC_HttpServerIsRunning())
+    {
+        LOG_INFO("server.loading", "[PBC] Stopping HTTP server...");
+        PBC_HttpServerStop();
+    }
+
     // History is written through to DB on every PBC_AppendHistory call,
     // so no explicit flush is needed on shutdown.
     LOG_INFO("server.loading", "[PBC] Module shutdown.");

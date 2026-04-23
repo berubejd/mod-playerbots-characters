@@ -44,10 +44,16 @@ if(TARGET modules)
         endif()
     endif()
 
-    # Include cpp-httplib (header-only, must be placed in src/httplib.h)
-    # Copy httplib.h from mod-ollama-chat/src/httplib.h or download from:
-    # https://github.com/yhirose/cpp-httplib
-    target_include_directories(modules PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
+    # Include cpp-httplib (header-only)
+    # Bundled version (v0.43.1) in deps/yhirose/cpp-httplib/httplib.h provides HTTP server + WebSocket support.
+    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/deps/yhirose/cpp-httplib/httplib.h")
+        target_include_directories(modules BEFORE PRIVATE ${CMAKE_CURRENT_LIST_DIR}/deps/yhirose/cpp-httplib)
+        message(STATUS "[mod-playerbots-characters] Using bundled cpp-httplib v0.43.1 (with WebSocket support)")
+    else()
+        message(FATAL_ERROR "[mod-playerbots-characters] cpp-httplib not found.\n"
+                          "  Please place httplib.h in deps/yhirose/cpp-httplib/httplib.h\n"
+                          "  Download from: https://github.com/yhirose/cpp-httplib")
+    endif()
 
     # Enable SSL/TLS support for HTTPS connections
     find_package(OpenSSL QUIET)

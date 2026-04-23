@@ -26,7 +26,7 @@ Next, clone this repository into the `modules` directory of your acore sources a
 
 > [!NOTE]
 > 1. Only Linux is officially supported as a build target. Technically nothing should stop you from using the module on Windows, but this is untested and unsupported.
-> 2. The module includes a bundled copy of [nlohmann/json](https://github.com/nlohmann/json) in `deps/nlohmann/json.hpp`, so no external JSON library is required. The build system will use the bundled version by default, falling back to a system-installed version if available.
+> 2. The module includes bundled copies of [nlohmann/json](https://github.com/nlohmann/json) in `deps/nlohmann/json.hpp` and [cpp-httplib](https://github.com/yhirose/cpp-httplib) in `deps/yhirose/cpp-httplib/httplib.h`, so no external libraries are required for these. The build system will use the bundled versions by default, falling back to a system-installed version of nlohmann/json if the bundled one is not present.
 
 If [mod_weather_vibe](https://github.com/hermensbas/mod_weather_vibe) is also installed, weather states from it will be included in the character's scene description.
 
@@ -92,6 +92,19 @@ PBC.ModelExtraParameters = 'frequency_penalty':0.5,'presence_penalty':0.2
 becomes `"frequency_penalty":0.5,"presence_penalty":0.2` in the request.
 
 When switching providers, pay attention to `PBC.Temperature` — acceptable ranges vary between models. Check the provider's documentation for the recommended value.
+
+### HTTP Server (WIP)
+
+The module can optionally run a built-in HTTP/WS server, providing an API for external tools and integrations. This is disabled by default.
+
+| Setting | Default | Description |
+|---|---|---|
+| `PBC.HttpServerPort` | `0` | Port to listen on. `0` = disabled. Set to a positive number (e.g. `8501`) to enable. |
+| `PBC.HttpServerBind` | `127.0.0.1` | Bind address. `127.0.0.1` = localhost only. `0.0.0.0` = all interfaces. |
+| `PBC.HttpServerTimeout` | `15` | Read/write timeout in seconds for the HTTP server. |
+| `PBC.HttpServerBaseUrl` | `http://127.0.0.1:8501` | Base URL used for constructing external-facing URLs (e.g. WebSocket connections). Should match the address and port that external clients use to reach the server. |
+
+If the server fails to bind (e.g. port already in use), an error is logged but the module continues to operate normally — only the HTTP server portion is disabled. The HTTP server is also disabled when `PBC.Enable = 0`.
 
 ### Playerbots Adjustments
 

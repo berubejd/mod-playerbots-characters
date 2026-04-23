@@ -314,6 +314,38 @@ PBC.ReplyChanceQuestTaken = 10
 
 
 # --------------------------------------------
+# HTTP SERVER
+# --------------------------------------------
+
+# PBC.HttpServerPort
+#     Description: Port for the built-in HTTP/WS server.
+#                  0 = disabled (default). Set to a positive port number to enable.
+#                  The server provides both plain HTTP and WebSocket endpoints.
+#     Default:     0
+PBC.HttpServerPort = 0
+
+# PBC.HttpServerBind
+#     Description: Bind address for the HTTP server.
+#                  "127.0.0.1" = localhost only (default, recommended for security).
+#                  "0.0.0.0"   = all interfaces (use with caution).
+#     Default:     127.0.0.1
+PBC.HttpServerBind = 127.0.0.1
+
+# PBC.HttpServerTimeout
+#     Description: Read/write timeout in seconds for the HTTP server.
+#     Default:     15
+PBC.HttpServerTimeout = 15
+
+# PBC.HttpServerBaseUrl
+#     Description: Base URL for the HTTP server, used for constructing
+#                  external-facing URLs (e.g. for WebSocket connections).
+#                  Should match the address and port that external clients
+#                  will use to reach the server.
+#     Default:     http://127.0.0.1:8501
+PBC.HttpServerBaseUrl = http://127.0.0.1:8501
+
+
+# --------------------------------------------
 # BLACKLIST
 # --------------------------------------------
 

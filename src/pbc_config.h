@@ -88,6 +88,14 @@ extern std::string g_PBC_QuestTakenSystemPrompt;
 extern std::string g_PBC_QuestTakenUserPrompt;
 
 // ---------------------------------------------------------------------------
+// HTTP server
+// ---------------------------------------------------------------------------
+extern int         g_PBC_HttpServerPort;     // 0 = disabled
+extern std::string g_PBC_HttpServerBind;     // bind address
+extern int         g_PBC_HttpServerTimeout;  // request timeout in seconds
+extern std::string g_PBC_HttpServerBaseUrl;  // base URL for external access
+
+// ---------------------------------------------------------------------------
 // Blacklist prefixes
 // ---------------------------------------------------------------------------
 extern std::vector<std::string> g_PBC_Blacklist;
