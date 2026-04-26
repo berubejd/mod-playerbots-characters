@@ -35,7 +35,9 @@ These variables can be used in `PBC.QuestCompletedUserPrompt` and `PBC.QuestTake
 
 - `{quest_title}` — the title of the quest
 - `{quest_giver}` — the name of the NPC, game object, or item that offered the quest
+- `{quest_giver_type}` — the type of the quest source: "person" (NPC/creature), "object" (world object like a signpost or bounty board), or "item" (carried item like a scroll or letter). Empty if unknown. For quest completed, may also be "person or object" if the quest has both creature and gameobject starters in the database.
 - `{quest_ender}` — the name of the NPC or game object that completes the quest
+- `{quest_ender_type}` — the type of the quest ender: "person" (NPC/creature) or "object" (world object like a shrine or delivery point). Empty if unknown. May be "person or object" if the quest has both creature and gameobject enders in the database.
 - `{quest_description}` — the full lore/details text of the quest (shown when accepting it)
 - `{quest_log_description}` — the objectives text shown in the quest log
 - `{quest_completion_log}` — the completion log text

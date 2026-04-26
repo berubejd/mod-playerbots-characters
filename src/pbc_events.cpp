@@ -978,8 +978,9 @@ static std::string StripWowTextCodes(const std::string& text)
 
 // ---------------------------------------------------------------------------
 // Look up quest starter/ender NPC names from ObjectMgr relations.
-// Returns a comma-separated list of creature names for the given quest ID.
+// Returns a comma-separated list of creature/GO names for the given quest ID.
 // ---------------------------------------------------------------------------
+
 static std::string GetQuestStarterNames(uint32 questId)
 {
     std::string result;
@@ -1047,6 +1048,50 @@ static std::string GetQuestEnderNames(uint32 questId)
 }
 
 // ---------------------------------------------------------------------------
+// Determine the source type of quest starters/enders from ObjectMgr relations.
+// Returns "person" if only creatures, "object" if only gameobjects,
+// "person or object" if both, or "" if neither.
+// ---------------------------------------------------------------------------
+
+static std::string GetQuestStarterType(uint32 questId)
+{
+    bool hasCreature = false, hasGO = false;
+    auto* relMap = sObjectMgr->GetCreatureQuestRelationMap();
+    for (auto it = relMap->begin(); it != relMap->end(); ++it)
+    {
+        if (it->second == questId) { hasCreature = true; break; }
+    }
+    auto* goRelMap = sObjectMgr->GetGOQuestRelationMap();
+    for (auto it = goRelMap->begin(); it != goRelMap->end(); ++it)
+    {
+        if (it->second == questId) { hasGO = true; break; }
+    }
+    if (hasCreature && hasGO) return "person or object";
+    if (hasCreature) return "person";
+    if (hasGO) return "object";
+    return "";
+}
+
+static std::string GetQuestEnderType(uint32 questId)
+{
+    bool hasCreature = false, hasGO = false;
+    auto* relMap = sObjectMgr->GetCreatureQuestInvolvedRelationMap();
+    for (auto it = relMap->begin(); it != relMap->end(); ++it)
+    {
+        if (it->second == questId) { hasCreature = true; break; }
+    }
+    auto* goRelMap = sObjectMgr->GetGOQuestInvolvedRelationMap();
+    for (auto it = goRelMap->begin(); it != goRelMap->end(); ++it)
+    {
+        if (it->second == questId) { hasGO = true; break; }
+    }
+    if (hasCreature && hasGO) return "person or object";
+    if (hasCreature) return "person";
+    if (hasGO) return "object";
+    return "";
+}
+
+// ---------------------------------------------------------------------------
 // String substitution for quest prompt placeholders.
 // ---------------------------------------------------------------------------
 static std::string SubstituteQuestVars(const std::string& tmpl,
@@ -1056,7 +1101,9 @@ static std::string SubstituteQuestVars(const std::string& tmpl,
                                         const std::string& completionLog,
                                         const std::string& rewardText,
                                         const std::string& questGiver,
-                                        const std::string& questEnder)
+                                        const std::string& questEnder,
+                                        const std::string& questGiverType,
+                                        const std::string& questEnderType)
 {
     std::string result = tmpl;
     PBC_ReplaceToken(result, "quest_title",          title);
@@ -1066,6 +1113,8 @@ static std::string SubstituteQuestVars(const std::string& tmpl,
     PBC_ReplaceToken(result, "quest_reward_text",    rewardText);
     PBC_ReplaceToken(result, "quest_giver",          questGiver);
     PBC_ReplaceToken(result, "quest_ender",          questEnder);
+    PBC_ReplaceToken(result, "quest_giver_type",     questGiverType);
+    PBC_ReplaceToken(result, "quest_ender_type",     questEnderType);
     return result;
 }
 
@@ -1110,6 +1159,8 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     std::string questRewardText     = StripWowTextCodes(quest->GetOfferRewardText());
     std::string questGiver          = GetQuestStarterNames(quest->GetQuestId());
     std::string questEnder          = GetQuestEnderNames(quest->GetQuestId());
+    std::string questGiverType      = GetQuestStarterType(quest->GetQuestId());
+    std::string questEnderType      = GetQuestEnderType(quest->GetQuestId());
 
     if (g_PBC_DebugEnabled)
         LOG_INFO("server.loading", "[PBC] OnPlayerCompleteQuest: leader={} quest='{}' (id={})",
@@ -1118,7 +1169,7 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     std::string userPrompt = SubstituteQuestVars(
         g_PBC_QuestCompletedUserPrompt,
         questTitle, questDescription, questLogDescription, questCompletionLog,
-        questRewardText, questGiver, questEnder);
+        questRewardText, questGiver, questEnder, questGiverType, questEnderType);
 
     auto bots = FindGroupBots(player);
     if (bots.empty()) return;
@@ -1142,7 +1193,9 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
 // ---------------------------------------------------------------------------
 // Quest taken event — internal handler shared by all three script types.
 // ---------------------------------------------------------------------------
-static void HandleQuestTaken(Player* player, Quest const* quest, std::string const& questGiver)
+static void HandleQuestTaken(Player* player, Quest const* quest,
+                              std::string const& questGiver,
+                              std::string const& questGiverType)
 {
     if (!QuestEventGuard(player) || !quest) return;
 
@@ -1159,13 +1212,13 @@ static void HandleQuestTaken(Player* player, Quest const* quest, std::string con
     std::string questCompletionLog  = StripWowTextCodes(quest->GetCompletedText());
 
     if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] HandleQuestTaken: leader={} quest='{}' (id={}) giver='{}'",
-                 player->GetName(), questTitle, quest->GetQuestId(), questGiver);
+        LOG_INFO("server.loading", "[PBC] HandleQuestTaken: leader={} quest='{}' (id={}) giver='{}' type='{}'",
+                 player->GetName(), questTitle, quest->GetQuestId(), questGiver, questGiverType);
 
     std::string userPrompt = SubstituteQuestVars(
         g_PBC_QuestTakenUserPrompt,
         questTitle, questDescription, questLogDescription, questCompletionLog,
-        /*rewardText=*/"", questGiver, /*questEnder=*/"");
+        /*rewardText=*/"", questGiver, /*questEnder=*/"", questGiverType, /*questEnderType=*/"");
 
     auto bots = FindGroupBots(player);
     if (bots.empty()) return;
@@ -1197,7 +1250,7 @@ bool PBC_AllCreatureQuestScript::CanCreatureQuestAccept(Player* player, Creature
     if (creature && quest && player)
     {
         std::string giverName = creature->GetName();
-        HandleQuestTaken(player, quest, giverName);
+        HandleQuestTaken(player, quest, giverName, "person");
     }
     return false; // don't prevent quest acceptance
 }
@@ -1214,7 +1267,7 @@ bool PBC_AllGameObjectQuestScript::CanGameObjectQuestAccept(Player* player, Game
     {
         GameObjectTemplate const* goInfo = go->GetGOInfo();
         std::string giverName = goInfo ? goInfo->name : go->GetName();
-        HandleQuestTaken(player, quest, giverName);
+        HandleQuestTaken(player, quest, giverName, "object");
     }
     return false; // don't prevent quest acceptance
 }
@@ -1231,7 +1284,7 @@ bool PBC_AllItemQuestScript::CanItemQuestAccept(Player* player, Item* item, Ques
     {
         ItemTemplate const* itemInfo = item->GetTemplate();
         std::string giverName = itemInfo ? itemInfo->Name1 : "Unknown Item";
-        HandleQuestTaken(player, quest, giverName);
+        HandleQuestTaken(player, quest, giverName, "item");
     }
     return true; // true = allow quest acceptance (AllItemScript convention)
 }
