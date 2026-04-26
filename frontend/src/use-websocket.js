@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 
 /**
- * WebSocket hook with automatic reconnection and event subscription.
+ * WebSocket hook with event subscription.
  *
  * Connects to /ws using the access_token subprotocol for authentication.
- * Reconnects with exponential backoff on disconnect.
+ * Does NOT auto-reconnect on disconnect — the consumer must increment
+ * connectKey (e.g. via a "Retry" button) to trigger a new connection.
  * Automatically subscribes/unsubscribes based on selectedGuid and subscribeReady.
  *
  * @param {string|null} token - Bearer token for authentication. Pass null to disconnect.
@@ -19,8 +20,6 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 export function useWebSocket(token, { selectedGuid = null, subscribeReady = false, onEvent = null, onDisconnect = null, connectKey = 0 } = {}) {
   const [status, setStatus] = useState('disconnected');
   const wsRef = useRef(null);
-  const reconnectTimerRef = useRef(null);
-  const reconnectDelayRef = useRef(1000);
   const mountedRef = useRef(true);
   const subscribedGuidRef = useRef(null);
 
@@ -36,13 +35,6 @@ export function useWebSocket(token, { selectedGuid = null, subscribeReady = fals
 
   const subscribeReadyRef = useRef(subscribeReady);
   subscribeReadyRef.current = subscribeReady;
-
-  const clearReconnect = useCallback(() => {
-    if (reconnectTimerRef.current !== null) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
-  }, []);
 
   /**
    * Send subscribe/unsubscribe messages based on current refs.
@@ -102,7 +94,6 @@ export function useWebSocket(token, { selectedGuid = null, subscribeReady = fals
     ws.onopen = () => {
       if (!mountedRef.current) return;
       setStatus('connected');
-      reconnectDelayRef.current = 1000; // Reset backoff on successful connection
       // Try to subscribe after connection
       updateSubscription();
     };
@@ -148,19 +139,11 @@ export function useWebSocket(token, { selectedGuid = null, subscribeReady = fals
         onDisconnectRef.current();
       }
 
-      // Schedule reconnect with exponential backoff (1s → 2s → 4s → 8s, max 30s)
-      const delay = reconnectDelayRef.current;
-      reconnectDelayRef.current = Math.min(delay * 2, 30000);
-
-      reconnectTimerRef.current = setTimeout(() => {
-        if (mountedRef.current && token) {
-          connect();
-        }
-      }, delay);
+      // No auto-reconnect — the consumer must increment connectKey to retry
     };
 
     ws.onerror = () => {
-      // onclose will fire after onerror, so reconnection is handled there
+      // onclose will fire after onerror, so cleanup is handled there
     };
   }, [token, updateSubscription]);
 
@@ -180,7 +163,6 @@ export function useWebSocket(token, { selectedGuid = null, subscribeReady = fals
 
     return () => {
       mountedRef.current = false;
-      clearReconnect();
       if (wsRef.current) {
         wsRef.current.onopen = null;
         wsRef.current.onclose = null;
@@ -192,7 +174,7 @@ export function useWebSocket(token, { selectedGuid = null, subscribeReady = fals
       setStatus('disconnected');
       subscribedGuidRef.current = null;
     };
-  }, [token, connectKey, connect, clearReconnect]);
+  }, [token, connectKey, connect]);
 
   return { status };
 }
