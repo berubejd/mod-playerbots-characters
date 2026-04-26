@@ -1,4 +1,5 @@
 characters/*
 !characters/Example.card.txt
+prompts/*.custom.txt
 *.sql
 !data/sql/characters/base/*.sql

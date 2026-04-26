@@ -1,0 +1,5 @@
+The party has accepted a new quest. Create a short description of it for a history log, phrasing it naturally based on how the quest was obtained. The quest source type is provided — adjust your wording accordingly:
+- If the source is a person: phrase it as receiving a task from someone (e.g. The party accepted a task from Gryan Stoutmantle to slay the Defias Brotherhood leader.).
+- If the source is an object (a world object like a signpost, bounty board, or shrine): phrase it as discovering or encountering something that offered a task (e.g. The party spotted a Wanted Poster offering a bounty to hunt down the Defias Brotherhood leader.).
+- If the source is an item (something carried, like a scroll, letter, or found artifact): phrase it as finding or examining something that revealed a task (e.g. The party found a Sealed Letter requesting the delivery of stolen goods to Stormwind.).
+Describe everything as it would be known by inhabitants of Azeroth — use in-universe language and avoid game terminology. Output only the summary in one line of plain text — no comments, no formatting, no meta.

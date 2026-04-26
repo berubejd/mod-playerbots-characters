@@ -53,6 +53,7 @@ std::string g_PBC_RelationshipUpdateSystemPrompt;
 std::string g_PBC_RelationshipUpdateUserPrompt;
 uint32_t    g_PBC_RelationshipUpdateThreshold = 100;
 
+std::string g_PBC_PromptsPath = "../../../modules/mod-playerbots-characters/prompts";
 std::string g_PBC_CharacterCardsPath = "../../../modules/mod-playerbots-characters/characters";
 
 uint32_t g_PBC_ReplyChanceWhisper   = 100;
@@ -868,13 +869,8 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_MaxCtx                     = sConfigMgr->GetOption<uint32_t>("PBC.MaxCtx", 0);
     g_PBC_CondensationPreservedLines = sConfigMgr->GetOption<uint32_t>("PBC.CondensationPreservedLines", 50);
 
-    g_PBC_SystemPrompt              = sConfigMgr->GetOption<std::string>("PBC.SystemPrompt", "");
-    g_PBC_UserPrompt                = sConfigMgr->GetOption<std::string>("PBC.UserPrompt", "");
-    g_PBC_CondensationSystemPrompt  = sConfigMgr->GetOption<std::string>("PBC.CondensationSystemPrompt", "");
-    g_PBC_CondensationUserPrompt    = sConfigMgr->GetOption<std::string>("PBC.CondensationUserPrompt", "");
-    g_PBC_DefaultCharacterDescription = sConfigMgr->GetOption<std::string>("PBC.DefaultCharacterDescription", "");
-    g_PBC_CharacterContext          = sConfigMgr->GetOption<std::string>("PBC.CharacterContext", "");
-
+    g_PBC_PromptsPath = sConfigMgr->GetOption<std::string>("PBC.PromptsPath",
+                                    "../../../modules/mod-playerbots-characters/prompts");
     g_PBC_CharacterCardsPath  = sConfigMgr->GetOption<std::string>("PBC.CharacterCardsPath",
                                     "../../../modules/mod-playerbots-characters/characters");
 
@@ -889,13 +885,6 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_ReplyChanceQuestCompleted = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestCompleted", 20);
     g_PBC_ReplyChanceQuestTaken     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestTaken", 10);
 
-    g_PBC_QuestCompletedSystemPrompt = sConfigMgr->GetOption<std::string>("PBC.QuestCompletedSystemPrompt", "");
-    g_PBC_QuestCompletedUserPrompt   = sConfigMgr->GetOption<std::string>("PBC.QuestCompletedUserPrompt", "");
-    g_PBC_QuestTakenSystemPrompt     = sConfigMgr->GetOption<std::string>("PBC.QuestTakenSystemPrompt", "");
-    g_PBC_QuestTakenUserPrompt       = sConfigMgr->GetOption<std::string>("PBC.QuestTakenUserPrompt", "");
-
-    g_PBC_RelationshipUpdateSystemPrompt = sConfigMgr->GetOption<std::string>("PBC.RelationshipUpdateSystemPrompt", "");
-    g_PBC_RelationshipUpdateUserPrompt   = sConfigMgr->GetOption<std::string>("PBC.RelationshipUpdateUserPrompt", "");
     g_PBC_RelationshipUpdateThreshold    = sConfigMgr->GetOption<uint32_t>("PBC.RelationshipUpdateThreshold", 100);
 
     std::string blacklistStr = sConfigMgr->GetOption<std::string>("PBC.Blacklist", "");
@@ -926,18 +915,6 @@ void PBC_LoadConfig(bool /*isStartup*/)
         const RequiredCheck requiredStrings[] = {
             { "PBC.BaseUrl",                        g_PBC_BaseUrl                        },
             { "PBC.Model",                          g_PBC_Model                          },
-            { "PBC.SystemPrompt",                   g_PBC_SystemPrompt                   },
-            { "PBC.UserPrompt",                     g_PBC_UserPrompt                     },
-            { "PBC.CondensationSystemPrompt",       g_PBC_CondensationSystemPrompt       },
-            { "PBC.CondensationUserPrompt",         g_PBC_CondensationUserPrompt         },
-            { "PBC.DefaultCharacterDescription",    g_PBC_DefaultCharacterDescription    },
-            { "PBC.CharacterContext",               g_PBC_CharacterContext               },
-            { "PBC.QuestCompletedSystemPrompt",     g_PBC_QuestCompletedSystemPrompt     },
-            { "PBC.QuestCompletedUserPrompt",       g_PBC_QuestCompletedUserPrompt       },
-            { "PBC.QuestTakenSystemPrompt",         g_PBC_QuestTakenSystemPrompt         },
-            { "PBC.QuestTakenUserPrompt",           g_PBC_QuestTakenUserPrompt           },
-            { "PBC.RelationshipUpdateSystemPrompt", g_PBC_RelationshipUpdateSystemPrompt },
-            { "PBC.RelationshipUpdateUserPrompt",   g_PBC_RelationshipUpdateUserPrompt   },
         };
 
         bool configValid = true;
@@ -973,6 +950,14 @@ void PBC_LoadConfig(bool /*isStartup*/)
         }
     }
 
+    // Load prompts from files (required for the module to work)
+    if (g_PBC_Enable && !PBC_LoadPrompts())
+    {
+        LOG_ERROR("server.loading", "[PBC] Failed to load prompts. Module DISABLED — fix prompt path and reload with .chars reload.");
+        g_PBC_Enable = false;
+        return;
+    }
+
     LOG_INFO("server.loading",
         "[PBC] Config: Enable={} APIType='{}' Model='{}' Url='{}' MaxCtx={} Timeout={}s "
         "Chances: Whisper={}% Mention={}% Message={}% RollPenalty={}% "
@@ -989,6 +974,119 @@ void PBC_LoadConfig(bool /*isStartup*/)
         "[PBC] HTTP Server: Port={} Bind='{}' Timeout={}s BaseUrl='{}' PrivateKey={} FrontendPath='{}'",
         g_PBC_HttpServerPort, g_PBC_HttpServerBind, g_PBC_HttpServerTimeout, g_PBC_HttpServerBaseUrl,
         g_PBC_HttpServerPrivateKey.empty() ? "(not set)" : "(set)", g_PBC_HttpServerFrontendPath);
+}
+
+// ---------------------------------------------------------------------------
+// PBC_LoadPrompts
+//
+// Loads all prompt templates from the directory specified by PBC.PromptsPath.
+// For each prompt, tries the .custom.txt version first; if not found, falls
+// back to the .default.txt version.  Returns false if any prompt fails to load,
+// which should disable the module.
+// ---------------------------------------------------------------------------
+
+// Helper: load a single prompt file.  Tries customPath first, then defaultPath.
+// Returns true on success, false on failure.  Sets usedCustom if the custom
+// file was loaded.
+static bool LoadPromptFile(const std::string& customPath,
+                           const std::string& defaultPath,
+                           std::string& target,
+                           bool& usedCustom)
+{
+    usedCustom = false;
+
+    // Try custom first
+    std::ifstream fCustom(customPath);
+    if (fCustom)
+    {
+        std::stringstream buf;
+        buf << fCustom.rdbuf();
+        if (buf.str().empty())
+        {
+            LOG_WARN("server.loading", "[PBC] Custom prompt file is empty: {}", customPath);
+        }
+        else
+        {
+            target = buf.str();
+            usedCustom = true;
+            return true;
+        }
+    }
+
+    // Fall back to default
+    std::ifstream fDefault(defaultPath);
+    if (!fDefault)
+    {
+        LOG_ERROR("server.loading", "[PBC] Cannot open prompt file: {}",
+                  defaultPath);
+        return false;
+    }
+
+    std::stringstream buf;
+    buf << fDefault.rdbuf();
+    if (buf.str().empty())
+    {
+        LOG_ERROR("server.loading", "[PBC] Default prompt file is empty: {}", defaultPath);
+        return false;
+    }
+
+    target = buf.str();
+    return true;
+}
+
+bool PBC_LoadPrompts()
+{
+    std::filesystem::path dir(g_PBC_PromptsPath);
+    if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
+    {
+        LOG_ERROR("server.loading", "[PBC] Prompts directory not found: {}", g_PBC_PromptsPath);
+        return false;
+    }
+
+    // Each prompt: { filename (without extension), reference to global variable }
+    struct PromptEntry { const char* filename; std::string& target; };
+    const PromptEntry prompts[] = {
+        { "Main.system",                      g_PBC_SystemPrompt                   },
+        { "Main.user",                        g_PBC_UserPrompt                     },
+        { "Condensation.system",              g_PBC_CondensationSystemPrompt       },
+        { "Condensation.user",                g_PBC_CondensationUserPrompt         },
+        { "DefaultCharacterDescription",      g_PBC_DefaultCharacterDescription    },
+        { "CharacterContext",                  g_PBC_CharacterContext               },
+        { "QuestCompleted.system",            g_PBC_QuestCompletedSystemPrompt     },
+        { "QuestCompleted.user",              g_PBC_QuestCompletedUserPrompt       },
+        { "QuestTaken.system",                g_PBC_QuestTakenSystemPrompt         },
+        { "QuestTaken.user",                  g_PBC_QuestTakenUserPrompt           },
+        { "RelationshipUpdate.system",        g_PBC_RelationshipUpdateSystemPrompt },
+        { "RelationshipUpdate.user",          g_PBC_RelationshipUpdateUserPrompt   },
+    };
+
+    bool allOk = true;
+    int customCount = 0;
+
+    for (auto const& entry : prompts)
+    {
+        std::string customPath  = (dir / (std::string(entry.filename) + ".custom.txt")).string();
+        std::string defaultPath = (dir / (std::string(entry.filename) + ".default.txt")).string();
+
+        bool usedCustom = false;
+        if (!LoadPromptFile(customPath, defaultPath, entry.target, usedCustom))
+        {
+            allOk = false;
+        }
+        else if (usedCustom)
+        {
+            ++customCount;
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] Loaded custom prompt '{}' ({} chars)", entry.filename, entry.target.size());
+        }
+    }
+
+    if (!allOk)
+        return false;
+
+    LOG_INFO("server.loading", "[PBC] Loaded {} prompt(s) from '{}' ({} custom)",
+             static_cast<int>(sizeof(prompts) / sizeof(prompts[0])), g_PBC_PromptsPath, customCount);
+    return true;
 }
 
 // ---------------------------------------------------------------------------

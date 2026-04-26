@@ -41,6 +41,7 @@ static bool HandleCharsReload(ChatHandler* handler, Optional<std::string_view>)
 {
     sConfigMgr->Reload();
     PBC_LoadConfig();
+    PBC_LoadPrompts();
     PBC_LoadCharacterCards();
     PBC_LoadCardAdditionsFromDB();
     PBC_LoadCharacterDataFromDB();
@@ -53,7 +54,7 @@ static bool HandleCharsReload(ChatHandler* handler, Optional<std::string_view>)
     ev.type = PBC_EventType::HistoryReload;
     PBC_PushEvent(std::move(ev));
 
-    handler->PSendSysMessage("[PBC] Config, character cards, card additions and character data reloaded. History/relationship reload queued (runs after pending events).");
+    handler->PSendSysMessage("[PBC] Config, prompts, character cards, card additions and character data reloaded. History/relationship reload queued (runs after pending events).");
     return true;
 }
 

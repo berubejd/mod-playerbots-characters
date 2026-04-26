@@ -1,0 +1,4 @@
+The party has completed a quest. Create a short description of it for a history log, phrasing it naturally based on how the quest was turned in. The quest ender type is provided — adjust your wording accordingly:
+- If the ender is a person: phrase it as reporting to someone (e.g. The party reported to Gryan Stoutmantle that they successfully slew the Defias Brotherhood leader.).
+- If the ender is an object (a world object like a shrine, monument, or delivery point): phrase it as delivering something to or interacting with that object (e.g. The party placed the recovered artifact at the Shrine of Remembrance, completing their task.).
+Note that the objectives may have been completed earlier — the party is now delivering the final report. Describe everything as it would be known by inhabitants of Azeroth — use in-universe language and avoid game terminology. Output only the summary in one line of plain text — no comments, no formatting, no meta.

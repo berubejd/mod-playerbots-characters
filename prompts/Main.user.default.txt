@@ -1,0 +1,14 @@
+[CHARACTER DESCRIPTION]
+{character_card}
+
+[HISTORY]
+{chat_history}
+
+[RELATIONSHIPS]
+{relationships}
+
+[CURRENT CONTEXT]
+{context}
+
+[CURRENT EVENT]
+{event}

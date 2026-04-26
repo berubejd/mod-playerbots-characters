@@ -138,7 +138,7 @@ Two config options control debug output:
 
 - [Events](docs/EVENTS.md) — list of in-game events characters can react to
 - [Commands](docs/COMMANDS.md) — available in-game and console commands
-- [Variables](docs/VARS.md) — template variables for prompts and character cards
+- [Prompts](docs/PROMPTS.md) — prompt templates, customization and template variables
 - [API Reference](docs/API.md) — HTTP API and WebSocket documentation
 - [Frontend](frontend/README.md) — web interface build and development
 

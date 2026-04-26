@@ -1,0 +1,5 @@
+[CHARACTER DESCRIPTION]
+{character_card}
+
+[HISTORY]
+{chat_history}

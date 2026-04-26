@@ -1,8 +1,52 @@
-# Variables
+# Prompts
 
-## General Variables
+All prompt templates are loaded from files on disk. This allows the module to ship improved default prompts with every update without requiring users to manually sync their config.
 
-These variables can be used in most prompts and character cards. It's recommended to only use things that change often (such as character level or character location) for `PBC.CharacterContext`.
+The prompt directory is configured via `PBC.PromptsPath` in the config (default: `../../../modules/mod-playerbots-characters/prompts`).
+
+
+## How It Works
+
+For each prompt, the module first looks for a **custom** version (`.custom.txt`). If found, it is used. If not found, the **default** version (`.default.txt`) is loaded instead.
+
+If any prompt fails to load (file not found, access error, etc.), the module is **disabled** — prompts are critical for operation.
+
+
+## Customizing a Prompt
+
+1. Find the default prompt file you want to customize in the prompts directory (e.g. `Main.system.default.txt`).
+2. Copy it to a new file with `.custom.txt` extension instead of `.default.txt` (e.g. `Main.system.custom.txt`).
+3. Edit the custom file as you see fit.
+4. Reload the module with `.chars reload` in-game or from the server console.
+
+Your custom file will not be overwritten by module updates. To revert to the default prompt, simply delete your `.custom.txt` file and reload.
+
+
+## Prompt Files
+
+| File | Description |
+|------|-------------|
+| `Main.system` | System prompt for the main character reply. Defines the character's behavior and response format. |
+| `Main.user` | User prompt for the main character reply. Structures the character card, history, relationships, context, and event. |
+| `Condensation.system` | System prompt for the condensation LLM call. Instructs the model to summarize history into a card addition. |
+| `Condensation.user` | User prompt for the condensation LLM call. Provides the character card and history for summarization. |
+| `DefaultCharacterDescription` | Default character description used when no character card file exists. Supports basic template variables. |
+| `CharacterContext` | Current context description appended to every prompt. Contains dynamic variables like location, combat status, etc. |
+| `QuestCompleted.system` | System prompt for the quest completion summary LLM call. |
+| `QuestCompleted.user` | User prompt for the quest completion summary. Supports quest-related template variables. |
+| `QuestTaken.system` | System prompt for the quest taken summary LLM call. |
+| `QuestTaken.user` | User prompt for the quest taken summary. Supports quest-related template variables. |
+| `RelationshipUpdate.system` | System prompt for the relationship update LLM call. |
+| `RelationshipUpdate.user` | User prompt for the relationship update. Supports relationship-related template variables. |
+
+
+## Template Variables
+
+Prompts and character cards support template variables enclosed in curly braces, e.g. `{char_name}`. Unknown variables (those that remain as `{token}` after substitution) are removed and a warning is logged.
+
+### General Variables
+
+These variables can be used in most prompts and character cards. It's recommended to only use things that change often (such as character level or character location) for `CharacterContext`.
 
 - `{char_name}` — name of the character
 - `{char_gender}` — gender of the character in game
@@ -17,21 +61,19 @@ These variables can be used in most prompts and character cards. It's recommende
 - `{equipment}` — dynamic equipment description, combining armor quality assessment with weapon details. When bags are at least ~40% full, a bag-space summary is also appended. For example "You have fine equipment made of leather, and wield two rare daggers, called Death's Sting and Deathstriker." or "You have excellent equipment made of plate, and wield an epic two-handed mace called Devastation. Your bags are almost full." or "You have simple equipment, and are unarmed."
 - `{char_group}` — dynamic group status, could be "You are not currently in a group." or "You are currently in a group led by John (male Tauren Druid) with the following members: Jane (female Troll Rogue) and Kevin (male Blood Elf Paladin)."
 
+### Main Prompt Variables
 
-## Main Prompt Variables
+These variables can only be used in the `Main.system` and `Main.user` prompts.
 
-These variables can only be used in `PBC.SystemPrompt` and `PBC.UserPrompt`.
-
-- `{character_card}` — current character card or generic description from `PBC.DefaultCharacterDescription` with an addition of previously condensed description
+- `{character_card}` — current character card or generic description from `DefaultCharacterDescription` with an addition of previously condensed description
 - `{chat_history}` — current chat history, including events
 - `{relationships}` — the character's current relationship descriptions with other party members. When the character is not in a group with a real player (e.g. a whisper interaction), falls back to "You don't know much about <player_name>.". When in a group, lists one entry per member, e.g. "You know John is brave and kind." or "You don't know much about John." for members with no data yet. Updated automatically every `PBC.RelationshipUpdateThreshold` new mentions of a character name in history.
-- `{context}` — current context for the character, defined in `PBC.CharacterContext`
+- `{context}` — current context for the character, defined in `CharacterContext`
 - `{event}` — recently happened event, see [Events](EVENTS.md) for details
 
+### Quest Prompt Variables
 
-## Quest Prompt Variables
-
-These variables can be used in `PBC.QuestCompletedUserPrompt` and `PBC.QuestTakenUserPrompt`.
+These variables can be used in the `QuestCompleted.user` and `QuestTaken.user` prompts.
 
 - `{quest_title}` — the title of the quest
 - `{quest_giver}` — the name of the NPC, game object, or item that offered the quest

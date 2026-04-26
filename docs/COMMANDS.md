@@ -2,7 +2,7 @@
 
 List of commands that can be used by the player or in the server console.
 
-- `.chars reload` — reloads module config, character cards, card additions and character data; also queues a history and relationship reload from the database that runs after all currently pending events are processed (so no in-flight history is lost)
+- `.chars reload` — reloads module config, prompts, character cards, card additions and character data; also queues a history and relationship reload from the database that runs after all currently pending events are processed (so no in-flight history is lost)
 - `.chars condense [char_name]` — forcefully condenses current history, updates character definition and clears current history; also triggers relationship updates for party members that have enough mention data
 - `.chars info [char_name]` — prints current character card with historical condensed additions and some basic statistics (number of additions, current number of messages in history, roll chance modifier)
 - `.chars reset [char_name]` — removes all historical condensed additions, current chat history and relationship data for the `char_name` character

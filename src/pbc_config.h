@@ -60,8 +60,9 @@ extern std::string g_PBC_RelationshipUpdateUserPrompt;
 extern uint32_t g_PBC_RelationshipUpdateThreshold;
 
 // ---------------------------------------------------------------------------
-// Character card paths
+// Paths
 // ---------------------------------------------------------------------------
+extern std::string g_PBC_PromptsPath;
 extern std::string g_PBC_CharacterCardsPath;
 
 // ---------------------------------------------------------------------------
@@ -426,6 +427,7 @@ uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance);
 // Loader / WorldScript
 // ---------------------------------------------------------------------------
 void PBC_LoadConfig(bool isStartup = false);
+bool PBC_LoadPrompts();
 void PBC_LoadCharacterCards();
 void PBC_LoadHistoryFromDB();
 void PBC_LoadCardAdditionsFromDB();
