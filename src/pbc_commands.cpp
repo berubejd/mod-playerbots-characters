@@ -5,6 +5,7 @@
 #include "pbc_llm.h"
 #include "pbc_http.h"
 #include "pbc_utils.h"
+#include "pbc_events.h"
 #include "Chat.h"
 #include "Config.h"
 #include "Player.h"
@@ -12,6 +13,7 @@
 #include "ChatCommand.h"
 #include "Log.h"
 #include "WorldSession.h"
+#include "Group.h"
 
 #include <algorithm>
 #include <mutex>
@@ -299,7 +301,7 @@ static bool HandleCharsRelationship(ChatHandler* handler,
 }
 
 // ---------------------------------------------------------------------------
-// .chars relationship_update <char_name> <target_char_name>
+// .chars relationship-update <char_name> <target_char_name>
 // Forces an immediate relationship update LLM call for char_name -> target.
 // ---------------------------------------------------------------------------
 static bool HandleCharsRelationshipUpdate(ChatHandler* handler,
@@ -309,7 +311,7 @@ static bool HandleCharsRelationshipUpdate(ChatHandler* handler,
     if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
     if (charNameArg.empty() || targetNameArg.empty())
     {
-        handler->PSendSysMessage("[PBC] Usage: chars relationship_update <char_name> <target_char_name>");
+        handler->PSendSysMessage("[PBC] Usage: chars relationship-update <char_name> <target_char_name>");
         return false;
     }
 
@@ -390,7 +392,7 @@ static bool HandleCharsRollModifier(ChatHandler* handler,
     // Need at least a character name
     if (!nameArg || nameArg->empty())
     {
-        handler->PSendSysMessage("[PBC] Usage: chars roll_modifier <char_name> [roll_modifier]");
+        handler->PSendSysMessage("[PBC] Usage: chars roll-modifier <char_name> [roll_modifier]");
         handler->PSendSysMessage("[PBC]   roll_modifier: integer from -100 to 100. Positive = more talkative, negative = less talkative.");
         handler->PSendSysMessage("[PBC]   Omit roll_modifier to display the current value.");
         return false;
@@ -525,6 +527,109 @@ static bool HandleCharsWeb(ChatHandler* handler, Optional<std::string_view>)
 }
 
 // ---------------------------------------------------------------------------
+// .chars narrate <char_name> <message>
+// Adds a Narrator: *<message>* line to the specified character's history.
+// In-game only — no LLM call, no event dispatch, pure history append.
+// ---------------------------------------------------------------------------
+static bool HandleCharsNarrate(ChatHandler* handler,
+                               std::string_view charNameArg,
+                               Tail messageArg)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+
+    if (!handler->GetSession())
+    {
+        handler->PSendSysMessage("[PBC] This command is only available in-game.");
+        return false;
+    }
+
+    if (charNameArg.empty() || messageArg.empty())
+    {
+        handler->PSendSysMessage("[PBC] Usage: chars narrate <char_name> <message>");
+        return false;
+    }
+
+    Player* target = ObjectAccessor::FindPlayerByName(std::string(charNameArg));
+    if (!target)
+    {
+        handler->PSendSysMessage("[PBC] Character '{}' not found or not online.", charNameArg);
+        return false;
+    }
+
+    if (!target->GetSession() || !target->GetSession()->IsBot())
+    {
+        handler->PSendSysMessage("[PBC] '{}' is not a playerbot.", target->GetName());
+        return false;
+    }
+
+    uint64_t botGuid = target->GetGUID().GetCounter();
+    std::string histLine = PBC_MakeHistLine(std::string(messageArg));
+    PBC_AppendHistory(botGuid, histLine);
+
+    handler->PSendSysMessage("[PBC] Narrator line added to '{}'s history.", target->GetName());
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// .chars narrate-group <message>
+// Adds a Narrator: *<message>* line to every playerbot in the caller's group.
+// In-game only — fails if the caller has no bots in their group.
+// ---------------------------------------------------------------------------
+static bool HandleCharsNarrateGroup(ChatHandler* handler, Tail messageArg)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+
+    if (!handler->GetSession())
+    {
+        handler->PSendSysMessage("[PBC] This command is only available in-game.");
+        return false;
+    }
+
+    if (messageArg.empty())
+    {
+        handler->PSendSysMessage("[PBC] Usage: chars narrate-group <message>");
+        return false;
+    }
+
+    Player* player = handler->GetSession()->GetPlayer();
+    if (!player)
+    {
+        handler->PSendSysMessage("[PBC] Could not retrieve player data.");
+        return false;
+    }
+
+    Group* grp = player->GetGroup();
+    if (!grp)
+    {
+        handler->PSendSysMessage("[PBC] You are not in a group.");
+        return false;
+    }
+
+    std::string histLine = PBC_MakeHistLine(std::string(messageArg));
+    int count = 0;
+
+    for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || !member->IsInWorld()) continue;
+        WorldSession* sess = member->GetSession();
+        if (!sess || !sess->IsBot()) continue;
+
+        PBC_AppendHistory(member->GetGUID().GetCounter(), histLine);
+        ++count;
+    }
+
+    if (count == 0)
+    {
+        handler->PSendSysMessage("[PBC] No playerbots found in your group.");
+        return false;
+    }
+
+    handler->PSendSysMessage("[PBC] Narrator line added to {} character(s) in your group.", count);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -540,11 +645,13 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
         { "reset",               HandleCharsReset,              SEC_GAMEMASTER, Console::Yes },
         { "history",             HandleCharsHistory,            SEC_GAMEMASTER, Console::Yes },
         { "relationship",        HandleCharsRelationship,       SEC_GAMEMASTER, Console::Yes },
-        { "relationship_update", HandleCharsRelationshipUpdate, SEC_GAMEMASTER, Console::Yes },
-        { "roll_modifier",       HandleCharsRollModifier,       SEC_GAMEMASTER, Console::Yes },
+        { "relationship-update", HandleCharsRelationshipUpdate, SEC_GAMEMASTER, Console::Yes },
+        { "roll-modifier",       HandleCharsRollModifier,       SEC_GAMEMASTER, Console::Yes },
         { "context",             HandleCharsContext,            SEC_GAMEMASTER, Console::Yes },
         { "apitest",             HandleCharsApiTest,            SEC_GAMEMASTER, Console::Yes },
         { "web",                 HandleCharsWeb,                SEC_PLAYER,    Console::No  },
+        { "narrate",             HandleCharsNarrate,            SEC_GAMEMASTER, Console::No  },
+        { "narrate-group",       HandleCharsNarrateGroup,       SEC_GAMEMASTER, Console::No  },
     };
 
     static ChatCommandTable rootTable =
