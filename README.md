@@ -119,7 +119,7 @@ Start the server, set up some altbots for yourself or invite existing random bot
 Start playing, chat with your characters, discuss anything you like, build relationships and enjoy the game.
 
 > [!NOTE]
-> Depending on the model you are using, your mileage may vary. Do regular backups with `modules/mod-playerbots-characters/tools/pbc_backup.sh` and adjust things as needed in the database (followed by `.chars reload` command). Two other helper tools (`pbc_info.sh` and `pbc_history.sh`) may also help with tracking what's going on.
+> Depending on the model you are using, your mileage may vary. Do regular backups with `modules/mod-playerbots-characters/tools/pbc_backup.sh` and adjust things as needed either in the database (followed by `.chars reload` command) or via the included web interface. There are also two helper tools (`pbc_info.sh` and `pbc_history.sh`) which might help with tracking what's going on.
 
 ### API & Web App
 
