@@ -1,6 +1,7 @@
 #include "pbc_character.h"
 #include "pbc_config.h"
 #include "pbc_database.h"
+#include "pbc_http.h"
 #include "pbc_utils.h"
 #include "Log.h"
 #include "DatabaseEnv.h"
@@ -516,12 +517,13 @@ static std::string TimeOfDayLabel()
 #ifdef MOD_WEATHER_VIBE
 // Returns the weather clause to append after the time-of-day, e.g.
 // "it's foggy", "it's raining lightly", "there is a heavy sandstorm".
-// Returns nullptr for WEATHER_STATE_FINE (clear sky — no clause appended).
+// For WEATHER_STATE_FINE (clear sky) returns "the weather is fine" to
+// provide reliable context instead of silence.
 static char const* WeatherClause(WeatherState s)
 {
     switch (s)
     {
-        case WEATHER_STATE_FINE:             return nullptr;
+        case WEATHER_STATE_FINE:             return "the weather is fine";
         case WEATHER_STATE_FOG:              return "it's foggy";
         case WEATHER_STATE_LIGHT_RAIN:       return "it's raining lightly";
         case WEATHER_STATE_MEDIUM_RAIN:      return "it's raining";
@@ -558,8 +560,8 @@ static std::string BuildSceneStr(Player* bot)
             if (clause)
             {
                 timeWeather = "it's " + timeLabel + " and " + std::string(clause);
-                // When indoors, note that the character is sheltered from the weather
-                if (!bot->IsOutdoors())
+                // When indoors and weather is not fine, note that the character is sheltered
+                if (!bot->IsOutdoors() && it->second.state != WEATHER_STATE_FINE)
                     timeWeather += ", but you are inside and sheltered from the weather";
             }
         }
@@ -674,47 +676,53 @@ static std::string BuildGroupStatusStr(Player* bot)
 // ---------------------------------------------------------------------------
 
 std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot, const std::string& event,
-                                bool expandComposites)
+                                bool expandComposites, bool annotate)
 {
     std::string out = tmpl;
     PBC_ExpandNewlineEscapes(out);
 
+    // Helper: replaces {key} with value (or {key}value when annotate=true)
+    auto replace = [&](const std::string& key, const std::string& value)
+    {
+        PBC_ReplaceToken(out, key, annotate ? ("{" + key + "}" + value) : value);
+    };
+
     if (bot)
     {
-        PBC_ReplaceToken(out, "char_name",   bot->GetName());
-        PBC_ReplaceToken(out, "char_gender", GenderStr(bot->getGender()));
-        PBC_ReplaceToken(out, "char_race",   RaceStr(bot->getRace()));
-        PBC_ReplaceToken(out, "char_class",  ClassStr(bot->getClass()));
-        PBC_ReplaceToken(out, "char_role",   RoleStr(bot));
-        PBC_ReplaceToken(out, "char_level",  std::to_string(bot->GetLevel()));
-        { uint32 m = bot->GetMoney(); PBC_ReplaceToken(out, "char_gold", std::to_string(m / 10000) + "g " + std::to_string((m % 10000) / 100) + "s"); }
+        replace("char_name",   bot->GetName());
+        replace("char_gender", GenderStr(bot->getGender()));
+        replace("char_race",   RaceStr(bot->getRace()));
+        replace("char_class",  ClassStr(bot->getClass()));
+        replace("char_role",   RoleStr(bot));
+        replace("char_level",  std::to_string(bot->GetLevel()));
+        { uint32 m = bot->GetMoney(); replace("char_gold", std::to_string(m / 10000) + "g " + std::to_string((m % 10000) / 100) + "s"); }
 
         // Scene (location + travel state + time of day + optional weather)
-        PBC_ReplaceToken(out, "scene", BuildSceneStr(bot));
+        replace("scene", BuildSceneStr(bot));
 
         // Combat status
-        PBC_ReplaceToken(out, "combat_status", PBC_BuildCombatStatusStr(bot));
+        replace("combat_status", PBC_BuildCombatStatusStr(bot));
 
         // Equipment
-        PBC_ReplaceToken(out, "equipment", PBC_BuildEquipmentStr(bot));
+        replace("equipment", PBC_BuildEquipmentStr(bot));
 
         // Group status
-        PBC_ReplaceToken(out, "char_group", BuildGroupStatusStr(bot));
+        replace("char_group", BuildGroupStatusStr(bot));
 
         // Line-of-sight
-        PBC_ReplaceToken(out, "char_los", PBC_BuildLosStr(bot));
+        replace("char_los", PBC_BuildLosStr(bot));
 
-        PBC_ReplaceToken(out, "nearby_chars", "");
+        replace("nearby_chars", "");
 
         if (expandComposites)
         {
-            PBC_ReplaceToken(out, "character_card", PBC_GetCharacterCard(bot));
-            PBC_ReplaceToken(out, "chat_history",   PBC_GetChatHistory(bot->GetGUID().GetCounter()));
-            PBC_ReplaceToken(out, "context",        PBC_GetCharacterContext(bot));
+            replace("character_card", PBC_GetCharacterCard(bot));
+            replace("chat_history",   PBC_GetChatHistory(bot->GetGUID().GetCounter()));
+            replace("context",        PBC_GetCharacterContext(bot));
         }
     }
 
-    PBC_ReplaceToken(out, "event", event);
+    replace("event", event);
     return out;
 }
 
@@ -780,14 +788,76 @@ std::string PBC_GetChatHistory(uint64_t botGuid)
 
 void PBC_AppendHistory(uint64_t botGuid, const std::string& line)
 {
+    static const std::string kTimePassesLine = "Narrator: *some time passes*";
+    static constexpr time_t  kTimeGapThresholdSec = 300; // 5 minutes
+
+    bool needTimePasses = false;
+    bool dedup = false;
+
+    // Collect WS history events inside the lock (with correct 1-based ids),
+    // emit them outside the lock to avoid holding g_PBC_HistoryMutex during
+    // network I/O.
+    std::vector<std::pair<size_t, std::string>> wsHistoryEvents;
+
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
         auto& hist = g_PBC_ChatHistory[botGuid];
+
+        // Check for time gap before the new line.
+        auto timeIt = g_PBC_LastHistoryTime.find(botGuid);
+        if (timeIt != g_PBC_LastHistoryTime.end())
+        {
+            time_t lastTime = timeIt->second;
+            time_t now = time(nullptr);
+            if (now - lastTime >= kTimeGapThresholdSec)
+            {
+                // Check if last line is already "some time passes"
+                bool lastIsTimePasses = !hist.empty() && hist.back() == kTimePassesLine;
+
+                // Check if last line and current line are both private messages.
+                // A private message line starts with "Name (privately to ...", i.e.
+                // the first space in the line must be the one before "(privately to".
+                auto isPrivateMsg = [](const std::string& s) -> bool {
+                    auto privPos = s.find(" (privately to ");
+                    if (privPos == std::string::npos || privPos == 0)
+                        return false;
+                    auto firstSpace = s.find(' ');
+                    return firstSpace == privPos;
+                };
+                bool lastIsPrivate = !hist.empty() && isPrivateMsg(hist.back());
+                bool currentIsPrivate = isPrivateMsg(line);
+
+                if (!lastIsTimePasses && !(lastIsPrivate && currentIsPrivate))
+                {
+                    needTimePasses = true;
+                    hist.push_back(kTimePassesLine);
+                    wsHistoryEvents.emplace_back(hist.size(), kTimePassesLine);
+                }
+            }
+        }
+
+        // Dedup check
         if (!hist.empty() && hist.back() == line)
-            return;
-        hist.push_back(line);
+            dedup = true;
+        else
+        {
+            hist.push_back(line);
+            wsHistoryEvents.emplace_back(hist.size(), line);
+        }
+
+        // Update timestamp
+        g_PBC_LastHistoryTime[botGuid] = time(nullptr);
     }
-    DB_InsertHistoryLine(botGuid, line);
+
+    // DB writes outside the lock
+    if (needTimePasses)
+        DB_InsertHistoryLine(botGuid, kTimePassesLine);
+    if (!dedup)
+        DB_InsertHistoryLine(botGuid, line);
+
+    // WS notifications outside the lock
+    for (const auto& ev : wsHistoryEvents)
+        PBC_WsNotifyHistory(botGuid, ev.first, ev.second);
 }
 
 // ---------------------------------------------------------------------------
@@ -804,6 +874,160 @@ int PBC_EstimateHistoryTokens(uint64_t botGuid)
     for (const auto& line : it->second)
         total += static_cast<int>(line.size()) / 4 + 1;
     return total;
+}
+
+// ---------------------------------------------------------------------------
+// PBC_UpdateHistoryLine  (thread-safe)
+//
+// Updates a single history line at the given 0-based index for a character.
+// The current content at the index is compared against originalMessage first
+// — a mismatch returns PBC_HistoryResult::Desync without modifying anything.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_UpdateHistoryLine(uint64_t botGuid, size_t index,
+                                        const std::string& newMessage,
+                                        const std::string& originalMessage)
+{
+    std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+    auto it = g_PBC_ChatHistory.find(botGuid);
+    if (it == g_PBC_ChatHistory.end() || index >= it->second.size())
+        return PBC_HistoryResult::NotFound;
+
+    if (it->second[index] != originalMessage)
+        return PBC_HistoryResult::Desync;
+
+    it->second[index] = newMessage;
+
+    // DB write outside the lock — but we need to release first, so capture
+    // the parameters before unlocking.  The DB update is best-effort; the
+    // in-memory state is authoritative.
+    DB_UpdateHistoryLineByIndex(botGuid, index, newMessage);
+    return PBC_HistoryResult::Ok;
+}
+
+// ---------------------------------------------------------------------------
+// PBC_DeleteHistoryLine  (thread-safe)
+//
+// Deletes a single history line at the given 0-based index for a character.
+// The current content at the index is compared against originalMessage first
+// — a mismatch returns PBC_HistoryResult::Desync without modifying anything.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_DeleteHistoryLine(uint64_t botGuid, size_t index,
+                                        const std::string& originalMessage)
+{
+    std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+    auto it = g_PBC_ChatHistory.find(botGuid);
+    if (it == g_PBC_ChatHistory.end() || index >= it->second.size())
+        return PBC_HistoryResult::NotFound;
+
+    if (it->second[index] != originalMessage)
+        return PBC_HistoryResult::Desync;
+
+    it->second.erase(it->second.begin() + static_cast<std::ptrdiff_t>(index));
+
+    DB_DeleteHistoryLineByIndex(botGuid, index);
+    return PBC_HistoryResult::Ok;
+}
+
+// ---------------------------------------------------------------------------
+// PBC_UpdateCardAddition  (thread-safe)
+//
+// Updates a single card addition at the given 0-based index for a character.
+// The current text at the index is compared against originalText first — a
+// mismatch returns PBC_HistoryResult::Desync without modifying anything.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_UpdateCardAddition(uint64_t botGuid, size_t index,
+                                          const std::string& newText,
+                                          const std::string& originalText)
+{
+    std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
+    auto it = g_PBC_CardAdditions.find(botGuid);
+    if (it == g_PBC_CardAdditions.end() || index >= it->second.size())
+        return PBC_HistoryResult::NotFound;
+
+    if (it->second[index] != originalText)
+        return PBC_HistoryResult::Desync;
+
+    it->second[index] = newText;
+    DB_UpdateCardAdditionByIndex(botGuid, index, newText);
+    return PBC_HistoryResult::Ok;
+}
+
+// ---------------------------------------------------------------------------
+// PBC_DeleteCardAddition  (thread-safe)
+//
+// Deletes a single card addition at the given 0-based index for a character.
+// The current text at the index is compared against originalText first — a
+// mismatch returns PBC_HistoryResult::Desync without modifying anything.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_DeleteCardAddition(uint64_t botGuid, size_t index,
+                                          const std::string& originalText)
+{
+    std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
+    auto it = g_PBC_CardAdditions.find(botGuid);
+    if (it == g_PBC_CardAdditions.end() || index >= it->second.size())
+        return PBC_HistoryResult::NotFound;
+
+    if (it->second[index] != originalText)
+        return PBC_HistoryResult::Desync;
+
+    it->second.erase(it->second.begin() + static_cast<std::ptrdiff_t>(index));
+    DB_DeleteCardAdditionByIndex(botGuid, index);
+    return PBC_HistoryResult::Ok;
+}
+
+// ---------------------------------------------------------------------------
+// PBC_UpdateRelationship  (thread-safe)
+//
+// Updates the relationship text for a specific (bot, target) pair.
+// The current text is compared against originalText first — a mismatch
+// returns PBC_HistoryResult::Desync without modifying anything.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_UpdateRelationship(uint64_t botGuid, const std::string& targetName,
+                                          const std::string& newText,
+                                          const std::string& originalText)
+{
+    std::lock_guard<std::mutex> lock(g_PBC_RelationshipsMutex);
+    auto charIt = g_PBC_Relationships.find(botGuid);
+    if (charIt == g_PBC_Relationships.end())
+        return PBC_HistoryResult::NotFound;
+
+    auto relIt = charIt->second.find(targetName);
+    if (relIt == charIt->second.end())
+        return PBC_HistoryResult::NotFound;
+
+    if (relIt->second.text != originalText)
+        return PBC_HistoryResult::Desync;
+
+    relIt->second.text = newText;
+    DB_UpdateRelationshipText(botGuid, targetName, newText);
+    return PBC_HistoryResult::Ok;
+}
+
+// ---------------------------------------------------------------------------
+// PBC_DeleteRelationship  (thread-safe)
+//
+// Deletes the relationship entry for a specific (bot, target) pair.
+// The current text is compared against originalText first — a mismatch
+// returns PBC_HistoryResult::Desync without modifying anything.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_DeleteRelationship(uint64_t botGuid, const std::string& targetName,
+                                          const std::string& originalText)
+{
+    std::lock_guard<std::mutex> lock(g_PBC_RelationshipsMutex);
+    auto charIt = g_PBC_Relationships.find(botGuid);
+    if (charIt == g_PBC_Relationships.end())
+        return PBC_HistoryResult::NotFound;
+
+    auto relIt = charIt->second.find(targetName);
+    if (relIt == charIt->second.end())
+        return PBC_HistoryResult::NotFound;
+
+    if (relIt->second.text != originalText)
+        return PBC_HistoryResult::Desync;
+
+    charIt->second.erase(relIt);
+    DB_DeleteRelationship(botGuid, targetName);
+    return PBC_HistoryResult::Ok;
 }
 
 // ---------------------------------------------------------------------------

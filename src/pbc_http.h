@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <cstdint>
 
 // Thin wrapper around cpp-httplib for synchronous HTTP/HTTPS POST requests.
 // Supports custom auth headers (Bearer token, x-api-key, etc.).
@@ -43,5 +44,28 @@ void PBC_HttpServerStop();
 
 // Returns true if the server is currently listening.
 bool PBC_HttpServerIsRunning();
+
+// ---------------------------------------------------------------------------
+// OTP generation (called from the main thread by .chars web command).
+//
+// Generates a random 6-digit one-time password for the given player GUID.
+// The OTP is valid for 2 minutes and can be exchanged for a bearer token
+// via the /api/token endpoint.  Returns the OTP string, or "" on error.
+// ---------------------------------------------------------------------------
+std::string PBC_HttpServerGenerateOTP(uint64_t playerGuid);
+
+// ---------------------------------------------------------------------------
+// WebSocket event notifications (thread-safe, no-op when server is not running)
+//
+// Called from the event thread or main thread to push real-time notifications
+// to WS clients that are subscribed to a specific character GUID.
+// ---------------------------------------------------------------------------
+
+// Notify subscribed WS clients of a simple event type ("thinks", "relationship", "additions").
+void PBC_WsNotify(uint64_t botGuid, const std::string& eventType);
+
+// Notify subscribed WS clients of a history event with message data.
+// messageId is the 1-based history index (matching the "id" field from GET /api/history).
+void PBC_WsNotifyHistory(uint64_t botGuid, size_t messageId, const std::string& text);
 
 #endif // MOD_PBC_HTTP_H

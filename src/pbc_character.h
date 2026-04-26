@@ -39,6 +39,53 @@ void        PBC_AppendHistory(uint64_t botGuid, const std::string& line);
 int         PBC_EstimateHistoryTokens(uint64_t botGuid);
 
 // ---------------------------------------------------------------------------
+// Mutation result (thread-safe, also updates the database)
+// ---------------------------------------------------------------------------
+enum class PBC_HistoryResult { Ok, NotFound, Desync };
+
+// ---------------------------------------------------------------------------
+// History mutation (thread-safe, also updates the database)
+//
+// index is 0-based, matching the position returned by GET /api/history.
+// originalMessage: the current message at the index is compared against this
+// value before applying the mutation.  If they differ, Desync is returned
+// and no modification is made.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_UpdateHistoryLine(uint64_t botGuid, size_t index,
+                                        const std::string& newMessage,
+                                        const std::string& originalMessage);
+PBC_HistoryResult PBC_DeleteHistoryLine(uint64_t botGuid, size_t index,
+                                        const std::string& originalMessage);
+
+// ---------------------------------------------------------------------------
+// Card addition mutation (thread-safe, also updates the database)
+//
+// index is 0-based (the API uses 1-based IDs; the HTTP handler converts).
+// originalText: the current addition text at the index is compared against this
+// value before applying the mutation.  If they differ, Desync is returned
+// and no modification is made.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_UpdateCardAddition(uint64_t botGuid, size_t index,
+                                          const std::string& newText,
+                                          const std::string& originalText);
+PBC_HistoryResult PBC_DeleteCardAddition(uint64_t botGuid, size_t index,
+                                          const std::string& originalText);
+
+// ---------------------------------------------------------------------------
+// Relationship mutation (thread-safe, also updates the database)
+//
+// targetName identifies the relationship entry (the key in the map).
+// originalText: the current relationship text is compared against this value
+// before applying the mutation.  If they differ, Desync is returned and no
+// modification is made.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_UpdateRelationship(uint64_t botGuid, const std::string& targetName,
+                                          const std::string& newText,
+                                          const std::string& originalText);
+PBC_HistoryResult PBC_DeleteRelationship(uint64_t botGuid, const std::string& targetName,
+                                          const std::string& originalText);
+
+// ---------------------------------------------------------------------------
 // Character card / context (main-thread only)
 // ---------------------------------------------------------------------------
 std::string PBC_GetCharacterCard(Player* bot);
@@ -49,10 +96,16 @@ std::string PBC_GetCharacterContext(Player* bot);
 //
 // expandComposites=false skips {character_card}, {chat_history}, {context}
 // to prevent infinite recursion when called from card/context builders.
+//
+// annotate=true replaces {key} with {key}value instead of just value,
+// leaving the variable name visible in the output so the frontend can
+// identify which variable produced each part.  Used only by the API
+// context endpoint — LLM requests always use annotate=false.
 // ---------------------------------------------------------------------------
 std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot,
                                 const std::string& event = "",
-                                bool expandComposites = true);
+                                bool expandComposites = true,
+                                bool annotate = false);
 
 // ---------------------------------------------------------------------------
 // Push a Condensation event for a character onto the global event queue.

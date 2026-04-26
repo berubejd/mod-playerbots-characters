@@ -79,17 +79,4 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
                              const std::string& histLine, uint32_t chance,
                              bool notifyRealPlayers = true);
 
-// ---------------------------------------------------------------------------
-// Dispatch an event to a single specific character.
-// skipHistoryIfSilent=true: if the character does not respond, the histLine is NOT
-// written to its history (avoids noise from frequent low-chance events).
-// notifyRealPlayers=false: suppress the narrator system message sent to real
-// players in the group (used for location events, which fire per individual
-// character and would be noisy if shown for each one).
-// ---------------------------------------------------------------------------
-void PBC_DispatchCharacterEvent(Player* bot, const std::string& eventLine,
-                          const std::string& histLine, uint32_t chance,
-                          bool skipHistoryIfSilent = false,
-                          bool notifyRealPlayers = true);
-
 #endif // MOD_PBC_EVENTS_H

@@ -188,7 +188,6 @@ static PBC_EventItem BuildCharacterEvent(const std::vector<Player*>& bots,
                                     const std::string& histLine,
                                     uint32_t chance,
                                     uint32_t chatType,
-                                    bool skipHistoryIfSilent = false,
                                     bool canCreateEvents = false)
 {
     PBC_EventItem ev;
@@ -196,7 +195,6 @@ static PBC_EventItem BuildCharacterEvent(const std::vector<Player*>& bots,
     ev.eventLine             = eventLine;
     ev.histLine              = histLine;
     ev.chatType              = chatType;
-    ev.skipHistoryIfSilent   = skipHistoryIfSilent;
     ev.canCreateEvents       = canCreateEvents;
 
     for (Player* bot : bots)
@@ -249,7 +247,7 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
                  anchor->GetName(), bots.size(), chance, eventLine);
 
     PBC_EventItem ev = BuildCharacterEvent(bots, eventLine, histLine, chance, CHAT_MSG_PARTY,
-                                     /*skipHistoryIfSilent=*/false, /*canCreateEvents=*/true);
+                                     /*canCreateEvents=*/true);
 
     // If the anchor is itself a bot (e.g. a bot leveling up), it was excluded
     // from FindGroupBots() but still needs to receive the histLine and any
@@ -260,27 +258,6 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
     PBC_PushEvent(std::move(ev));
 }
 
-// ---------------------------------------------------------------------------
-// PBC_DispatchCharacterEvent
-// ---------------------------------------------------------------------------
-
-void PBC_DispatchCharacterEvent(Player* bot, const std::string& eventLine,
-                          const std::string& histLine, uint32_t chance,
-                          bool skipHistoryIfSilent,
-                          bool notifyRealPlayers)
-{
-    if (!PBC_PTR_VALID(bot)) return;
-
-    if (notifyRealPlayers)
-        PBC_NotifyRealPlayersInGroup(bot, eventLine);
-
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] DispatchCharacterEvent: character={} chance={}% event=\"{}\"",
-                 bot->GetName(), chance, eventLine);
-
-    PBC_PushEvent(BuildCharacterEvent({ bot }, eventLine, histLine, chance, CHAT_MSG_PARTY,
-                                skipHistoryIfSilent, /*canCreateEvents=*/true));
-}
 
 // ---------------------------------------------------------------------------
 // HandleChatMessage  (shared for all chat types)
@@ -805,9 +782,12 @@ void PBC_PlayerEvents::OnPlayerDuelEnd(Player* winner, Player* loser, DuelComple
         g_PBC_ReplyChanceDuel);
 }
 
-void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
+void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 oldLevel)
 {
     if (!g_PBC_Enable || !PBC_PTR_VALID(player)) return;
+
+    // Skip level-up events for low levels to avoid spamming history.
+    if (oldLevel < 30) return;
 
     WorldSession* sess = player->GetSession();
     bool anchorIsReal = PBC_PTR_VALID(sess) && !sess->IsBot();
@@ -846,7 +826,7 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
 
     PBC_EventItem ev = BuildCharacterEvent(bots, eventLine, histLine,
                                      g_PBC_ReplyChanceLevelUp, CHAT_MSG_PARTY,
-                                     /*skipHistoryIfSilent=*/true, /*canCreateEvents=*/true);
+                                     /*canCreateEvents=*/true);
 
     if (anchorIsBot)
         ev.silentCharGuids.push_back(player->GetGUID().GetCounter());
@@ -938,10 +918,9 @@ void PBC_PlayerEvents::OnPlayerCreatureKill(Player* killer, Creature* killed)
 
     PBC_NotifyRealPlayersInGroup(killer, eventLine);
 
-    // skipHistoryIfSilent=false: boss kills are always written to all histories.
     PBC_EventItem ev = BuildCharacterEvent(bots, eventLine, histLine,
                                      g_PBC_ReplyChanceBossKill, CHAT_MSG_PARTY,
-                                     /*skipHistoryIfSilent=*/false, /*canCreateEvents=*/true);
+                                     /*canCreateEvents=*/true);
 
     // If the killer is itself a bot it was excluded from FindGroupBots() but
     // still needs to receive the event in its own history.
@@ -1153,8 +1132,7 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     ev.anchorObjGuid      = player->GetGUID();
 
     PBC_EventItem rolled = BuildCharacterEvent(bots, "", "", g_PBC_ReplyChanceQuestCompleted,
-                                         CHAT_MSG_PARTY, /*skipHistoryIfSilent=*/false,
-                                         /*canCreateEvents=*/true);
+                                         CHAT_MSG_PARTY, /*canCreateEvents=*/true);
     ev.respondingChars  = std::move(rolled.respondingChars);
     ev.silentCharGuids  = std::move(rolled.silentCharGuids);
 
@@ -1201,8 +1179,7 @@ static void HandleQuestTaken(Player* player, Quest const* quest, std::string con
     ev.anchorObjGuid      = player->GetGUID();
 
     PBC_EventItem rolled = BuildCharacterEvent(bots, "", "", g_PBC_ReplyChanceQuestTaken,
-                                         CHAT_MSG_PARTY, /*skipHistoryIfSilent=*/false,
-                                         /*canCreateEvents=*/true);
+                                         CHAT_MSG_PARTY, /*canCreateEvents=*/true);
     ev.respondingChars  = std::move(rolled.respondingChars);
     ev.silentCharGuids  = std::move(rolled.silentCharGuids);
 

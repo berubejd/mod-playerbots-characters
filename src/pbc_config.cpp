@@ -62,7 +62,6 @@ uint32_t g_PBC_RollPenaltyOnAnswer  = 45;
 uint32_t g_PBC_ReplyChanceItem     = 5;
 uint32_t g_PBC_ReplyChanceDuel     = 5;
 uint32_t g_PBC_ReplyChanceLevelUp  = 5;
-uint32_t g_PBC_ReplyChanceLocation        = 5;
 uint32_t g_PBC_ReplyChanceBossKill       = 35;
 uint32_t g_PBC_ReplyChanceQuestCompleted = 20;
 uint32_t g_PBC_ReplyChanceQuestTaken     = 10;
@@ -74,16 +73,21 @@ std::string g_PBC_QuestTakenUserPrompt;
 
 std::vector<std::string> g_PBC_Blacklist;
 
-int         g_PBC_HttpServerPort     = 0;
-std::string g_PBC_HttpServerBind     = "127.0.0.1";
-int         g_PBC_HttpServerTimeout  = 15;
-std::string g_PBC_HttpServerBaseUrl  = "http://127.0.0.1:8501";
+int         g_PBC_HttpServerPort            = 0;
+std::string g_PBC_HttpServerBind            = "127.0.0.1";
+int         g_PBC_HttpServerTimeout         = 15;
+std::string g_PBC_HttpServerBaseUrl         = "http://127.0.0.1:8501";
+std::string g_PBC_HttpServerPrivateKey;
+std::string g_PBC_HttpServerFrontendPath    = "../../../modules/mod-playerbots-characters/frontend/dist";
 
 std::queue<PBC_PendingAction> g_PBC_PendingActions;
 std::mutex                    g_PBC_PendingActionsMutex;
 
 std::queue<PBC_PendingEventRequest> g_PBC_PendingEventRequests;
 std::mutex                          g_PBC_PendingEventRequestsMutex;
+
+std::queue<PBC_PendingWhisperRequest> g_PBC_PendingWhisperRequests;
+std::mutex                            g_PBC_PendingWhisperRequestsMutex;
 
 std::queue<PBC_EventItem>  g_PBC_EventQueue;
 std::mutex                 g_PBC_EventQueueMutex;
@@ -100,10 +104,9 @@ std::unordered_map<std::string, std::string> g_PBC_CharacterCards;
 std::unordered_map<uint64_t, std::unordered_map<std::string, PBC_RelationshipEntry>> g_PBC_Relationships;
 std::mutex g_PBC_RelationshipsMutex;
 
-std::unordered_map<uint64_t, PBC_LocationState> g_PBC_LocationStates;
-std::unordered_map<uint64_t, std::string>        g_PBC_CharacterLastLocations;
-std::unordered_map<uint64_t, int32_t>            g_PBC_RollChanceModifiers;
-uint32_t g_PBC_LocationPollAccum = 0;
+std::unordered_map<uint64_t, int32_t> g_PBC_RollChanceModifiers;
+
+std::unordered_map<uint64_t, time_t> g_PBC_LastHistoryTime;
 
 // ---------------------------------------------------------------------------
 // PBC_PushEvent
@@ -169,6 +172,7 @@ static void PBC_CondenseInline(PBC_CharacterSnapshot& snap,
         g_PBC_CardAdditions[snap.charGuidRaw].push_back(res.text);
     }
     DB_InsertCardAddition(snap.charGuidRaw, res.text);
+    PBC_WsNotify(snap.charGuidRaw, "additions");
 
     // Keep only the last N lines as the tail (configured via PBC.CondensationPreservedLines)
     const size_t kTailLines = static_cast<size_t>(g_PBC_CondensationPreservedLines);
@@ -224,19 +228,23 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         LOG_INFO("server.loading", "[PBC] HistoryReload: reloading chat history from DB...");
 
         QueryResult result = CharacterDatabase.Query(
-            "SELECT bot_guid, message FROM mod_pbc_chat_history ORDER BY id ASC"
+            "SELECT bot_guid, message, UNIX_TIMESTAMP(timestamp) FROM mod_pbc_chat_history ORDER BY id ASC"
         );
 
         {
             std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
             g_PBC_ChatHistory.clear();
+            g_PBC_LastHistoryTime.clear();
 
             if (result)
             {
                 do {
                     uint64_t    botGuid = (*result)[0].Get<uint64_t>();
                     std::string msg     = (*result)[1].Get<std::string>();
+                    time_t      ts      = static_cast<time_t>((*result)[2].Get<uint64_t>());
                     g_PBC_ChatHistory[botGuid].push_back(std::move(msg));
+                    if (ts > 0)
+                        g_PBC_LastHistoryTime[botGuid] = ts;
                 } while (result->NextRow());
             }
         }
@@ -363,6 +371,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         }
         DB_UpsertRelationship(ev.relationshipChar.charGuidRaw, ev.relationshipTargetName,
                               res.text, ev.relationshipMentionTotal);
+        PBC_WsNotify(ev.relationshipChar.charGuidRaw, "relationship");
 
         if (g_PBC_DebugEnabled)
             LOG_INFO("server.loading", "[PBC] RelationshipUpdate: updated character={} target={} mentions={} text=\"{}\"",
@@ -457,6 +466,7 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
             std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
             g_PBC_PendingActions.push(std::move(action));
         }
+        PBC_WsNotify(snap.charGuidRaw, "thinks");
 
         // Condense inline if over token budget before building the prompt.
         int histTokens = PBC_EstimateHistoryTokens(snap.charGuidRaw);
@@ -663,10 +673,8 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
     // last successful reply as the trigger.  This prevents intermediate
     // replies from generating extra events when multiple bots responded.
     //
-    // Note: we do NOT require silentCharGuids to be non-empty.  Character-specific
-    // events (e.g. location) have no silent characters in the original event but
-    // other group characters still need to hear the reply.  OnUpdate handles the
-    // case where there are no eligible targets gracefully (pushes nothing).
+    // Note: we do NOT require silentCharGuids to be non-empty.  OnUpdate handles
+    // the case where there are no eligible targets gracefully (pushes nothing).
     // -----------------------------------------------------------------------
     if (ev.canCreateEvents && lastResponderGuid != 0)
     {
@@ -711,15 +719,8 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
 
     // -----------------------------------------------------------------------
     // Update silent characters' history.
-    // For low-chance events (combat, location, level-up) with no responders
-    // we skip this entirely to avoid cluttering history with silent entries.
     // -----------------------------------------------------------------------
-    if (ev.skipHistoryIfSilent && ev.respondingChars.empty())
-    {
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] ProcessEvent: no responders and skipHistoryIfSilent=true — skipping silent history");
-    }
-    else if (!ev.histLine.empty())
+    if (!ev.histLine.empty())
     {
         for (uint64_t guid : ev.silentCharGuids)
             PBC_AppendHistory(guid, ev.histLine);
@@ -884,7 +885,6 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_ReplyChanceItem     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceItem", 5);
     g_PBC_ReplyChanceDuel     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceDuel", 5);
     g_PBC_ReplyChanceLevelUp  = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLevelUp", 5);
-    g_PBC_ReplyChanceLocation        = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLocation", 5);
     g_PBC_ReplyChanceBossKill       = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceBossKill", 35);
     g_PBC_ReplyChanceQuestCompleted = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestCompleted", 20);
     g_PBC_ReplyChanceQuestTaken     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestTaken", 10);
@@ -901,10 +901,13 @@ void PBC_LoadConfig(bool /*isStartup*/)
     std::string blacklistStr = sConfigMgr->GetOption<std::string>("PBC.Blacklist", "");
     g_PBC_Blacklist = SplitByComma(blacklistStr);
 
-    g_PBC_HttpServerPort    = sConfigMgr->GetOption<int>("PBC.HttpServerPort", 0);
-    g_PBC_HttpServerBind    = sConfigMgr->GetOption<std::string>("PBC.HttpServerBind", "127.0.0.1");
-    g_PBC_HttpServerTimeout = sConfigMgr->GetOption<int>("PBC.HttpServerTimeout", 15);
-    g_PBC_HttpServerBaseUrl = sConfigMgr->GetOption<std::string>("PBC.HttpServerBaseUrl", "http://127.0.0.1:8501");
+    g_PBC_HttpServerPort         = sConfigMgr->GetOption<int>("PBC.HttpServerPort", 0);
+    g_PBC_HttpServerBind         = sConfigMgr->GetOption<std::string>("PBC.HttpServerBind", "127.0.0.1");
+    g_PBC_HttpServerTimeout      = sConfigMgr->GetOption<int>("PBC.HttpServerTimeout", 15);
+    g_PBC_HttpServerBaseUrl      = sConfigMgr->GetOption<std::string>("PBC.HttpServerBaseUrl", "http://127.0.0.1:8501");
+    g_PBC_HttpServerPrivateKey   = sConfigMgr->GetOption<std::string>("PBC.HttpServerPrivateKey", "");
+    g_PBC_HttpServerFrontendPath = sConfigMgr->GetOption<std::string>("PBC.HttpServerFrontendPath",
+                                                                       "../../../modules/mod-playerbots-characters/frontend/dist");
 
     // -----------------------------------------------------------------------
     // Validate required settings when the module is enabled.
@@ -960,23 +963,32 @@ void PBC_LoadConfig(bool /*isStartup*/)
             g_PBC_Enable = false;
             return;
         }
+
+        // HTTP server private key is required when the HTTP server is enabled
+        if (g_PBC_HttpServerPort > 0 && g_PBC_HttpServerPrivateKey.empty())
+        {
+            LOG_ERROR("server.loading", "[PBC] PBC.HttpServerPrivateKey is not set but PBC.HttpServerPort is {}. "
+                      "The private key is required for the authorization layer when the HTTP server is enabled. "
+                      "HTTP server will NOT start.", g_PBC_HttpServerPort);
+        }
     }
 
     LOG_INFO("server.loading",
         "[PBC] Config: Enable={} APIType='{}' Model='{}' Url='{}' MaxCtx={} Timeout={}s "
         "Chances: Whisper={}% Mention={}% Message={}% RollPenalty={}% "
-        "Item={}% Duel={}% LevelUp={}% Location={}% BossKill={}% QuestCompleted={}% QuestTaken={}%",
+        "Item={}% Duel={}% LevelUp={}% BossKill={}% QuestCompleted={}% QuestTaken={}%",
         g_PBC_Enable, g_PBC_APIType, g_PBC_Model, g_PBC_BaseUrl, g_PBC_MaxCtx,
         g_PBC_RequestTimeoutSec,
         g_PBC_ReplyChanceWhisper, g_PBC_ReplyChanceMention,
         g_PBC_ReplyChanceMessage, g_PBC_RollPenaltyOnAnswer,
         g_PBC_ReplyChanceItem,
-        g_PBC_ReplyChanceDuel, g_PBC_ReplyChanceLevelUp, g_PBC_ReplyChanceLocation,
+        g_PBC_ReplyChanceDuel, g_PBC_ReplyChanceLevelUp,
         g_PBC_ReplyChanceBossKill, g_PBC_ReplyChanceQuestCompleted, g_PBC_ReplyChanceQuestTaken);
 
     LOG_INFO("server.loading",
-        "[PBC] HTTP Server: Port={} Bind='{}' Timeout={}s BaseUrl='{}'",
-        g_PBC_HttpServerPort, g_PBC_HttpServerBind, g_PBC_HttpServerTimeout, g_PBC_HttpServerBaseUrl);
+        "[PBC] HTTP Server: Port={} Bind='{}' Timeout={}s BaseUrl='{}' PrivateKey={} FrontendPath='{}'",
+        g_PBC_HttpServerPort, g_PBC_HttpServerBind, g_PBC_HttpServerTimeout, g_PBC_HttpServerBaseUrl,
+        g_PBC_HttpServerPrivateKey.empty() ? "(not set)" : "(set)", g_PBC_HttpServerFrontendPath);
 }
 
 // ---------------------------------------------------------------------------
@@ -1030,21 +1042,26 @@ void PBC_LoadCharacterCards()
 void PBC_LoadHistoryFromDB()
 {
     QueryResult result = CharacterDatabase.Query(
-        "SELECT bot_guid, message FROM mod_pbc_chat_history ORDER BY id ASC"
+        "SELECT bot_guid, message, UNIX_TIMESTAMP(timestamp) FROM mod_pbc_chat_history ORDER BY id ASC"
     );
 
     std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
     g_PBC_ChatHistory.clear();
+    g_PBC_LastHistoryTime.clear();
 
     if (!result) return;
 
     do {
         uint64_t    botGuid = (*result)[0].Get<uint64_t>();
         std::string msg     = (*result)[1].Get<std::string>();
+        time_t      ts      = static_cast<time_t>((*result)[2].Get<uint64_t>());
         g_PBC_ChatHistory[botGuid].push_back(std::move(msg));
+        if (ts > 0)
+            g_PBC_LastHistoryTime[botGuid] = ts;
     } while (result->NextRow());
 
-    LOG_INFO("server.loading", "[PBC] Chat history loaded from DB.");
+    LOG_INFO("server.loading", "[PBC] Chat history loaded from DB ({} characters with timestamps).",
+             g_PBC_LastHistoryTime.size());
 }
 
 void PBC_LoadCardAdditionsFromDB()
@@ -1076,10 +1093,9 @@ void PBC_SaveCardAdditionsToDB()
 void PBC_LoadCharacterDataFromDB()
 {
     QueryResult result = CharacterDatabase.Query(
-        "SELECT bot_guid, last_location, roll_chance_modifier FROM mod_pbc_data"
+        "SELECT bot_guid, roll_chance_modifier FROM mod_pbc_data"
     );
 
-    g_PBC_CharacterLastLocations.clear();
     g_PBC_RollChanceModifiers.clear();
 
     if (!result)
@@ -1088,17 +1104,17 @@ void PBC_LoadCharacterDataFromDB()
         return;
     }
 
+    size_t count = 0;
     do {
-        uint64_t    botGuid  = (*result)[0].Get<uint64_t>();
-        std::string location = (*result)[1].Get<std::string>();
-        int32_t     rollMod  = (*result)[2].Get<int32_t>();
-        g_PBC_CharacterLastLocations[botGuid] = std::move(location);
+        uint64_t botGuid = (*result)[0].Get<uint64_t>();
+        int32_t  rollMod = (*result)[1].Get<int32_t>();
         if (rollMod != 0)
             g_PBC_RollChanceModifiers[botGuid] = rollMod;
+        ++count;
     } while (result->NextRow());
 
     LOG_INFO("server.loading", "[PBC] Characters data loaded from DB ({} entries, {} with roll modifier).",
-             g_PBC_CharacterLastLocations.size(), g_PBC_RollChanceModifiers.size());
+             count, g_PBC_RollChanceModifiers.size());
 }
 
 // ---------------------------------------------------------------------------
@@ -1209,8 +1225,6 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 {
     if (!g_PBC_Enable) return;
 
-    g_PBC_LocationPollAccum += diff;
-
     static uint32_t s_tickTimer = 0;
     if (s_tickTimer > diff)
     {
@@ -1273,15 +1287,15 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 }
                 else
                 {
-                    // Single-bot case (e.g. location events).
+                    // Single-bot case (ungrouped bot).
                     collectBot(anchor);
                 }
 
                 if (!targets.empty())
                 {
-                    // If the original event had a Narrator / location histLine that
-                    // these bots were not part of (e.g. single-bot location events),
-                    // write it to their histories now so they have full context.
+                    // If the original event had a Narrator histLine that these bots
+                    // were not part of, write it to their histories now so they
+                    // have full context.
                     if (!req.originHistLine.empty())
                     {
                         for (Player* bot : targets)
@@ -1352,6 +1366,81 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             }
 
             localReqs.pop();
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 1b. Drain whisper requests posted from the HTTP API thread.
+    //
+    //     These are processed identically to in-game whisper events: we find
+    //     the target bot, take a snapshot with whisper target info, roll
+    //     chance, and push a PBC_EventItem.  The event thread then handles
+    //     the LLM call, history writes, and the in-game whisper reply.
+    // ---------------------------------------------------------------------------
+    {
+        std::queue<PBC_PendingWhisperRequest> localWhispers;
+        {
+            std::lock_guard<std::mutex> lock(g_PBC_PendingWhisperRequestsMutex);
+            std::swap(localWhispers, g_PBC_PendingWhisperRequests);
+        }
+
+        while (!localWhispers.empty())
+        {
+            PBC_PendingWhisperRequest& wr = localWhispers.front();
+
+            // Find the sender (real player) — must be online, otherwise skip
+            Player* sender = ObjectAccessor::FindPlayer(ObjectGuid(wr.senderGuid));
+            if (!sender || !sender->IsInWorld())
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] API whisper: sender GUID={} is not online, skipping", wr.senderGuid);
+                localWhispers.pop();
+                continue;
+            }
+
+            // Find the target bot
+            Player* target = ObjectAccessor::FindPlayer(ObjectGuid(wr.targetGuid));
+            if (!target || !target->IsInWorld())
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] API whisper: target bot GUID={} is not online, skipping", wr.targetGuid);
+                localWhispers.pop();
+                continue;
+            }
+
+            WorldSession* ts = target->GetSession();
+            if (!ts || !ts->IsBot())
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] API whisper: target GUID={} is not a character, skipping", wr.targetGuid);
+                localWhispers.pop();
+                continue;
+            }
+
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] API whisper: player GUID={} -> character {} (chance={}%)",
+                         wr.senderGuid, target->GetName(), g_PBC_ReplyChanceWhisper);
+
+            PBC_EventItem ev;
+            ev.type      = PBC_EventType::Normal;
+            ev.eventLine = wr.eventLine;
+            ev.histLine  = wr.histLine;
+            ev.chatType  = CHAT_MSG_WHISPER;
+
+            if (PBC_RollChance(PBC_GetEffectiveChance(target->GetGUID().GetCounter(), g_PBC_ReplyChanceWhisper)))
+            {
+                PBC_CharacterSnapshot snap = PBC_SnapshotCharacter(target);
+                snap.whisperTargetGuid = ObjectGuid(wr.senderGuid);
+                snap.whisperTargetName = sender->GetName();
+                ev.respondingChars.push_back(std::move(snap));
+            }
+            else
+            {
+                ev.silentCharGuids.push_back(target->GetGUID().GetCounter());
+            }
+
+            PBC_PushEvent(std::move(ev));
+            localWhispers.pop();
         }
     }
 
@@ -1493,143 +1582,4 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // 4. Location polling — runs every 10 seconds.
-    // ---------------------------------------------------------------------------
-    static constexpr uint32_t kPollIntervalMs = 10000;
-    static constexpr int       kStableCycles  = 3;
-
-    if (g_PBC_LocationPollAccum >= kPollIntervalMs)
-    {
-        g_PBC_LocationPollAccum -= kPollIntervalMs;
-
-        std::unordered_set<uint64_t> activeCharGuids;
-
-        for (auto const& pair : ObjectAccessor::GetPlayers())
-        {
-            Player* player = pair.second;
-            if (!player || !player->IsInWorld()) continue;
-            WorldSession* sess = player->GetSession();
-            if (!sess || sess->IsBot()) continue;
-
-            Group* grp = player->GetGroup();
-            if (!grp) continue;
-
-            for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
-            {
-                Player* member = ref->GetSource();
-                if (!member || !member->IsInWorld()) continue;
-                WorldSession* ms = member->GetSession();
-                if (!ms || !ms->IsBot()) continue;
-
-                uint64_t botGuid = member->GetGUID().GetCounter();
-                if (!activeCharGuids.insert(botGuid).second) continue;
-
-                // Determine the character's current location string.
-                // For taxi flights we use the destination name as the stable
-                // location key so the event fires once per flight (not every
-                // poll tick as the ground zone changes mid-air).
-                // The event line also includes the current ground zone for
-                // extra flavour ("flying to X, passing Y").
-                bool inFlight = member->IsInFlight();
-                std::string flightDest;   // non-empty only when inFlight
-                std::string groundZone;   // current ground zone/area (flight only)
-                std::string location;
-                if (inFlight)
-                {
-                    flightDest = PBC_BuildFlightDestination(member);
-                    if (flightDest.empty()) continue; // destination unknown — skip
-                    groundZone = PBC_BuildPlaceName(member); // may be empty
-                    location = "flying to " + flightDest;
-                }
-                else
-                {
-                    location = PBC_BuildPlaceName(member);
-                    if (location.empty()) continue;
-                }
-
-                PBC_LocationState& state = g_PBC_LocationStates[botGuid];
-
-                if (state.lastLocation.empty() && state.firedLocation.empty())
-                {
-                    auto dbIt = g_PBC_CharacterLastLocations.find(botGuid);
-                    if (dbIt != g_PBC_CharacterLastLocations.end())
-                        state.firedLocation = dbIt->second;
-                }
-
-                if (location != state.lastLocation)
-                {
-                    if (g_PBC_DebugEnabled)
-                        LOG_INFO("server.loading",
-                                 "[PBC] LocationPoll: character={} moved to '{}' (was '{}'), resetting cycles",
-                                 member->GetName(), location, state.lastLocation);
-                    state.lastLocation  = location;
-                    state.stableCycles  = 1;
-                }
-                else
-                {
-                    state.stableCycles++;
-
-                    if (g_PBC_DebugEnabled && state.stableCycles <= kStableCycles)
-                        LOG_INFO("server.loading",
-                                 "[PBC] LocationPoll: character={} stable at '{}' cycles={}/{}",
-                                 member->GetName(), location, state.stableCycles, kStableCycles);
-
-                    if (state.stableCycles >= kStableCycles)
-                    {
-                        if (state.firedLocation == location)
-                        {
-                            // Already fired for this location — log once when we first hit the threshold.
-                            if (g_PBC_DebugEnabled && state.stableCycles == kStableCycles)
-                                LOG_INFO("server.loading",
-                                         "[PBC] LocationPoll: character={} stable at '{}' — already fired, skipping",
-                                         member->GetName(), location);
-                        }
-                        else
-                        {
-                            state.firedLocation = location;
-                            g_PBC_CharacterLastLocations[botGuid] = location;
-                            DB_UpsertCharacterLocation(botGuid, location);
-
-                            if (g_PBC_DebugEnabled)
-                                LOG_INFO("server.loading",
-                                         "[PBC] LocationPoll: firing location event for character={} location='{}' chance={}%",
-                                         member->GetName(), location, g_PBC_ReplyChanceLocation);
-
-                            std::string eventLine, histLine;
-                            if (inFlight)
-                            {
-                                std::string evText = "You are currently flying to " + flightDest;
-                                if (!groundZone.empty())
-                                    evText += ", passing " + groundZone;
-                                eventLine = PBC_MakeEventLine(evText);
-                                histLine  = PBC_MakeHistLine("You started flying to " + flightDest);
-                            }
-                            else
-                            {
-                                eventLine = PBC_MakeEventLine("You have just entered " + location);
-                                histLine  = PBC_MakeHistLine("You visited " + location);
-                            }
-
-                            PBC_DispatchCharacterEvent(member,
-                                eventLine,
-                                histLine,
-                                g_PBC_ReplyChanceLocation,
-                                /*skipHistoryIfSilent=*/true,
-                                /*notifyRealPlayers=*/false);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Prune location state for bots that are no longer tracked.
-        for (auto it = g_PBC_LocationStates.begin(); it != g_PBC_LocationStates.end(); )
-        {
-            if (activeCharGuids.find(it->first) == activeCharGuids.end())
-                it = g_PBC_LocationStates.erase(it);
-            else
-                ++it;
-        }
-    }
 }

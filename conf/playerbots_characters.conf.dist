@@ -279,12 +279,6 @@ PBC.ReplyChanceDuel = 5
 #     Default:     5
 PBC.ReplyChanceLevelUp = 5
 
-# PBC.ReplyChanceLocation
-#     Description: The percent chance (0-100) that a character would react when they enter
-#                  a new area (fires after 30 seconds of stability in the new location).
-#     Default:     5
-PBC.ReplyChanceLocation = 5
-
 # PBC.ReplyChanceBossKill
 #     Description: The percent chance (0-100) that each character in the party would react
 #                  when the party slays a significant opponent: a dungeon or raid boss,
@@ -321,6 +315,7 @@ PBC.ReplyChanceQuestTaken = 10
 #     Description: Port for the built-in HTTP/WS server.
 #                  0 = disabled (default). Set to a positive port number to enable.
 #                  The server provides both plain HTTP and WebSocket endpoints.
+#                  When enabled, PBC.HttpServerPrivateKey is required.
 #     Default:     0
 PBC.HttpServerPort = 0
 
@@ -343,6 +338,25 @@ PBC.HttpServerTimeout = 15
 #                  will use to reach the server.
 #     Default:     http://127.0.0.1:8501
 PBC.HttpServerBaseUrl = http://127.0.0.1:8501
+
+# PBC.HttpServerPrivateKey
+#     Description: Secret key used for the authorization layer (token encryption).
+#                  REQUIRED when PBC.HttpServerPort is not 0. The HTTP server will
+#                  not start if this is empty.
+#                  Must be a random string of at least 32 characters. You can generate
+#                  one with: openssl rand -hex 32
+#                  Changing this key invalidates all existing tokens.
+#     Default:     (empty)
+PBC.HttpServerPrivateKey =
+
+# PBC.HttpServerFrontendPath
+#     Description: Path to the directory containing frontend static files (HTML, JS, CSS).
+#                  This should be a relative path from the server's working directory
+#                  (typically env/dist/bin/). The HTTP server will serve these files
+#                  for all non-API, non-WebSocket GET requests. GET / serves index.html.
+#                  Leave empty to disable frontend serving.
+#     Default:     ../../../modules/mod-playerbots-characters/frontend/dist
+PBC.HttpServerFrontendPath = ../../../modules/mod-playerbots-characters/frontend/dist
 
 
 # --------------------------------------------

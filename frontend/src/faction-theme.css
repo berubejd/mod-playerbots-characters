@@ -1,0 +1,233 @@
+/* Atkinson Hyperlegible Next font */
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  src: url('/fonts/AtkinsonHyperlegibleNext-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  src: url('/fonts/AtkinsonHyperlegibleNext-RegularItalic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  src: url('/fonts/AtkinsonHyperlegibleNext-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  src: url('/fonts/AtkinsonHyperlegibleNext-BoldItalic.woff2') format('woff2');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Apply font globally */
+body {
+  font-family: 'Atkinson Hyperlegible Next', system-ui, -apple-system, sans-serif;
+}
+
+/* Dynamic viewport height — accounts for mobile virtual keyboard.
+   Uses --app-height set by useVisualViewport hook (visualViewport.height).
+   Falls back to 100dvh, then 100vh. */
+.dvh-100 {
+  height: var(--app-height, 100dvh);
+  height: var(--app-height, 100vh);
+}
+
+/* Remove focus outline on accordion buttons */
+.accordion-button:focus {
+  box-shadow: none;
+}
+
+/* Accordion active section uses faction color */
+.accordion-button:not(.collapsed) {
+  background-color: var(--bs-primary-bg-subtle);
+  color: var(--bs-primary-text-emphasis);
+}
+
+/* Faction-themed color overrides for Bootstrap 5.3 dark mode.
+ * Applied via data-faction attribute on the <html> element.
+ * Only overrides primary color family — dark theme base remains unchanged. */
+
+[data-faction="horde"] {
+  --bs-primary: #C4192A;
+  --bs-primary-rgb: 196, 25, 42;
+  --bs-primary-text-emphasis: #e06673;
+  --bs-primary-bg-subtle: #3d0d12;
+  --bs-primary-border-subtle: #7a1420;
+  --bs-link-color: #e06673;
+  --bs-link-hover-color: #e88993;
+}
+
+[data-faction="alliance"] {
+  --bs-primary: #1B6EC2;
+  --bs-primary-rgb: 27, 110, 194;
+  --bs-primary-text-emphasis: #6ba3d6;
+  --bs-primary-bg-subtle: #0d2236;
+  --bs-primary-border-subtle: #154678;
+  --bs-link-color: #6ba3d6;
+  --bs-link-hover-color: #8dbae3;
+}
+
+/* Faction-themed borders for layout separators */
+[data-faction="horde"] .border-bottom,
+[data-faction="horde"] .border-end,
+[data-faction="horde"] .border-start {
+  border-color: #5a1a1a !important;
+}
+
+[data-faction="alliance"] .border-bottom,
+[data-faction="alliance"] .border-end,
+[data-faction="alliance"] .border-start {
+  border-color: #1a2a5a !important;
+}
+
+/* Faction-themed selected card border */
+[data-faction="horde"] .border-primary {
+  border-color: #C4192A !important;
+}
+
+[data-faction="alliance"] .border-primary {
+  border-color: #1B6EC2 !important;
+}
+
+/* Faction-themed badge for level */
+[data-faction="horde"] .badge.bg-secondary {
+  background-color: #7a1420 !important;
+}
+
+[data-faction="alliance"] .badge.bg-secondary {
+  background-color: #154678 !important;
+}
+
+/* Faction-themed player info row background */
+[data-faction="horde"] .player-info-bar {
+  background-color: #1a0808;
+}
+
+[data-faction="alliance"] .player-info-bar {
+  background-color: #080e1a;
+}
+
+/* Faction icon in player info bar */
+.faction-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+  image-rendering: auto;
+}
+
+.faction-icon:hover {
+  opacity: 1;
+}
+
+/* Chat message hover actions (desktop) */
+.message-line .message-actions {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  background-color: var(--bs-secondary-bg);
+  border-radius: 0.375rem;
+  padding: 0.125rem 0.25rem;
+}
+
+.message-line:hover .message-actions {
+  opacity: 1;
+}
+
+.message-line .message-actions .btn {
+  color: var(--bs-secondary-color) !important;
+}
+
+.message-line .message-actions .btn:hover {
+  color: var(--bs-body-color) !important;
+}
+
+/* Action menu: 3-dot dropdown for touch devices */
+.message-line .action-menu {
+  display: none; /* hidden on desktop, shown via media query below */
+}
+
+.message-line .action-menu .action-menu-toggle {
+  color: var(--bs-secondary-color) !important;
+  background-color: var(--bs-secondary-bg);
+  border-radius: 0.375rem;
+}
+
+/* Dropdown: appears below the toggle by default */
+.action-menu-dropdown.dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  min-width: 8rem;
+  background-color: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.375rem;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
+  padding: 0.25rem 0;
+}
+
+/* Dropdown: appears above the toggle when near the bottom */
+.action-menu-dropdown.dropup {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  min-width: 8rem;
+  background-color: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.375rem;
+  box-shadow: 0 -0.25rem 0.5rem rgba(0, 0, 0, 0.2), 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
+  padding: 0.25rem 0;
+}
+
+.action-menu-dropdown .dropdown-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.375rem 0.75rem;
+  clear: both;
+  font-weight: 400;
+  color: var(--bs-body-color);
+  text-align: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.action-menu-dropdown .dropdown-item:hover,
+.action-menu-dropdown .dropdown-item:focus {
+  background-color: var(--bs-tertiary-bg);
+}
+
+.action-menu-dropdown .dropdown-item.text-danger {
+  color: var(--bs-danger) !important;
+}
+
+/* On touch devices (no hover): hide hover buttons, show 3-dot menu,
+   and add right padding so the button doesn't overlap message text */
+@media (hover: none) {
+  .message-line .message-actions {
+    display: none !important;
+  }
+
+  .message-line .action-menu {
+    display: block;
+  }
+
+  .message-line {
+    padding-right: 1.75rem;
+  }
+}

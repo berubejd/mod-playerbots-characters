@@ -74,7 +74,6 @@ extern uint32_t g_PBC_RollPenaltyOnAnswer;
 extern uint32_t g_PBC_ReplyChanceItem;
 extern uint32_t g_PBC_ReplyChanceDuel;
 extern uint32_t g_PBC_ReplyChanceLevelUp;
-extern uint32_t g_PBC_ReplyChanceLocation;
 extern uint32_t g_PBC_ReplyChanceBossKill;
 extern uint32_t g_PBC_ReplyChanceQuestCompleted;
 extern uint32_t g_PBC_ReplyChanceQuestTaken;
@@ -90,10 +89,12 @@ extern std::string g_PBC_QuestTakenUserPrompt;
 // ---------------------------------------------------------------------------
 // HTTP server
 // ---------------------------------------------------------------------------
-extern int         g_PBC_HttpServerPort;     // 0 = disabled
-extern std::string g_PBC_HttpServerBind;     // bind address
-extern int         g_PBC_HttpServerTimeout;  // request timeout in seconds
-extern std::string g_PBC_HttpServerBaseUrl;  // base URL for external access
+extern int         g_PBC_HttpServerPort;            // 0 = disabled
+extern std::string g_PBC_HttpServerBind;            // bind address
+extern int         g_PBC_HttpServerTimeout;         // request timeout in seconds
+extern std::string g_PBC_HttpServerBaseUrl;         // base URL for external access
+extern std::string g_PBC_HttpServerPrivateKey;      // secret key for token encryption (required when port != 0)
+extern std::string g_PBC_HttpServerFrontendPath;    // path to frontend static files (relative to server CWD)
 
 // ---------------------------------------------------------------------------
 // Blacklist prefixes
@@ -220,10 +221,7 @@ struct PBC_EventItem
 
     // GUIDs of characters that did NOT roll — receive histLine in history after
     // all responding characters have been processed.
-    // When skipHistoryIfSilent=true and respondingChars is empty,
-    // silent characters are skipped entirely (avoids noise from frequent low-chance events).
     std::vector<uint64_t> silentCharGuids;
-    bool skipHistoryIfSilent = false;
 
     // GUIDs of characters that already have histLine in their history (they were the
     // original responders that triggered this secondary event) but still need
@@ -313,8 +311,8 @@ struct PBC_PendingEventRequest
 
     // Optional: the original triggering event's histLine (e.g. a Narrator line)
     // that should be written to all target characters before the secondary event runs.
-    // Ensures characters that were not in the original event's silentCharGuids (e.g.
-    // single-character location events) still receive the full conversation context.
+    // Ensures characters that were not in the original event's silentCharGuids
+    // still receive the full conversation context.
     std::string originHistLine;
 
     // Chat channel to use for character replies.
@@ -336,9 +334,27 @@ extern std::queue<PBC_PendingEventRequest> g_PBC_PendingEventRequests;
 extern std::mutex                          g_PBC_PendingEventRequestsMutex;
 
 // ---------------------------------------------------------------------------
+// A whisper request posted from the HTTP API thread to the main thread.
+//
+// The main thread (OnUpdate) resolves the target bot GUID to a live Player*,
+// takes a snapshot with whisper target info, rolls chance, and pushes a
+// proper PBC_EventItem — identical to how an in-game whisper is processed.
+// ---------------------------------------------------------------------------
+struct PBC_PendingWhisperRequest
+{
+    std::string eventLine;   // e.g. "PlayerName tells you privately: hello"
+    std::string histLine;    // e.g. "PlayerName (privately to you): hello"
+    uint64_t    senderGuid = 0;  // GUID of the whispering player
+    uint64_t    targetGuid = 0;  // GUID of the target character (bot)
+};
+
+extern std::queue<PBC_PendingWhisperRequest> g_PBC_PendingWhisperRequests;
+extern std::mutex                            g_PBC_PendingWhisperRequestsMutex;
+
+// ---------------------------------------------------------------------------
 // Universal event queue.
 //
-// Pushed from the main thread (game hooks, location poll, commands).
+// Pushed from the main thread (game hooks, commands).
 // Drained by OnUpdate — one event at a time.  OnUpdate spawns a thread for
 // the front item only when g_PBC_EventThreadDone is true.
 // ---------------------------------------------------------------------------
@@ -355,6 +371,13 @@ extern std::atomic<bool> g_PBC_EventThreadDone;
 // ---------------------------------------------------------------------------
 extern std::unordered_map<uint64_t, std::deque<std::string>> g_PBC_ChatHistory;
 extern std::mutex g_PBC_HistoryMutex;
+
+// ---------------------------------------------------------------------------
+// In-memory last message timestamp per character: bot_guid -> time_t
+// Used to detect time gaps and insert "some time passes" narrator lines.
+// Protected by g_PBC_HistoryMutex.
+// ---------------------------------------------------------------------------
+extern std::unordered_map<uint64_t, time_t> g_PBC_LastHistoryTime;
 
 // ---------------------------------------------------------------------------
 // In-memory character card additions: bot_guid -> list of condensed texts
@@ -384,19 +407,6 @@ extern std::mutex g_PBC_RelationshipsMutex;
 // ---------------------------------------------------------------------------
 extern std::unordered_map<std::string, std::string> g_PBC_CharacterCards;
 
-// ---------------------------------------------------------------------------
-// Per-character location polling state.
-// ---------------------------------------------------------------------------
-struct PBC_LocationState
-{
-    std::string lastLocation;
-    int         stableCycles  = 0;
-    std::string firedLocation;
-};
-
-extern std::unordered_map<uint64_t, PBC_LocationState> g_PBC_LocationStates;
-extern std::unordered_map<uint64_t, std::string>        g_PBC_CharacterLastLocations;
-extern uint32_t g_PBC_LocationPollAccum;
 
 // ---------------------------------------------------------------------------
 // Push a fully-constructed event item onto the global queue.

@@ -3,6 +3,7 @@
 #include "pbc_character.h"
 #include "pbc_database.h"
 #include "pbc_llm.h"
+#include "pbc_http.h"
 #include "pbc_utils.h"
 #include "Chat.h"
 #include "Config.h"
@@ -481,6 +482,48 @@ static bool HandleCharsContext(ChatHandler* handler, Optional<std::string_view> 
 }
 
 // ---------------------------------------------------------------------------
+// .chars web
+// ---------------------------------------------------------------------------
+static bool HandleCharsWeb(ChatHandler* handler, Optional<std::string_view>)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+
+    // This command only works in-game
+    if (!handler->GetSession())
+    {
+        handler->PSendSysMessage("[PBC] This command is intended to be used in-game only.");
+        return false;
+    }
+
+    // Check if the HTTP server is running
+    if (!PBC_HttpServerIsRunning())
+    {
+        handler->PSendSysMessage("[PBC] Web interface is not enabled.");
+        return false;
+    }
+
+    Player* player = handler->GetSession()->GetPlayer();
+    if (!player)
+    {
+        handler->PSendSysMessage("[PBC] Could not retrieve player data.");
+        return false;
+    }
+
+    uint64_t playerGuid = player->GetGUID().GetCounter();
+    std::string otp = PBC_HttpServerGenerateOTP(playerGuid);
+
+    if (otp.empty())
+    {
+        handler->PSendSysMessage("[PBC] Failed to generate one-time password. Please try again.");
+        return false;
+    }
+
+    handler->PSendSysMessage("[PBC] To use web-interface, go to {} and input your one-time password: {}",
+        g_PBC_HttpServerBaseUrl, otp);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -500,6 +543,7 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
         { "roll_modifier",       HandleCharsRollModifier,       SEC_GAMEMASTER, Console::Yes },
         { "context",             HandleCharsContext,            SEC_GAMEMASTER, Console::Yes },
         { "apitest",             HandleCharsApiTest,            SEC_GAMEMASTER, Console::Yes },
+        { "web",                 HandleCharsWeb,                SEC_PLAYER,    Console::No  },
     };
 
     static ChatCommandTable rootTable =

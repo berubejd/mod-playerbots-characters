@@ -1,6 +1,6 @@
 -- mod-playerbots-characters: initial schema
 -- Creates all required tables if they do not already exist.
--- Also handles migration from the legacy mod_pbc_bot_location table.
+-- Also handles migration from legacy table formats.
 
 -- ============================================================
 -- Migration: mod_pbc_bot_location → mod_pbc_data
@@ -34,8 +34,19 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- Drop last_location column if it still exists (location tracking removed)
+SET @loc_col_exists = (SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'mod_pbc_data' AND column_name = 'last_location');
+
+SET @sql = IF(@loc_col_exists > 0,
+    'ALTER TABLE `mod_pbc_data` DROP COLUMN `last_location`',
+    'SELECT ''Skip drop column: last_location does not exist'' AS status');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 -- Update the table comment (safe to run always)
-ALTER TABLE `mod_pbc_data` COMMENT='Per-bot persistent data (location, roll modifier)';
+ALTER TABLE `mod_pbc_data` COMMENT='Per-bot persistent data (roll modifier)';
 
 -- ============================================================
 -- Schema: all tables
@@ -64,17 +75,15 @@ CREATE TABLE IF NOT EXISTS `mod_pbc_chat_history` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='Per-bot chat and event history lines for LLM context';
 
--- Per-bot persistent data: location tracking and roll chance modifier.
--- Written when a bot's location event fires or when roll_modifier is set;
--- loaded on server start so that the stable-cycle counter is not reset by
--- a server restart and roll modifiers are preserved.
+-- Per-bot persistent data: roll chance modifier.
+-- Written when roll_modifier is set; loaded on server start so that
+-- roll modifiers are preserved across server restarts.
 CREATE TABLE IF NOT EXISTS `mod_pbc_data` (
     `bot_guid`              BIGINT UNSIGNED NOT NULL PRIMARY KEY COMMENT 'GUID of the playerbot character',
-    `last_location`         VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Last "Area in Zone" string for which the location event was fired',
     `roll_chance_modifier`  INT NOT NULL DEFAULT 0 COMMENT 'Per-character roll chance modifier (-100 to 100), added to every roll chance',
     `updated_at`            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  COMMENT='Per-bot persistent data (location, roll modifier)';
+  COMMENT='Per-bot persistent data (roll modifier)';
 
 -- LLM-generated relationship descriptions per bot, one row per (bot, target) pair.
 CREATE TABLE IF NOT EXISTS `mod_pbc_relationships` (

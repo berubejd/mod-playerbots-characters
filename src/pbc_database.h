@@ -46,6 +46,41 @@ inline void DB_DeleteAllHistory()
     CharacterDatabase.Execute("DELETE FROM mod_pbc_chat_history");
 }
 
+// Update a single history message by bot GUID and 0-based index (position
+// in the ordered list for that bot).  Uses a subquery to resolve the index
+// to the actual DB row id, so no in-memory ID tracking is needed.
+inline void DB_UpdateHistoryLineByIndex(uint64_t botGuid, size_t index, const std::string& newMessage)
+{
+    std::string escaped = newMessage;
+    CharacterDatabase.EscapeString(escaped);
+    CharacterDatabase.Execute(
+        "UPDATE mod_pbc_chat_history SET message = '{}' "
+        "WHERE id = ("
+        "  SELECT id FROM ("
+        "    SELECT id FROM mod_pbc_chat_history WHERE bot_guid = {} ORDER BY id ASC LIMIT 1 OFFSET {}"
+        "  ) AS t"
+        ")",
+        escaped,
+        botGuid,
+        index
+    );
+}
+
+// Delete a single history message by bot GUID and 0-based index.
+inline void DB_DeleteHistoryLineByIndex(uint64_t botGuid, size_t index)
+{
+    CharacterDatabase.Execute(
+        "DELETE FROM mod_pbc_chat_history "
+        "WHERE id = ("
+        "  SELECT id FROM ("
+        "    SELECT id FROM mod_pbc_chat_history WHERE bot_guid = {} ORDER BY id ASC LIMIT 1 OFFSET {}"
+        "  ) AS t"
+        ")",
+        botGuid,
+        index
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Character card additions
 // ---------------------------------------------------------------------------
@@ -77,25 +112,46 @@ inline void DB_DeleteAllCardAdditions()
     CharacterDatabase.Execute("DELETE FROM mod_pbc_character_card_additions");
 }
 
-// ---------------------------------------------------------------------------
-// Character data (location + roll chance modifier)
-// ---------------------------------------------------------------------------
-
-// Upsert the last stable location for a character (preserves roll_chance_modifier).
-inline void DB_UpsertCharacterLocation(uint64_t botGuid, const std::string& location)
+// Update a single card addition by bot GUID and 0-based index (position
+// in the ordered list for that bot).  Uses a subquery to resolve the index
+// to the actual DB row id, so no in-memory ID tracking is needed.
+inline void DB_UpdateCardAdditionByIndex(uint64_t botGuid, size_t index, const std::string& newAddition)
 {
-    std::string escaped = location;
+    std::string escaped = newAddition;
     CharacterDatabase.EscapeString(escaped);
     CharacterDatabase.Execute(
-        "INSERT INTO mod_pbc_data (bot_guid, last_location) VALUES ({}, '{}') "
-        "ON DUPLICATE KEY UPDATE last_location = '{}'",
-        botGuid,
+        "UPDATE mod_pbc_character_card_additions SET addition = '{}' "
+        "WHERE id = ("
+        "  SELECT id FROM ("
+        "    SELECT id FROM mod_pbc_character_card_additions WHERE bot_guid = {} ORDER BY id ASC LIMIT 1 OFFSET {}"
+        "  ) AS t"
+        ")",
         escaped,
-        escaped
+        botGuid,
+        index
     );
 }
 
-// Upsert the roll chance modifier for a character (preserves last_location).
+// Delete a single card addition by bot GUID and 0-based index.
+inline void DB_DeleteCardAdditionByIndex(uint64_t botGuid, size_t index)
+{
+    CharacterDatabase.Execute(
+        "DELETE FROM mod_pbc_character_card_additions "
+        "WHERE id = ("
+        "  SELECT id FROM ("
+        "    SELECT id FROM mod_pbc_character_card_additions WHERE bot_guid = {} ORDER BY id ASC LIMIT 1 OFFSET {}"
+        "  ) AS t"
+        ")",
+        botGuid,
+        index
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Character data (roll chance modifier)
+// ---------------------------------------------------------------------------
+
+// Upsert the roll chance modifier for a character.
 // modifier must be in range [-100, 100].
 inline void DB_UpsertRollChanceModifier(uint64_t botGuid, int32_t modifier)
 {
@@ -153,6 +209,36 @@ inline void DB_DeleteRelationshipsForCharacter(uint64_t botGuid)
 inline void DB_DeleteAllRelationships()
 {
     CharacterDatabase.Execute("DELETE FROM mod_pbc_relationships");
+}
+
+// Update the relationship text for a specific (bot, target) pair.
+// Only updates the text; mention_count_at_last_update is preserved.
+inline void DB_UpdateRelationshipText(uint64_t botGuid, const std::string& targetName,
+                                       const std::string& newText)
+{
+    std::string escapedName = targetName;
+    CharacterDatabase.EscapeString(escapedName);
+    std::string escapedText = newText;
+    CharacterDatabase.EscapeString(escapedText);
+    CharacterDatabase.Execute(
+        "UPDATE mod_pbc_relationships SET relationship_text = '{}' "
+        "WHERE bot_guid = {} AND target_name = '{}'",
+        escapedText,
+        botGuid,
+        escapedName
+    );
+}
+
+// Delete a single relationship row for a specific (bot, target) pair.
+inline void DB_DeleteRelationship(uint64_t botGuid, const std::string& targetName)
+{
+    std::string escapedName = targetName;
+    CharacterDatabase.EscapeString(escapedName);
+    CharacterDatabase.Execute(
+        "DELETE FROM mod_pbc_relationships WHERE bot_guid = {} AND target_name = '{}'",
+        botGuid,
+        escapedName
+    );
 }
 
 #endif // MOD_PBC_DATABASE_H
