@@ -31,8 +31,6 @@ If [mod_weather_vibe](https://github.com/hermensbas/mod_weather_vibe) is also in
 
 Copy `env/dist/etc/modules/playerbots_characters.conf.dist` as `env/dist/etc/modules/playerbots_characters.conf` and adjust it as needed.
 
-> [!IMPORTANT]
-> When updating the module, always compare your `.conf` with the new `.conf.dist` to ensure any newly added parameters are present in your config. The default values, especially prompts, may also get changed in newer versions.
 
 ### Model Connection Setup
 
@@ -43,7 +41,8 @@ The module supports two API formats, controlled by `PBC.APIType`:
 
 You need to configure at least `PBC.BaseUrl`, `PBC.Model` and `PBC.ApiKey` before the module can generate responses. The relevant config options are in the **API CONNECTION** and **MODEL PARAMETERS** sections of the config file. After configuring, you can use `.chars apitest` to quickly verify that the connection is working.
 
-Due to the complexity and length of the prompts, locally-run models on average home hardware will generally struggle and produce low-quality output as context grows. A cloud-based model with a large context window is recommended. Make sure to also adjust `PBC.MaxCtx` accordingly — a good starting point is around 25% of the model's total context window. Aim for at least 32k in general, anything less could lead to poor efficiency of character relationship tracking and card additions.
+> [!IMPORTANT]
+> Due to the complexity and length of the prompts, locally-run models on average home hardware will generally struggle and produce low-quality output as context grows. A cloud-based model with a large context window is recommended. Make sure to also adjust `PBC.MaxCtx` accordingly — a good starting point is around 25% of the model's total context window. Aim for at least 32k in general, anything less could lead to poor efficiency of character relationship tracking and card additions.
 
 Choosing the right model can be tricky. Two tested configurations are listed below.
 
@@ -100,16 +99,16 @@ The module can optionally run a built-in HTTP/WS server with a web frontend, pro
 
 Recommended adjustments to the playerbots config (`playerbots.conf`), to make bots less talkative in order to not interfere with the new character logic:
 
-| Setting | Default | Recommended | Purpose |
-|---|---|---|---|
-| `AiPlayerbot.EnableBroadcasts` | 1 | 0 | Disables loot / quest / kill broadcasts |
-| `AiPlayerbot.RandomBotTalk` | 1 | 0 | Disables random talking in say / yell / general channels |
-| `AiPlayerbot.RandomBotEmote` | 0 | 0 | Disables random emoting |
-| `AiPlayerbot.RandomBotSuggestDungeons` | 1 | 0 | Disables dungeon suggestions in chat |
-| `AiPlayerbot.EnableGreet` | 0 | 0 | Disables greeting when invited |
-| `AiPlayerbot.GuildFeedback` | 1 | 0 | Disables guild event chatting |
-| `AiPlayerbot.RandomBotSayWithoutMaster` | 0 | 0 | Disables bots talking without a master |
-| `AiPlayerbot.RPWarningCooldown` | 300 | 999999 | Increases delay between "missing reagents" messages and such |
+| Setting | Value | Purpose |
+|---|---|---|
+| `AiPlayerbot.EnableBroadcasts` | 0 | Disables loot / quest / kill broadcasts |
+| `AiPlayerbot.RandomBotTalk` | 0 | Disables random talking in say / yell / general channels |
+| `AiPlayerbot.RandomBotEmote` | 0 | Disables random emoting |
+| `AiPlayerbot.RandomBotSuggestDungeons` | 0 | Disables dungeon suggestions in chat |
+| `AiPlayerbot.EnableGreet` | 0 | Disables greeting when invited |
+| `AiPlayerbot.GuildFeedback` | 0 | Disables guild event chatting |
+| `AiPlayerbot.RandomBotSayWithoutMaster` | 0 | Disables bots talking without a master |
+| `AiPlayerbot.RPWarningCooldown` | 999999 | Increases delay between "missing reagents" messages and such |
 
 
 ## Usage
@@ -119,7 +118,7 @@ Start the server, set up some altbots for yourself or invite existing random bot
 Start playing, chat with your characters, discuss anything you like, build relationships and enjoy the game.
 
 > [!NOTE]
-> Depending on the model you are using, your mileage may vary. Do regular backups with `modules/mod-playerbots-characters/tools/pbc_backup.sh` and adjust things as needed either in the database (followed by `.chars reload` command) or via the included web interface. There are also two helper tools (`pbc_info.sh` and `pbc_history.sh`) which might help with tracking what's going on.
+> Depending on the model you are using, your mileage may vary. Do regular backups with `modules/mod-playerbots-characters/tools/pbc_backup.sh` and adjust things as needed either in the database (followed by `.chars reload` command) or via the included web app. There are also two helper tools (`pbc_info.sh` and `pbc_history.sh`) which might help with tracking what's going on. You can also steer the narration a bit by using `.chars narrate` and `.chars narrate-group` commands. Check out [available commands](docs/COMMANDS.md) for more info.
 
 ### API & Web App
 
