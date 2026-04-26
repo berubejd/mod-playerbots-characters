@@ -287,6 +287,8 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
   const isAtBottomRef = useRef(true);
   // Whether the next messages change should auto-scroll to bottom
   const shouldAutoScrollRef = useRef(true);
+  // Previous scrollTop — used to detect user scrolling UP vs content being added
+  const prevScrollTopRef = useRef(0);
 
   // Track input overlay height so we can add matching spacer in the scroll area
   const [inputHeight, setInputHeight] = useState(0);
@@ -308,7 +310,9 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     const el = containerRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
+    prevScrollTopRef.current = el.scrollTop;
     isAtBottomRef.current = true;
+    shouldAutoScrollRef.current = true;
     setShowScrollDown(false);
   }, []);
 
@@ -319,12 +323,29 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     return el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD;
   }, []);
 
-  // Handle scroll events — track whether user is at bottom
+  // Handle scroll events — track whether user is at bottom.
+  // Key insight: only disable auto-scroll when the user actively scrolls UP.
+  // When new content is added at the bottom, scrollHeight increases but scrollTop
+  // stays the same — this must NOT disable auto-scrolling, otherwise rapid
+  // messages cause the chat to stop scrolling to the bottom.
   const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
     const atBottom = checkIsAtBottom();
     isAtBottomRef.current = atBottom;
-    // Persist auto-scroll intent: near bottom → keep auto-scrolling, far → stop
-    shouldAutoScrollRef.current = checkIsNearBottom();
+    const scrollTop = el.scrollTop;
+
+    if (scrollTop < prevScrollTopRef.current - 2) {
+      // User scrolled up — update auto-scroll intent based on proximity to bottom
+      shouldAutoScrollRef.current = checkIsNearBottom();
+    } else if (atBottom) {
+      // Reached the bottom (by scrolling down or programmatically) — enable auto-scroll
+      shouldAutoScrollRef.current = true;
+    }
+    // Otherwise: new content was added or user scrolled down but not to bottom.
+    // Keep the current auto-scroll decision unchanged.
+
+    prevScrollTopRef.current = scrollTop;
     setShowScrollDown(!atBottom);
   }, [checkIsAtBottom, checkIsNearBottom]);
 
@@ -386,10 +407,9 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
       const expectedId = lastIdRef.current + 1;
 
       if (id === expectedId) {
-        // Append message to the end of the chat
-        // Auto-scroll decision is already tracked by handleScroll — don't
-        // re-evaluate here because the scroll position may be stale when
-        // multiple WS events arrive before the RAF scroll fires.
+        // Append message to the end of the chat.
+        // Auto-scroll decision is tracked by handleScroll — don't re-evaluate
+        // here; the messages effect will scroll synchronously if appropriate.
         setMessages((prev) => prev ? [...prev, { id, text }] : prev);
         lastIdRef.current = id;
       } else {
@@ -399,20 +419,22 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     }
   }, [chatEvent]);
 
-  // Scroll to bottom after messages change (if appropriate)
+  // Scroll to bottom after messages change (if appropriate).
+  // Scroll synchronously — useEffect runs after paint so scrollHeight is
+  // already correct. Using requestAnimationFrame introduced a race condition:
+  // when multiple messages arrive rapidly, a scroll event from a previous
+  // programmatic scroll could fire between the RAF scheduling and execution,
+  // causing handleScroll to disable auto-scroll prematurely.
   useEffect(() => {
     if (!messages || !containerRef.current) return;
 
     if (shouldAutoScrollRef.current) {
-      const rafId = requestAnimationFrame(() => {
-        if (containerRef.current) {
-          containerRef.current.scrollTop = containerRef.current.scrollHeight;
-          isAtBottomRef.current = true;
-          shouldAutoScrollRef.current = true; // Stay in auto-scroll mode
-          setShowScrollDown(false);
-        }
-      });
-      return () => cancelAnimationFrame(rafId);
+      const el = containerRef.current;
+      el.scrollTop = el.scrollHeight;
+      prevScrollTopRef.current = el.scrollTop;
+      isAtBottomRef.current = true;
+      shouldAutoScrollRef.current = true;
+      setShowScrollDown(false);
     }
   }, [messages]);
 
@@ -427,6 +449,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     const observer = new ResizeObserver(() => {
       if (shouldAutoScrollRef.current) {
         el.scrollTop = el.scrollHeight;
+        prevScrollTopRef.current = el.scrollTop;
       }
     });
 
@@ -451,11 +474,9 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
   useEffect(() => {
     if (!containerRef.current || !inputHeight) return;
     if (shouldAutoScrollRef.current) {
-      requestAnimationFrame(() => {
-        if (containerRef.current) {
-          containerRef.current.scrollTop = containerRef.current.scrollHeight;
-        }
-      });
+      const el = containerRef.current;
+      el.scrollTop = el.scrollHeight;
+      prevScrollTopRef.current = el.scrollTop;
     }
   }, [inputHeight]);
 
