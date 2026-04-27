@@ -160,6 +160,7 @@ export default function PlayerView({ player, token, faction, wsEvent, onSubscrip
       selectedGuid={selectedGuid}
       nameColorMap={nameColorMap}
       charName={selectedCharName}
+      playerName={player.name}
       chatEvent={chatEvent}
       chatReloadKey={chatReloadKey}
       onLoadComplete={handleChatLoadComplete}

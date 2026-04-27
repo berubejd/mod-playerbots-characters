@@ -12,14 +12,15 @@ const AUTO_SCROLL_THRESHOLD = 100;
 function MessageLine({ msg, nameColorMap, onEdit, onDelete }) {
   const text = typeof msg === 'string' ? msg : msg.text;
   const id = typeof msg === 'string' ? null : msg.id;
+  const pending = !!(msg && msg.pending);
   const { name, message, isWhisper, isNarrator } = parseMessage(text);
 
   // Narrator messages: horizontal line with centered smaller white text
   if (isNarrator) {
     return (
-      <div class="py-1 message-line position-relative" style="word-break: break-word; text-align: center; margin: 0.5rem 0;">
+      <div class="py-1 message-line position-relative" style={`word-break: break-word; text-align: center; margin: 0.5rem 0;${pending ? ' opacity: 0.5;' : ''}`}>
         <div class="message-actions position-absolute top-0 end-0" style="z-index: 1;">
-          {id != null && (
+          {id != null && !pending && (
             <>
               <button
                 class="btn btn-sm p-0 px-1"
@@ -38,7 +39,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete }) {
             </>
           )}
         </div>
-        {id != null && (
+        {id != null && !pending && (
           <div class="action-menu position-absolute top-0 end-0">
             <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
           </div>
@@ -55,9 +56,9 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete }) {
   const nameColor = nameColorMap && nameColorMap[name] ? nameColorMap[name] : null;
 
   return (
-    <div class="py-1 message-line position-relative" style="word-break: break-word;">
+    <div class="py-1 message-line position-relative" style={`word-break: break-word;${pending ? ' opacity: 0.5;' : ''}`}>
       <div class="message-actions position-absolute top-0 end-0" style="z-index: 1;">
-        {id != null && (
+        {id != null && !pending && (
           <>
             <button
               class="btn btn-sm p-0 px-1"
@@ -76,7 +77,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete }) {
           </>
         )}
       </div>
-      {id != null && (
+      {id != null && !pending && (
         <div class="action-menu position-absolute top-0 end-0">
           <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
         </div>
@@ -187,7 +188,7 @@ function DeleteModal({ show, onConfirm, onCancel }) {
   );
 }
 
-function SendMessageInput({ token, selectedGuid, onDesync }) {
+function SendMessageInput({ token, selectedGuid, onDesync, onWhisperSent }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const textareaRef = useRef(null);
@@ -213,8 +214,8 @@ function SendMessageInput({ token, selectedGuid, onDesync }) {
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
-      toast('Whisper sent', 'success');
-      // After sending we do nothing — WS events will handle updates later
+      // Show pending whisper in chat — WS events will handle confirmation
+      if (onWhisperSent) onWhisperSent(trimmed);
     } catch (err) {
       if (err.message === 'player_offline') {
         onDesync(err.message);
@@ -228,7 +229,7 @@ function SendMessageInput({ token, selectedGuid, onDesync }) {
         if (textareaRef.current) textareaRef.current.focus();
       });
     }
-  }, [text, sending, token, selectedGuid, toast, onDesync]);
+  }, [text, sending, token, selectedGuid, toast, onDesync, onWhisperSent]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -267,7 +268,7 @@ function SendMessageInput({ token, selectedGuid, onDesync }) {
   );
 }
 
-export default function ChatView({ token, selectedGuid, nameColorMap, charName, chatEvent, chatReloadKey, onLoadComplete, onDesync }) {
+export default function ChatView({ token, selectedGuid, nameColorMap, charName, playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync }) {
   const [messages, setMessages] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -283,6 +284,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
 
   const containerRef = useRef(null);
   const lastIdRef = useRef(0);
+  const pendingWhisperRef = useRef(null); // pending whisper text, or null
   const loadingRef = useRef(false);
   const isAtBottomRef = useRef(true);
   // Whether the next messages change should auto-scroll to bottom
@@ -349,6 +351,16 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     setShowScrollDown(!atBottom);
   }, [checkIsAtBottom, checkIsNearBottom]);
 
+  // Add a pending whisper to the chat after successful send
+  const handleWhisperSent = useCallback((message) => {
+    const fullText = `${playerName} (privately to you): ${message}`;
+    pendingWhisperRef.current = fullText;
+    setMessages((prev) => {
+      const withoutPending = prev ? prev.filter((m) => m.id !== 'pending') : [];
+      return [...withoutPending, { id: 'pending', text: fullText, pending: true }];
+    });
+  }, [playerName]);
+
   // Fetch all history when selectedGuid changes, retry is clicked, or chatReloadKey changes
   useEffect(() => {
     let cancelled = false;
@@ -358,6 +370,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     setMessages(null);
     setThinking(false);
     lastIdRef.current = 0;
+    pendingWhisperRef.current = null;
     // Always scroll to bottom after a full reload
     shouldAutoScrollRef.current = true;
 
@@ -405,16 +418,40 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
 
       const { id, text } = chatEvent.data.message;
       const expectedId = lastIdRef.current + 1;
+      const pendingText = pendingWhisperRef.current;
 
-      if (id === expectedId) {
-        // Append message to the end of the chat.
-        // Auto-scroll decision is tracked by handleScroll — don't re-evaluate
-        // here; the messages effect will scroll synchronously if appropriate.
-        setMessages((prev) => prev ? [...prev, { id, text }] : prev);
-        lastIdRef.current = id;
+      if (pendingText !== null) {
+        pendingWhisperRef.current = null;
+        if (text === pendingText) {
+          // Same message confirmed — replace pending with real (removes opacity)
+          setMessages((prev) => prev.map((m) => m.id === 'pending' ? { id, text } : m));
+          lastIdRef.current = id;
+        } else {
+          // Different message — remove pending, add the real one
+          setMessages((prev) => {
+            const withoutPending = prev.filter((m) => m.id !== 'pending');
+            if (id === expectedId) {
+              return [...withoutPending, { id, text }];
+            }
+            return withoutPending;
+          });
+          if (id === expectedId) {
+            lastIdRef.current = id;
+          } else {
+            setRetryKey((k) => k + 1);
+          }
+        }
       } else {
-        // ID mismatch — something went wrong, invalidate and re-fetch
-        setRetryKey((k) => k + 1);
+        if (id === expectedId) {
+          // Append message to the end of the chat.
+          // Auto-scroll decision is tracked by handleScroll — don't re-evaluate
+          // here; the messages effect will scroll synchronously if appropriate.
+          setMessages((prev) => prev ? [...prev, { id, text }] : prev);
+          lastIdRef.current = id;
+        } else {
+          // ID mismatch — something went wrong, invalidate and re-fetch
+          setRetryKey((k) => k + 1);
+        }
       }
     }
   }, [chatEvent]);
@@ -584,7 +621,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
             </div>
           )}
         </div>
-        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} />
+        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onWhisperSent={handleWhisperSent} />
       </div>
     );
   }
@@ -621,7 +658,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
         )}
       </div>
       <div ref={inputWrapperRef} class="position-absolute bottom-0 start-0 end-0" style="z-index: 10;">
-        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} />
+        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onWhisperSent={handleWhisperSent} />
       </div>
       <EditModal
         show={editModal.show}
