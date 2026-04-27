@@ -317,6 +317,12 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
 
     bool senderIsBot = sender->GetSession() && sender->GetSession()->IsBot();
 
+    // Bot-originated say/yell messages must not trigger new response events.
+    if (senderIsBot)
+    {
+        return;
+    }
+
     bool isGroupChat = (type == CHAT_MSG_PARTY || type == CHAT_MSG_PARTY_LEADER ||
                         type == CHAT_MSG_RAID  || type == CHAT_MSG_RAID_LEADER  ||
                         type == CHAT_MSG_RAID_WARNING);
@@ -326,16 +332,13 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
     if (bots.empty()) return;
 
     if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] Chat event from {} (isBot={}, type={}): \"{}\" — {} bot(s)",
-                 senderName, senderIsBot, type, msg, bots.size());
+        LOG_INFO("server.loading", "[PBC] Chat event from {} (type={}): \"{}\" — {} bot(s)",
+                 senderName, type, msg, bots.size());
 
-    // Check if the message mentions any specific bot (real player only).
+    // Check if the message mentions any specific bot.
     bool anyMention = false;
-    if (!senderIsBot)
-    {
-        for (Player* bot : bots)
-            if (MentionsCharacter(msg, bot->GetName())) { anyMention = true; break; }
-    }
+    for (Player* bot : bots)
+        if (MentionsCharacter(msg, bot->GetName())) { anyMention = true; break; }
 
     PBC_EventItem ev;
     ev.type      = PBC_EventType::Normal;
@@ -352,7 +355,6 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
         std::vector<std::pair<size_t, Player*>> positions;
         for (Player* bot : bots)
         {
-            if (senderIsBot) break;
             std::string lname = bot->GetName();
             std::transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
             size_t pos = lowerMsg.find(lname);
