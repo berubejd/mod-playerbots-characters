@@ -130,6 +130,7 @@ Start playing, chat with your characters, discuss anything you like, build relat
 
 If you have the HTTP server configured, you can use `.chars web` command to get a one-time password that you can then use to authorize in the web app.
 
+![PBC Web App](https://d7.wtf/s/pbc-web.png)
 
 ## Debugging
 
