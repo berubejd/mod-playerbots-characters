@@ -165,6 +165,7 @@ export default function PlayerView({ player, token, faction, wsEvent, onSubscrip
       chatReloadKey={chatReloadKey}
       onLoadComplete={handleChatLoadComplete}
       onDesync={onDesync}
+      characters={characters}
     />
   ) : (
     <div class="d-flex justify-content-center align-items-center h-100">

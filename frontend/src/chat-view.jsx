@@ -105,11 +105,13 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete }) {
 
 function EditModal({ show, text, onSave, onCancel }) {
   const [value, setValue] = useState(text);
+  const [propagate, setPropagate] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
     if (show) {
       setValue(text);
+      setPropagate(false);
       // Focus input after modal opens
       requestAnimationFrame(() => {
         if (inputRef.current) inputRef.current.focus();
@@ -121,7 +123,7 @@ function EditModal({ show, text, onSave, onCancel }) {
     if (e.key === 'Enter') {
       e.preventDefault();
       if (!e.shiftKey) {
-        onSave(value);
+        onSave(value, propagate);
       }
       // Shift+Enter is prevented but doesn't save — no newlines allowed
     } else if (e.key === 'Escape') {
@@ -153,10 +155,22 @@ function EditModal({ show, text, onSave, onCancel }) {
               onKeyDown={handleKeyDown}
               style="resize: vertical"
             />
+            <div class="form-check mt-3">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                id="editPropagate"
+                checked={propagate}
+                onChange={(e) => setPropagate(e.target.checked)}
+              />
+              <label class="form-check-label small" for="editPropagate">
+                Find and edit the same message in other group members' histories
+              </label>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onClick={onCancel}>Cancel</button>
-            <button type="button" class="btn btn-primary" onClick={() => onSave(value)}>Save</button>
+            <button type="button" class="btn btn-primary" onClick={() => onSave(value, propagate)}>Save</button>
           </div>
         </div>
       </div>
@@ -165,6 +179,14 @@ function EditModal({ show, text, onSave, onCancel }) {
 }
 
 function DeleteModal({ show, onConfirm, onCancel }) {
+  const [propagate, setPropagate] = useState(false);
+
+  useEffect(() => {
+    if (show) {
+      setPropagate(false);
+    }
+  }, [show]);
+
   if (!show) return null;
 
   return (
@@ -177,10 +199,22 @@ function DeleteModal({ show, onConfirm, onCancel }) {
           </div>
           <div class="modal-body">
             <p class="mb-0">Deleting messages is irreversible, are you sure you want to delete this one?</p>
+            <div class="form-check mt-3">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                id="deletePropagate"
+                checked={propagate}
+                onChange={(e) => setPropagate(e.target.checked)}
+              />
+              <label class="form-check-label small" for="deletePropagate">
+                Find and delete the same message in other group members' histories
+              </label>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onClick={onCancel}>Cancel</button>
-            <button type="button" class="btn btn-danger" onClick={onConfirm}>Delete</button>
+            <button type="button" class="btn btn-danger" onClick={() => onConfirm(propagate)}>Delete</button>
           </div>
         </div>
       </div>
@@ -268,7 +302,7 @@ function SendMessageInput({ token, selectedGuid, onDesync, onWhisperSent }) {
   );
 }
 
-export default function ChatView({ token, selectedGuid, nameColorMap, charName, playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync }) {
+export default function ChatView({ token, selectedGuid, nameColorMap, charName, playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync, characters }) {
   const [messages, setMessages] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -526,17 +560,40 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     setEditModal({ show: true, id, text });
   }, []);
 
-  const handleEditSave = useCallback(async (newText) => {
+  const handleEditSave = useCallback(async (newText, propagate) => {
+    const originalText = editModal.text;
+    const messageId = editModal.id;
     try {
-      await editMessage(token, selectedGuid, editModal.id, newText, editModal.text);
+      await editMessage(token, selectedGuid, messageId, newText, originalText);
       // Update the message in local state
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === editModal.id ? { ...msg, text: newText } : msg
+          msg.id === messageId ? { ...msg, text: newText } : msg
         )
       );
       setEditModal({ show: false, id: null, text: '' });
-      toast('Message updated', 'success');
+
+      let count = 1;
+      if (propagate) {
+        const otherChars = (characters || []).filter((c) => c.guid !== selectedGuid);
+        const results = await Promise.allSettled(
+          otherChars.map(async (char) => {
+            const data = await fetchHistory(token, char.guid);
+            // Search from latest to oldest for the same original message
+            const msgs = data.messages;
+            for (let i = msgs.length - 1; i >= 0; i--) {
+              if (msgs[i].text === originalText) {
+                await editMessage(token, char.guid, msgs[i].id, newText, originalText);
+                return true;
+              }
+            }
+            return false;
+          })
+        );
+        count += results.filter((r) => r.status === 'fulfilled' && r.value).length;
+      }
+
+      toast(propagate ? `${count} message${count !== 1 ? 's' : ''} updated` : 'Message updated', 'success');
     } catch (err) {
       if (err.message === 'desync' || err.message === 'player_offline') {
         onDesync(err.message);
@@ -544,7 +601,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
       }
       toast('Failed to update message', 'error');
     }
-  }, [token, selectedGuid, editModal.id, editModal.text, toast, onDesync]);
+  }, [token, selectedGuid, editModal.id, editModal.text, toast, onDesync, characters]);
 
   const handleEditCancel = useCallback(() => {
     setEditModal({ show: false, id: null, text: '' });
@@ -555,13 +612,15 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     setDeleteModal({ show: true, id, text });
   }, []);
 
-  const handleDeleteConfirm = useCallback(async () => {
+  const handleDeleteConfirm = useCallback(async (propagate) => {
+    const originalText = deleteModal.text;
+    const messageId = deleteModal.id;
     try {
-      await deleteMessage(token, selectedGuid, deleteModal.id, deleteModal.text);
+      await deleteMessage(token, selectedGuid, messageId, originalText);
       // Remove the message from local state and re-index remaining messages.
       // The backend uses 1-based array indices as IDs, so after an element is
       // erased all subsequent items shift down by one position.
-      const deletedId = deleteModal.id;
+      const deletedId = messageId;
       setMessages((prev) =>
         prev
           .filter((msg) => msg.id !== deletedId)
@@ -569,7 +628,28 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
       );
       lastIdRef.current -= 1;
       setDeleteModal({ show: false, id: null, text: '' });
-      toast('Message deleted', 'success');
+
+      let count = 1;
+      if (propagate) {
+        const otherChars = (characters || []).filter((c) => c.guid !== selectedGuid);
+        const results = await Promise.allSettled(
+          otherChars.map(async (char) => {
+            const data = await fetchHistory(token, char.guid);
+            // Search from latest to oldest for the same original message
+            const msgs = data.messages;
+            for (let i = msgs.length - 1; i >= 0; i--) {
+              if (msgs[i].text === originalText) {
+                await deleteMessage(token, char.guid, msgs[i].id, originalText);
+                return true;
+              }
+            }
+            return false;
+          })
+        );
+        count += results.filter((r) => r.status === 'fulfilled' && r.value).length;
+      }
+
+      toast(propagate ? `${count} message${count !== 1 ? 's' : ''} deleted` : 'Message deleted', 'success');
     } catch (err) {
       if (err.message === 'desync' || err.message === 'player_offline') {
         onDesync(err.message);
@@ -577,7 +657,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
       }
       toast('Failed to delete message', 'error');
     }
-  }, [token, selectedGuid, deleteModal.id, deleteModal.text, toast, onDesync]);
+  }, [token, selectedGuid, deleteModal.id, deleteModal.text, toast, onDesync, characters]);
 
   const handleDeleteCancel = useCallback(() => {
     setDeleteModal({ show: false, id: null, text: '' });
