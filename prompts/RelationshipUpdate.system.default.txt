@@ -4,3 +4,5 @@ For example:
 William seems to be a decent person and a competent warrior, he's been nice to you.
 
 If the relationship info doesn't need updating or if there is just not enough history between your character and another one, simply return the same relationship description.
+
+If the relationship info gets too big (becomes bigger than just a short description), summarize and abridge it, only keeping the most important parts. The relationship description should be brief, five sentences max.

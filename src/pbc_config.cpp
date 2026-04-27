@@ -39,6 +39,17 @@ double      g_PBC_Temperature      = 1.0;
 std::string g_PBC_ModelExtraParameters;
 int         g_PBC_RequestTimeoutSec = 30;
 
+bool        g_PBC_UseAltModelForCondensation      = false;
+bool        g_PBC_UseAltModelForRelationshipUpdate = false;
+std::string g_PBC_AltModelAPIType                  = "openai";
+std::string g_PBC_AltModelBaseUrl;
+std::string g_PBC_AltModelApiKey;
+std::string g_PBC_AltModel;
+int         g_PBC_AltModelMaxResponseTokens        = 0;
+double      g_PBC_AltModelTemperature              = 1.0;
+std::string g_PBC_AltModelModelExtraParameters;
+int         g_PBC_AltModelRequestTimeoutSec         = 30;
+
 uint32_t    g_PBC_MaxCtx                    = 0;
 uint32_t    g_PBC_CondensationPreservedLines = 50;
 
@@ -159,7 +170,9 @@ static void PBC_CondenseInline(PBC_CharacterSnapshot& snap,
         LOG_INFO("server.loading", "[PBC] CondenseInline: character={} history_lines={}", snap.charName, snap.history.size());
 
     std::string userPrompt = PBC_BuildCondensationPromptFromSnapshot(snap, userPromptTmpl);
-    PBC_LLMResult res = PBC_CallLLM(sysPrompt, userPrompt, /*maxTokensOverride=*/-1);
+    PBC_LLMResult res = g_PBC_UseAltModelForCondensation
+        ? PBC_CallLLMAlt(sysPrompt, userPrompt, /*maxTokensOverride=*/-1)
+        : PBC_CallLLM(sysPrompt, userPrompt, /*maxTokensOverride=*/-1);
 
     if (!res.success || res.text.empty())
     {
@@ -352,7 +365,9 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         PBC_ReplaceToken(userPrompt, "relationship_target",      ev.relationshipTargetInfo);
         PBC_ReplaceToken(userPrompt, "target_current_relationship", ev.relationshipCurrentText);
 
-        PBC_LLMResult res = PBC_CallLLM(ev.relationshipSystemPrompt, userPrompt, /*maxTokensOverride=*/-1);
+        PBC_LLMResult res = g_PBC_UseAltModelForRelationshipUpdate
+            ? PBC_CallLLMAlt(ev.relationshipSystemPrompt, userPrompt, /*maxTokensOverride=*/-1)
+            : PBC_CallLLM(ev.relationshipSystemPrompt, userPrompt, /*maxTokensOverride=*/-1);
 
         if (!res.success || res.text.empty())
         {
@@ -866,6 +881,18 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_ModelExtraParameters = sConfigMgr->GetOption<std::string>("PBC.ModelExtraParameters", "");
     g_PBC_RequestTimeoutSec   = sConfigMgr->GetOption<int>("PBC.RequestTimeoutSec", 30);
 
+    // Alt model configuration
+    g_PBC_UseAltModelForCondensation      = sConfigMgr->GetOption<bool>("PBC.UseAltModelForCondensation", false);
+    g_PBC_UseAltModelForRelationshipUpdate = sConfigMgr->GetOption<bool>("PBC.UseAltModelForRelationshipUpdate", false);
+    g_PBC_AltModelAPIType                 = sConfigMgr->GetOption<std::string>("PBC.AltModelAPIType", "openai");
+    g_PBC_AltModelBaseUrl                 = sConfigMgr->GetOption<std::string>("PBC.AltModelBaseUrl", "");
+    g_PBC_AltModelApiKey                  = sConfigMgr->GetOption<std::string>("PBC.AltModelApiKey", "");
+    g_PBC_AltModel                        = sConfigMgr->GetOption<std::string>("PBC.AltModel", "");
+    g_PBC_AltModelMaxResponseTokens       = sConfigMgr->GetOption<int>("PBC.AltModelMaxResponseLength", 0);
+    g_PBC_AltModelTemperature             = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.AltModelTemperature", 1.0f)) * 100.0) / 100.0;
+    g_PBC_AltModelModelExtraParameters    = sConfigMgr->GetOption<std::string>("PBC.AltModelModelExtraParameters", "");
+    g_PBC_AltModelRequestTimeoutSec       = sConfigMgr->GetOption<int>("PBC.AltModelRequestTimeoutSec", 30);
+
     g_PBC_MaxCtx                     = sConfigMgr->GetOption<uint32_t>("PBC.MaxCtx", 0);
     g_PBC_CondensationPreservedLines = sConfigMgr->GetOption<uint32_t>("PBC.CondensationPreservedLines", 50);
 
@@ -974,6 +1001,11 @@ void PBC_LoadConfig(bool /*isStartup*/)
         "[PBC] HTTP Server: Port={} Bind='{}' Timeout={}s BaseUrl='{}' PrivateKey={} FrontendPath='{}'",
         g_PBC_HttpServerPort, g_PBC_HttpServerBind, g_PBC_HttpServerTimeout, g_PBC_HttpServerBaseUrl,
         g_PBC_HttpServerPrivateKey.empty() ? "(not set)" : "(set)", g_PBC_HttpServerFrontendPath);
+
+    LOG_INFO("server.loading",
+        "[PBC] Alt Model: Condensation={} RelationshipUpdate={} APIType='{}' Model='{}' Url='{}' Timeout={}s",
+        g_PBC_UseAltModelForCondensation, g_PBC_UseAltModelForRelationshipUpdate,
+        g_PBC_AltModelAPIType, g_PBC_AltModel, g_PBC_AltModelBaseUrl, g_PBC_AltModelRequestTimeoutSec);
 }
 
 // ---------------------------------------------------------------------------

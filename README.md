@@ -39,7 +39,7 @@ The module supports two API formats, controlled by `PBC.APIType`:
 - **`openai`** (default) — OpenAI-compatible `/chat/completions` endpoint. The module appends `/chat/completions` to `PBC.BaseUrl` and sends the API key via `Authorization: Bearer` header.
 - **`anthropic`** — Anthropic Messages API `/messages` endpoint. The module appends `/messages` to `PBC.BaseUrl` and sends the API key via `x-api-key` header with the `anthropic-version: 2023-06-01` header.
 
-You need to configure at least `PBC.BaseUrl`, `PBC.Model` and `PBC.ApiKey` before the module can generate responses. The relevant config options are in the **API CONNECTION** and **MODEL PARAMETERS** sections of the config file. After configuring, you can use `.chars apitest` to quickly verify that the connection is working.
+You need to configure at least `PBC.BaseUrl`, `PBC.Model` and `PBC.ApiKey` before the module can generate responses. The relevant config options are in the **API CONNECTION** and **MODEL PARAMETERS** sections of the config file. After configuring, you can use `.chars api-test` to quickly verify that the connection is working (or `.chars alt-api-test` for the alternative model).
 
 > [!IMPORTANT]
 > Due to the complexity and length of the prompts, locally-run models on average home hardware will generally struggle and produce low-quality output as context grows. A cloud-based model with a large context window is recommended. Make sure to also adjust `PBC.MaxCtx` accordingly — a good starting point is around 25% of the model's total context window. Aim for at least 32k in general, anything less could lead to poor efficiency of character relationship tracking and card additions.
@@ -87,6 +87,10 @@ PBC.ModelExtraParameters = 'frequency_penalty':0.5,'presence_penalty':0.2
 becomes `"frequency_penalty":0.5,"presence_penalty":0.2` in the request.
 
 When switching providers, pay attention to `PBC.Temperature` — acceptable ranges vary between models. Check the provider's documentation for the recommended value.
+
+### Alternative Model
+
+Condensation and relationship updates are critical — their output becomes permanent parts of the character's context. The `ALTERNATIVE API` config section lets you route these tasks to a more capable model while keeping the main chat on a cheaper/faster one. Parameters follow the same format as the main model, prefixed with `AltModel`.
 
 ### HTTP Server & Web App
 

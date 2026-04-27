@@ -119,7 +119,7 @@ PBC.ModelExtraParameters =
 #                  Recommended to keep it at around 25% of the total model max context.
 #     Example:     PBC.MaxCtx = 32768
 #     Default:     0
-PBC.MaxCtx =
+PBC.MaxCtx = 32768
 
 # PBC.CondensationPreservedLines
 #     Description: Number of history lines kept after condensation.
@@ -128,6 +128,29 @@ PBC.MaxCtx =
 #                  Increase to preserve more recent context after each condensation.
 #     Default:     50
 PBC.CondensationPreservedLines = 50
+
+
+# --------------------------------------------
+# ALTERNATIVE API
+# --------------------------------------------
+
+# Allows you to define alternative API connection and model 
+# specifically for condensation and/or relationship updates.
+# Could be useful if you want to use a more capable model for important tasks.
+# Follows the same format as the main API connection and model parameters,
+# prefixed with `AltModel`.
+# Disabled by default.
+
+PBC.UseAltModelForCondensation = 0
+PBC.UseAltModelForRelationshipUpdate = 0
+PBC.AltModelAPIType = openai
+PBC.AltModelBaseUrl =
+PBC.AltModelApiKey =
+PBC.AltModelRequestTimeoutSec = 30
+PBC.AltModel =
+PBC.AltModelMaxResponseLength = 0
+PBC.AltModelTemperature = 1.0
+PBC.AltModelModelExtraParameters =
 
 
 # --------------------------------------------

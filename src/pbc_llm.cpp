@@ -45,14 +45,15 @@ static bool IEquals(const std::string& a, const std::string& b)
 }
 
 // ---------------------------------------------------------------------------
-// PBC_CallLLM  – synchronous LLM call
+// PBC_CallLLMWithConfig  – universal synchronous LLM call
 //   openai:     POST {baseUrl}/chat/completions  (OpenAI-compatible)
 //   anthropic:  POST {baseUrl}/messages          (Anthropic Messages API)
 // Safe to call from any thread; does not touch game objects.
 // ---------------------------------------------------------------------------
-PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
-                           const std::string& userPrompt,
-                           int maxTokensOverride)
+PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
+                                     const std::string& systemPrompt,
+                                     const std::string& userPrompt,
+                                     int maxTokensOverride)
 {
     PBC_LLMResult result{ false, "", 0 };
 
@@ -62,17 +63,17 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
     PBC_CleanUnknownTokens(sysPrompt);
     PBC_CleanUnknownTokens(usrPrompt);
 
-    const bool isAnthropic = IEquals(g_PBC_APIType, "anthropic");
+    const bool isAnthropic = IEquals(cfg.apiType, "anthropic");
 
     // --- Build URL --------------------------------------------------------
-    std::string url = g_PBC_BaseUrl;
+    std::string url = cfg.baseUrl;
     if (!url.empty() && url.back() == '/')
         url.pop_back();
     url += isAnthropic ? "/messages" : "/chat/completions";
 
     // --- Build request body -----------------------------------------------
     json body;
-    body["model"] = g_PBC_Model;
+    body["model"] = cfg.model;
 
     if (isAnthropic)
     {
@@ -88,24 +89,24 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
         // max_tokens is required for Anthropic — unlike OpenAI, it cannot be omitted.
         // maxTokensOverride == -1 (condensation/relationship): use a generous limit
         //   so the model isn't truncated mid-output.
-        // maxTokensOverride ==  0: use config value (PBC.MaxResponseLength).
+        // maxTokensOverride ==  0: use config value (cfg.maxResponseTokens).
         // maxTokensOverride  >  0: use the explicit override.
         if (maxTokensOverride == -1)
             body["max_tokens"] = 4096;
         else if (maxTokensOverride > 0)
             body["max_tokens"] = maxTokensOverride;
-        else if (g_PBC_MaxResponseTokens > 0)
-            body["max_tokens"] = g_PBC_MaxResponseTokens;
+        else if (cfg.maxResponseTokens > 0)
+            body["max_tokens"] = cfg.maxResponseTokens;
         else
             body["max_tokens"] = 4096;
 
-        if (g_PBC_Temperature >= 0.0)
-            body["temperature"] = g_PBC_Temperature;
+        if (cfg.temperature >= 0.0)
+            body["temperature"] = cfg.temperature;
     }
     else
     {
         // OpenAI-compatible /chat/completions format
-        body["temperature"] = g_PBC_Temperature;
+        body["temperature"] = cfg.temperature;
 
         // maxTokensOverride == -1  → omit max_tokens (condensation / relationship calls)
         // maxTokensOverride ==  0  → use config value
@@ -116,8 +117,8 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
         }
         else if (maxTokensOverride > 0)
             body["max_tokens"] = maxTokensOverride;
-        else if (g_PBC_MaxResponseTokens > 0)
-            body["max_tokens"] = g_PBC_MaxResponseTokens;
+        else if (cfg.maxResponseTokens > 0)
+            body["max_tokens"] = cfg.maxResponseTokens;
 
         json messages = json::array();
         if (!sysPrompt.empty())
@@ -129,15 +130,15 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
     std::string bodyStr = body.dump();
 
     // Append provider-specific extra parameters from config.
-    // PBC.ModelExtraParameters is a raw JSON fragment (key:value pairs) that is
+    // cfg.modelExtraParameters is a raw JSON fragment (key:value pairs) that is
     // spliced into the request body before the closing '}'.  Single quotes in
     // the config value are automatically replaced with double quotes, so the
     // user does not need to escape them.
     // Example (DeepSeek): 'frequency_penalty':0.5,'presence_penalty':0.2
     // Example (GLM):       'frequency_penalty':0.5,'thinking':{'type':'disabled'}
-    if (!g_PBC_ModelExtraParameters.empty())
+    if (!cfg.modelExtraParameters.empty())
     {
-        std::string extra = g_PBC_ModelExtraParameters;
+        std::string extra = cfg.modelExtraParameters;
         std::replace(extra.begin(), extra.end(), '\'', '"');
         bodyStr.pop_back(); // remove trailing '}'
         bodyStr += "," + extra + "}";
@@ -154,15 +155,15 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
     if (isAnthropic)
     {
         // Anthropic uses x-api-key header and requires anthropic-version
-        if (!g_PBC_ApiKey.empty())
-            headers.emplace_back("x-api-key", g_PBC_ApiKey);
+        if (!cfg.apiKey.empty())
+            headers.emplace_back("x-api-key", cfg.apiKey);
         headers.emplace_back("anthropic-version", "2023-06-01");
     }
     else
     {
         // OpenAI-compatible uses Authorization: Bearer
-        if (!g_PBC_ApiKey.empty())
-            headers.emplace_back("Authorization", "Bearer " + g_PBC_ApiKey);
+        if (!cfg.apiKey.empty())
+            headers.emplace_back("Authorization", "Bearer " + cfg.apiKey);
     }
 
     // --- Execute request --------------------------------------------------
@@ -176,7 +177,7 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
         }
 
         PBC_HttpClient http;
-        http.SetTimeoutSeconds(g_PBC_RequestTimeoutSec);
+        http.SetTimeoutSeconds(cfg.requestTimeoutSec);
         std::string responseBody = http.Post(url, bodyStr, headers);
 
         if (responseBody.empty())
@@ -262,4 +263,40 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
     }
 
     return result;
+}
+
+// ---------------------------------------------------------------------------
+// Convenience wrappers — populate PBC_APIConfig from the appropriate globals
+// ---------------------------------------------------------------------------
+
+PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
+                           const std::string& userPrompt,
+                           int maxTokensOverride)
+{
+    PBC_APIConfig cfg;
+    cfg.apiType              = g_PBC_APIType;
+    cfg.baseUrl              = g_PBC_BaseUrl;
+    cfg.apiKey               = g_PBC_ApiKey;
+    cfg.model                = g_PBC_Model;
+    cfg.maxResponseTokens    = g_PBC_MaxResponseTokens;
+    cfg.temperature          = g_PBC_Temperature;
+    cfg.modelExtraParameters = g_PBC_ModelExtraParameters;
+    cfg.requestTimeoutSec    = g_PBC_RequestTimeoutSec;
+    return PBC_CallLLMWithConfig(cfg, systemPrompt, userPrompt, maxTokensOverride);
+}
+
+PBC_LLMResult PBC_CallLLMAlt(const std::string& systemPrompt,
+                              const std::string& userPrompt,
+                              int maxTokensOverride)
+{
+    PBC_APIConfig cfg;
+    cfg.apiType              = g_PBC_AltModelAPIType;
+    cfg.baseUrl              = g_PBC_AltModelBaseUrl;
+    cfg.apiKey               = g_PBC_AltModelApiKey;
+    cfg.model                = g_PBC_AltModel;
+    cfg.maxResponseTokens    = g_PBC_AltModelMaxResponseTokens;
+    cfg.temperature          = g_PBC_AltModelTemperature;
+    cfg.modelExtraParameters = g_PBC_AltModelModelExtraParameters;
+    cfg.requestTimeoutSec    = g_PBC_AltModelRequestTimeoutSec;
+    return PBC_CallLLMWithConfig(cfg, systemPrompt, userPrompt, maxTokensOverride);
 }

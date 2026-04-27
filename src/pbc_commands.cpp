@@ -437,7 +437,7 @@ static bool HandleCharsRollModifier(ChatHandler* handler,
 }
 
 // ---------------------------------------------------------------------------
-// .chars apitest [query=hi]
+// .chars api-test [query=hi]
 // ---------------------------------------------------------------------------
 static bool HandleCharsApiTest(ChatHandler* handler, Optional<std::string_view> queryArg)
 {
@@ -456,6 +456,31 @@ static bool HandleCharsApiTest(ChatHandler* handler, Optional<std::string_view> 
     else
     {
         handler->PSendSysMessage("[PBC] API test FAILED — no valid response received. Check server logs for details.");
+    }
+
+    return result.success;
+}
+
+// ---------------------------------------------------------------------------
+// .chars alt-api-test [query=hi]
+// ---------------------------------------------------------------------------
+static bool HandleCharsAltApiTest(ChatHandler* handler, Optional<std::string_view> queryArg)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+
+    std::string query = (queryArg && !queryArg->empty()) ? std::string(*queryArg) : "hi";
+
+    handler->PSendSysMessage("[PBC] Alt API test: querying with '{}'...", query);
+
+    PBC_LLMResult result = PBC_CallLLMAlt("Answer in one single short sentence.", query);
+
+    if (result.success)
+    {
+        handler->PSendSysMessage("[PBC] Alt API test OK ({} tokens): {}", result.tokensUsed, result.text);
+    }
+    else
+    {
+        handler->PSendSysMessage("[PBC] Alt API test FAILED — no valid response received. Check server logs for details.");
     }
 
     return result.success;
@@ -648,7 +673,8 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
         { "relationship-update", HandleCharsRelationshipUpdate, SEC_GAMEMASTER, Console::Yes },
         { "roll-modifier",       HandleCharsRollModifier,       SEC_GAMEMASTER, Console::Yes },
         { "context",             HandleCharsContext,            SEC_GAMEMASTER, Console::Yes },
-        { "apitest",             HandleCharsApiTest,            SEC_GAMEMASTER, Console::Yes },
+        { "api-test",         HandleCharsApiTest,         SEC_GAMEMASTER, Console::Yes },
+        { "alt-api-test",     HandleCharsAltApiTest,      SEC_GAMEMASTER, Console::Yes },
         { "web",                 HandleCharsWeb,                SEC_PLAYER,    Console::No  },
         { "narrate",             HandleCharsNarrate,            SEC_GAMEMASTER, Console::No  },
         { "narrate-group",       HandleCharsNarrateGroup,       SEC_GAMEMASTER, Console::No  },

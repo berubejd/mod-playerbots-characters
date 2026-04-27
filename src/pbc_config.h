@@ -35,6 +35,20 @@ extern std::string g_PBC_ModelExtraParameters; // raw JSON merged into every req
 extern int         g_PBC_RequestTimeoutSec;
 
 // ---------------------------------------------------------------------------
+// Alternative API (for condensation and/or relationship updates)
+// ---------------------------------------------------------------------------
+extern bool        g_PBC_UseAltModelForCondensation;
+extern bool        g_PBC_UseAltModelForRelationshipUpdate;
+extern std::string g_PBC_AltModelAPIType;
+extern std::string g_PBC_AltModelBaseUrl;
+extern std::string g_PBC_AltModelApiKey;
+extern std::string g_PBC_AltModel;
+extern int         g_PBC_AltModelMaxResponseTokens;
+extern double      g_PBC_AltModelTemperature;
+extern std::string g_PBC_AltModelModelExtraParameters;
+extern int         g_PBC_AltModelRequestTimeoutSec;
+
+// ---------------------------------------------------------------------------
 // Context / condensation
 // ---------------------------------------------------------------------------
 extern uint32_t    g_PBC_MaxCtx;                    // token budget before condensation triggers
