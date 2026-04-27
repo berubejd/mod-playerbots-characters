@@ -28,7 +28,7 @@ Your custom file will not be overwritten by module updates. To revert to the def
 |------|-------------|
 | `Main.system` | System prompt for the main character reply. Defines the character's behavior and response format. |
 | `Main.user` | User prompt for the main character reply. Structures the character card, history, relationships, context, and event. |
-| `Condensation.system` | System prompt for the condensation LLM call. Instructs the model to summarize history into a card addition. |
+| `Condensation.system` | System prompt for the condensation LLM call. Instructs the model to summarize history into a card addition — a concise chronicle of events that happened to the character and how they changed as a result. |
 | `Condensation.user` | User prompt for the condensation LLM call. Provides the character card and history for summarization. |
 | `DefaultCharacterDescription` | Default character description used when no character card file exists. Supports basic template variables. |
 | `CharacterContext` | Current context description appended to every prompt. Contains dynamic variables like location, combat status, etc. |
@@ -36,7 +36,7 @@ Your custom file will not be overwritten by module updates. To revert to the def
 | `QuestCompleted.user` | User prompt for the quest completion summary. Supports quest-related template variables. |
 | `QuestTaken.system` | System prompt for the quest taken summary LLM call. |
 | `QuestTaken.user` | User prompt for the quest taken summary. Supports quest-related template variables. |
-| `RelationshipUpdate.system` | System prompt for the relationship update LLM call. |
+| `RelationshipUpdate.system` | System prompt for the relationship update LLM call. Produces a brief impression (1–2 short sentences) of how the character feels about another character. |
 | `RelationshipUpdate.user` | User prompt for the relationship update. Supports relationship-related template variables. |
 
 
