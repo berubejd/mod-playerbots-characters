@@ -1,4 +1,22 @@
 if(TARGET modules)
+    # Capture short git commit hash at compile time
+    find_program(GIT_EXECUTABLE git QUIET)
+    if(GIT_EXECUTABLE)
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+            WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+            OUTPUT_VARIABLE PBC_GIT_COMMIT_HASH
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+            RESULT_VARIABLE PBC_GIT_RESULT
+        )
+    endif()
+    if(NOT GIT_EXECUTABLE OR NOT PBC_GIT_RESULT EQUAL 0 OR NOT PBC_GIT_COMMIT_HASH)
+        set(PBC_GIT_COMMIT_HASH "UNKNOWN")
+    endif()
+    target_compile_definitions(modules PRIVATE PBC_GIT_COMMIT_HASH="${PBC_GIT_COMMIT_HASH}")
+    message(STATUS "[mod-playerbots-characters] Git commit: ${PBC_GIT_COMMIT_HASH}")
+
     # Optional mod_weather_vibe integration
     if(EXISTS "${CMAKE_SOURCE_DIR}/modules/mod_weather_vibe/src/core/mod_wv_core.h")
         target_compile_definitions(modules PRIVATE MOD_WEATHER_VIBE)
