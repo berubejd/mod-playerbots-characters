@@ -154,8 +154,12 @@ static std::vector<std::string> SplitByComma(const std::string& s)
 // history has exceeded g_PBC_MaxCtx.  Calls the LLM, writes the card
 // addition directly (thread-safe), and resets the in-memory history to a
 // short tail.  Does NOT touch any Player* objects.
+//
+// Returns true if condensation succeeded (history was trimmed and card
+// addition written).  Returns false if the LLM call failed or returned
+// empty — in that case the history is left untouched so no data is lost.
 // ---------------------------------------------------------------------------
-static void PBC_CondenseInline(PBC_CharacterSnapshot& snap,
+static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
                                 const std::string& sysPrompt,
                                 const std::string& userPromptTmpl)
 {
@@ -163,7 +167,7 @@ static void PBC_CondenseInline(PBC_CharacterSnapshot& snap,
     {
         if (g_PBC_DebugEnabled)
             LOG_INFO("server.loading", "[PBC] CondenseInline: prompts not configured, skipping for character={}", snap.charName);
-        return;
+        return false;
     }
 
     if (g_PBC_DebugEnabled)
@@ -176,8 +180,8 @@ static void PBC_CondenseInline(PBC_CharacterSnapshot& snap,
 
     if (!res.success || res.text.empty())
     {
-        LOG_WARN("server.loading", "[PBC] CondenseInline: LLM failed for character={}", snap.charName);
-        return;
+        LOG_WARN("server.loading", "[PBC] CondenseInline: LLM failed for character={} — history left untouched, will retry on next event", snap.charName);
+        return false;
     }
 
     // Write card addition
@@ -211,6 +215,8 @@ static void PBC_CondenseInline(PBC_CharacterSnapshot& snap,
     if (g_PBC_DebugEnabled)
         LOG_INFO("server.loading", "[PBC] CondenseInline: condensed character={} summary_len={} tail_lines={}",
                  snap.charName, res.text.size(), tail.size());
+
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -280,10 +286,20 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         // so the relationship LLM calls have complete context.
         std::deque<std::string> preCondensationHistory = ev.condensationChar.history;
 
-        PBC_CondenseInline(ev.condensationChar, condenseSysPrompt, condenseUsrTmpl);
+        bool condensed = PBC_CondenseInline(ev.condensationChar, condenseSysPrompt, condenseUsrTmpl);
 
-        // Condensation is always a trigger for relationship updates for all party
-        // members — no threshold check needed here.  The history is about to be
+        if (!condensed)
+        {
+            LOG_WARN("server.loading",
+                     "[PBC] Condensation event failed for character={} — history left untouched, "
+                     "will retry when threshold is reached again",
+                     ev.condensationChar.charName);
+            g_PBC_EventThreadDone.store(true);
+            return;
+        }
+
+        // Condensation succeeded — queue relationship updates for all party
+        // members.  No threshold check needed here.  The history has been
         // wiped, so we must capture relationships now before that context is gone.
         // We pass mention_count=0 to reset the baseline; the normal threshold
         // tracking will accumulate fresh counts from the new post-condensation history.
@@ -485,11 +501,17 @@ static void PBC_ProcessEventItem(PBC_EventItem ev)
         PBC_WsNotify(snap.charGuidRaw, "thinks");
 
         // Condense inline if over token budget before building the prompt.
+        // If condensation fails, the history is left untouched and will be
+        // retried on the next event that triggers this character.
         int histTokens = PBC_EstimateHistoryTokens(snap.charGuidRaw);
         if (histTokens > static_cast<int>(g_PBC_MaxCtx))
         {
-            PBC_CondenseInline(snap, condenseSysPrompt, condenseUsrTmpl);
-            // snap.history is now updated to the condensed tail by CondenseInline.
+            bool condensed = PBC_CondenseInline(snap, condenseSysPrompt, condenseUsrTmpl);
+            // If condensation succeeded, snap.history is now the condensed tail.
+            // If it failed, snap.history still contains the full uncondensed
+            // history — the LLM call below will use it as-is, and condensation
+            // will be retried on the next event for this character.
+            (void)condensed; // suppress unused-variable warning
         }
 
         // Build user prompt from snapshot (uses snap.history for {chat_history}).
