@@ -133,6 +133,8 @@ body {
 
 /* Chat message hover actions (desktop) */
 .message-line .message-actions {
+  display: flex;
+  align-items: center;
   opacity: 0;
   transition: opacity 0.15s ease;
   background-color: var(--bs-secondary-bg);
@@ -148,8 +150,18 @@ body {
   color: var(--bs-secondary-color) !important;
 }
 
+.message-line .message-actions .btn .bi {
+  vertical-align: middle;
+}
+
 .message-line .message-actions .btn:hover {
   color: var(--bs-body-color) !important;
+}
+
+/* Hide hover actions and touch action menu during selection mode */
+.selection-mode .message-line .message-actions,
+.selection-mode .message-line .action-menu {
+  display: none !important;
 }
 
 /* Action menu: 3-dot dropdown for touch devices */
@@ -230,4 +242,26 @@ body {
   .message-line {
     padding-right: 1.75rem;
   }
+}
+
+/* Chat toolbar for mass message operations (desktop only) */
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background-color: var(--bs-secondary-bg);
+  border-radius: 0.375rem;
+  padding: 0.125rem 0.25rem;
+}
+
+.chat-toolbar .btn {
+  color: var(--bs-secondary-color) !important;
+}
+
+.chat-toolbar .btn .bi {
+  vertical-align: middle;
+}
+
+.chat-toolbar .btn:hover {
+  color: var(--bs-body-color) !important;
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { fetchHistory, editMessage, deleteMessage, sendWhisper, formatApiError } from './api.js';
 import { parseMessage, formatMessageParts } from './chat-utils.js';
 import { useToast } from './toast-provider.jsx';
+import { useMediaQuery } from './use-media-query.js';
 import ActionMenu from './action-menu.jsx';
 
 // Threshold in px to consider "at bottom" (accounts for fractional pixels)
@@ -9,16 +10,74 @@ const SCROLL_BOTTOM_THRESHOLD = 30;
 // Threshold in px to auto-scroll on new messages (more lenient than "at bottom")
 const AUTO_SCROLL_THRESHOLD = 100;
 
-function MessageLine({ msg, nameColorMap, onEdit, onDelete }) {
+function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selected, onToggleSelect }) {
   const text = typeof msg === 'string' ? msg : msg.text;
   const id = typeof msg === 'string' ? null : msg.id;
   const pending = !!(msg && msg.pending);
   const { name, message, isWhisper, isNarrator } = parseMessage(text);
+  const canSelect = id != null && !pending;
 
   // Narrator messages: horizontal line with centered smaller white text
   if (isNarrator) {
     return (
-      <div class="py-1 message-line position-relative" style={`word-break: break-word; text-align: center; margin: 0.5rem 0;${pending ? ' opacity: 0.5;' : ''}`}>
+      <div class="py-1 message-line position-relative d-flex align-items-center" style={`word-break: break-word; text-align: center; margin: 0.5rem 0;${pending ? ' opacity: 0.5;' : ''}`}>
+        {selectionMode && canSelect && (
+          <input
+            type="checkbox"
+            class="form-check-input me-2 flex-shrink-0"
+            checked={selected}
+            onChange={() => onToggleSelect(id)}
+          />
+        )}
+        <div class="flex-grow-1 position-relative">
+          <div class="message-actions position-absolute top-0 end-0" style="z-index: 1;">
+            {id != null && !pending && (
+              <>
+                <button
+                  class="btn btn-sm p-0 px-1"
+                  title="Edit"
+                  onClick={(e) => { e.stopPropagation(); onEdit(id, text); }}
+                >
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button
+                  class="btn btn-sm p-0 px-1"
+                  title="Delete"
+                  onClick={(e) => { e.stopPropagation(); onDelete(id, text); }}
+                >
+                  <i class="bi bi-trash3"></i>
+                </button>
+              </>
+            )}
+          </div>
+          {id != null && !pending && (
+            <div class="action-menu position-absolute top-0 end-0">
+              <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
+            </div>
+          )}
+          <div style="position: relative;">
+            <div style="position: absolute; top: 50%; left: 0; right: 0; border-top: 1px solid #555;"></div>
+            <span style="position: relative; display: inline-block; max-width: 75%; color: #fff; font-size: 0.85rem; padding: 0 0.75rem; background: var(--bs-body-bg);">{message}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const parts = formatMessageParts(message);
+  const nameColor = nameColorMap && nameColorMap[name] ? nameColorMap[name] : null;
+
+  return (
+    <div class="py-1 message-line position-relative d-flex" style={`word-break: break-word;${pending ? ' opacity: 0.5;' : ''}`}>
+      {selectionMode && canSelect && (
+        <input
+          type="checkbox"
+          class="form-check-input me-2 flex-shrink-0 mt-1"
+          checked={selected}
+          onChange={() => onToggleSelect(id)}
+        />
+      )}
+      <div class="flex-grow-1 position-relative">
         <div class="message-actions position-absolute top-0 end-0" style="z-index: 1;">
           {id != null && !pending && (
             <>
@@ -44,61 +103,24 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete }) {
             <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
           </div>
         )}
-        <div style="position: relative;">
-          <div style="position: absolute; top: 50%; left: 0; right: 0; border-top: 1px solid #555;"></div>
-          <span style="position: relative; display: inline-block; max-width: 75%; color: #fff; font-size: 0.85rem; padding: 0 0.75rem; background: var(--bs-body-bg);">{message}</span>
-        </div>
-      </div>
-    );
-  }
-
-  const parts = formatMessageParts(message);
-  const nameColor = nameColorMap && nameColorMap[name] ? nameColorMap[name] : null;
-
-  return (
-    <div class="py-1 message-line position-relative" style={`word-break: break-word;${pending ? ' opacity: 0.5;' : ''}`}>
-      <div class="message-actions position-absolute top-0 end-0" style="z-index: 1;">
-        {id != null && !pending && (
-          <>
-            <button
-              class="btn btn-sm p-0 px-1"
-              title="Edit"
-              onClick={(e) => { e.stopPropagation(); onEdit(id, text); }}
-            >
-              <i class="bi bi-pencil"></i>
-            </button>
-            <button
-              class="btn btn-sm p-0 px-1"
-              title="Delete"
-              onClick={(e) => { e.stopPropagation(); onDelete(id, text); }}
-            >
-              <i class="bi bi-trash3"></i>
-            </button>
-          </>
+        {name && (
+          <span class="fw-bold" style={nameColor ? `color: ${nameColor}` : undefined}>{name}</span>
         )}
+        {isWhisper && (
+          <span class="badge bg-secondary ms-1" style="font-size: 0.65rem; vertical-align: middle;">WHISPER</span>
+        )}
+        {name && ': '}
+        {parts.map((part, j) => {
+          if (part.type === 'emote') {
+            return (
+              <span key={j} style={`color: ${part.color}`} class="fst-italic">
+                *{part.text}*
+              </span>
+            );
+          }
+          return <span key={j} style="white-space: pre-wrap">{part.text}</span>;
+        })}
       </div>
-      {id != null && !pending && (
-        <div class="action-menu position-absolute top-0 end-0">
-          <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
-        </div>
-      )}
-      {name && (
-        <span class="fw-bold" style={nameColor ? `color: ${nameColor}` : undefined}>{name}</span>
-      )}
-      {isWhisper && (
-        <span class="badge bg-secondary ms-1" style="font-size: 0.65rem; vertical-align: middle;">WHISPER</span>
-      )}
-      {name && ': '}
-      {parts.map((part, j) => {
-        if (part.type === 'emote') {
-          return (
-            <span key={j} style={`color: ${part.color}`} class="fst-italic">
-              *{part.text}*
-            </span>
-          );
-        }
-        return <span key={j} style="white-space: pre-wrap">{part.text}</span>;
-      })}
     </div>
   );
 }
@@ -222,6 +244,50 @@ function DeleteModal({ show, onConfirm, onCancel }) {
   );
 }
 
+function BatchDeleteModal({ show, count, onConfirm, onCancel }) {
+  const [propagate, setPropagate] = useState(false);
+
+  useEffect(() => {
+    if (show) {
+      setPropagate(false);
+    }
+  }, [show]);
+
+  if (!show) return null;
+
+  return (
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5)" onClick={onCancel}>
+      <div class="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Delete Messages</h5>
+            <button type="button" class="btn-close" onClick={onCancel}></button>
+          </div>
+          <div class="modal-body">
+            <p class="mb-0">Deleting messages is irreversible. Are you sure you want to delete {count} message{count !== 1 ? 's' : ''}?</p>
+            <div class="form-check mt-3">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                id="batchDeletePropagate"
+                checked={propagate}
+                onChange={(e) => setPropagate(e.target.checked)}
+              />
+              <label class="form-check-label small" for="batchDeletePropagate">
+                Find and delete the same messages in other group members' histories
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onClick={onCancel}>Cancel</button>
+            <button type="button" class="btn btn-danger" onClick={() => onConfirm(propagate)}>Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SendMessageInput({ token, selectedGuid, onDesync, onWhisperSent }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -310,11 +376,17 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
   const [thinking, setThinking] = useState(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const toast = useToast();
+  const isDesktop = useMediaQuery('(min-width: 768px)');
 
   // Edit modal state
   const [editModal, setEditModal] = useState({ show: false, id: null, text: '' });
   // Delete modal state (includes original text for desync detection)
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null, text: '' });
+
+  // Selection mode state (desktop only)
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [batchDeleteModal, setBatchDeleteModal] = useState({ show: false, count: 0 });
 
   const containerRef = useRef(null);
   const lastIdRef = useRef(0);
@@ -407,6 +479,9 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     pendingWhisperRef.current = null;
     // Always scroll to bottom after a full reload
     shouldAutoScrollRef.current = true;
+    // Reset selection mode on character change
+    setSelectionMode(false);
+    setSelectedIds(new Set());
 
     fetchHistory(token, selectedGuid)
       .then((data) => {
@@ -555,6 +630,24 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     setRetryKey((k) => k + 1);
   }, []);
 
+  // Selection mode handlers (desktop only)
+  const toggleSelectionMode = useCallback(() => {
+    setSelectionMode((prev) => !prev);
+    setSelectedIds(new Set());
+  }, []);
+
+  const toggleMessageSelection = useCallback((id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
   // Edit handlers
   const handleEditOpen = useCallback((id, text) => {
     setEditModal({ show: true, id, text });
@@ -563,6 +656,9 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
   const handleEditSave = useCallback(async (newText, propagate) => {
     const originalText = editModal.text;
     const messageId = editModal.id;
+    // Exit selection mode to avoid stale ID references
+    setSelectionMode(false);
+    setSelectedIds(new Set());
     try {
       await editMessage(token, selectedGuid, messageId, newText, originalText);
       // Update the message in local state
@@ -615,6 +711,9 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
   const handleDeleteConfirm = useCallback(async (propagate) => {
     const originalText = deleteModal.text;
     const messageId = deleteModal.id;
+    // Exit selection mode to avoid stale ID references
+    setSelectionMode(false);
+    setSelectedIds(new Set());
     try {
       await deleteMessage(token, selectedGuid, messageId, originalText);
       // Remove the message from local state and re-index remaining messages.
@@ -663,6 +762,84 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     setDeleteModal({ show: false, id: null, text: '' });
   }, []);
 
+  // Batch delete handlers
+  const handleBatchDeleteOpen = useCallback(() => {
+    setBatchDeleteModal({ show: true, count: selectedIds.size });
+  }, [selectedIds]);
+
+  const handleBatchDeleteCancel = useCallback(() => {
+    setBatchDeleteModal({ show: false, count: 0 });
+  }, []);
+
+  const handleBatchDeleteConfirm = useCallback(async (propagate) => {
+    // Capture selected messages before clearing state
+    const toDelete = messages
+      .filter((msg) => selectedIds.has(msg.id) && msg.id != null && !msg.pending)
+      .map((msg) => ({ id: msg.id, text: msg.text }))
+      .sort((a, b) => b.id - a.id); // Sort descending — delete highest IDs first
+
+    // Exit selection mode immediately
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setBatchDeleteModal({ show: false, count: 0 });
+
+    if (toDelete.length === 0) return;
+
+    const deletedTexts = [];
+    for (const msg of toDelete) {
+      try {
+        await deleteMessage(token, selectedGuid, msg.id, msg.text);
+        deletedTexts.push(msg.text);
+        // Update local state: remove the message and re-index subsequent ones
+        setMessages((prev) => {
+          const deletedId = msg.id;
+          return prev
+            .filter((m) => m.id !== deletedId)
+            .map((m) => (m.id > deletedId ? { ...m, id: m.id - 1 } : m));
+        });
+        lastIdRef.current -= 1;
+      } catch (err) {
+        if (err.message === 'desync' || err.message === 'player_offline') {
+          onDesync(err.message);
+          return;
+        }
+        toast('Failed to delete some messages', 'error');
+        break;
+      }
+    }
+
+    if (deletedTexts.length === 0) return;
+
+    // Handle propagation
+    if (propagate) {
+      const otherChars = (characters || []).filter((c) => c.guid !== selectedGuid);
+      let propagateCount = 0;
+      for (const char of otherChars) {
+        try {
+          const data = await fetchHistory(token, char.guid);
+          // Find all matching messages, sort by ID descending for safe deletion
+          const matchingMsgs = data.messages
+            .filter((m) => deletedTexts.includes(m.text))
+            .sort((a, b) => b.id - a.id);
+          for (const matchMsg of matchingMsgs) {
+            try {
+              await deleteMessage(token, char.guid, matchMsg.id, matchMsg.text);
+              propagateCount++;
+            } catch {
+              // Skip failed propagations for individual messages
+            }
+          }
+        } catch {
+          // Skip failed character history fetches
+        }
+      }
+      const totalCount = deletedTexts.length + propagateCount;
+      toast(`${totalCount} message${totalCount !== 1 ? 's' : ''} deleted`, 'success');
+    } else {
+      toast(`${deletedTexts.length} message${deletedTexts.length !== 1 ? 's' : ''} deleted`, 'success');
+    }
+  }, [token, selectedGuid, messages, selectedIds, toast, onDesync, characters]);
+
   // Render: loading
   if (loading) {
     return (
@@ -710,7 +887,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
   return (
     <div class="d-flex flex-column h-100 position-relative">
       <div class="position-relative flex-grow-1" style="min-height: 0">
-        <div ref={containerRef} class="overflow-auto p-3" style={`height: calc(100% - ${inputHeight}px); font-size: 1.25rem`} onScroll={handleScroll}>
+        <div ref={containerRef} class={`overflow-auto p-3${selectionMode ? ' selection-mode' : ''}`} style={`height: calc(100% - ${inputHeight}px); font-size: 1.25rem`} onScroll={handleScroll}>
           {messages.map((msg) => (
             <MessageLine
               key={msg.id}
@@ -718,9 +895,34 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
               nameColorMap={nameColorMap}
               onEdit={handleEditOpen}
               onDelete={handleDeleteOpen}
+              selectionMode={selectionMode}
+              selected={selectedIds.has(msg.id)}
+              onToggleSelect={toggleMessageSelection}
             />
           ))}
         </div>
+        {isDesktop && messages && messages.length > 0 && (
+          <div class="chat-toolbar position-absolute top-0 start-0 m-2" style="z-index: 5;">
+            <button
+              class="btn btn-sm p-0 px-1"
+              style={selectionMode ? 'color: var(--bs-primary) !important;' : undefined}
+              onClick={toggleSelectionMode}
+              title={selectionMode ? 'Cancel selection' : 'Select messages'}
+            >
+              <i class="bi bi-check-square"></i>
+            </button>
+            {selectionMode && selectedIds.size > 0 && (
+              <button
+                class="btn btn-sm p-0 px-1"
+                style="color: var(--bs-danger) !important;"
+                onClick={handleBatchDeleteOpen}
+                title="Delete selected"
+              >
+                <i class="bi bi-trash"></i>
+              </button>
+            )}
+          </div>
+        )}
         {thinking && charName && (
           <div class="position-absolute start-0 px-3 pb-1" style={`font-size: 0.8rem; color: var(--bs-secondary-color); bottom: ${inputHeight}px;`}>
             {charName} thinks…
@@ -750,6 +952,12 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
         show={deleteModal.show}
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
+      />
+      <BatchDeleteModal
+        show={batchDeleteModal.show}
+        count={batchDeleteModal.count}
+        onConfirm={handleBatchDeleteConfirm}
+        onCancel={handleBatchDeleteCancel}
       />
     </div>
   );
