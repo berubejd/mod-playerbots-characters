@@ -51,7 +51,7 @@ std::string g_PBC_AltModelModelExtraParameters;
 int         g_PBC_AltModelRequestTimeoutSec         = 30;
 
 uint32_t    g_PBC_MaxCtx                    = 0;
-uint32_t    g_PBC_CondensationPreservedLines = 50;
+uint32_t    g_PBC_CondensationPreservedLines = 10;
 
 std::string g_PBC_SystemPrompt;
 std::string g_PBC_UserPrompt;
@@ -894,7 +894,7 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_AltModelRequestTimeoutSec       = sConfigMgr->GetOption<int>("PBC.AltModelRequestTimeoutSec", 30);
 
     g_PBC_MaxCtx                     = sConfigMgr->GetOption<uint32_t>("PBC.MaxCtx", 0);
-    g_PBC_CondensationPreservedLines = sConfigMgr->GetOption<uint32_t>("PBC.CondensationPreservedLines", 50);
+    g_PBC_CondensationPreservedLines = sConfigMgr->GetOption<uint32_t>("PBC.CondensationPreservedLines", 10);
 
     g_PBC_PromptsPath = sConfigMgr->GetOption<std::string>("PBC.PromptsPath",
                                     "../../../modules/mod-playerbots-characters/prompts");

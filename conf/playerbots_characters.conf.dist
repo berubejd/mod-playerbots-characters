@@ -126,8 +126,8 @@ PBC.MaxCtx = 32768
 #                  After the LLM summarises the history into a card addition, the in-memory
 #                  and database history is trimmed to this many most-recent lines.
 #                  Increase to preserve more recent context after each condensation.
-#     Default:     50
-PBC.CondensationPreservedLines = 50
+#     Default:     10
+PBC.CondensationPreservedLines = 10
 
 
 # --------------------------------------------
