@@ -74,7 +74,7 @@ DeepSeek offers a reasonable cost/capabilities compromise and can be considered 
 | `PBC.ModelExtraParameters` | `'thinking':{'type':'disabled'}` |
 | `PBC.ApiKey` | your API key from [Z.ai](https://z.ai/manage-apikey/apikey-list) |
 
-GLM 5.1 has a built-in "thinking" mode that is incompatible with the module's prompt structure — disabling it via `ModelExtraParameters` is required for correct output. The model handles the required tasks impressively well, though the cost adds up fairly quickly. Expect to spend around $2 per long game session with a full party.
+GLM 5.1 has a built-in "thinking" mode that would reach `PBC.MaxResponseLength` very fast — disabling it via `ModelExtraParameters` is required for this case, unless you lift the limit. The model handles the required tasks impressively well, though the cost adds up fairly quickly. Expect to spend around $2 per long game session with a full party.
 
 #### Other Models
 
