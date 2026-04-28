@@ -74,7 +74,9 @@ PBC.ApiKey =
 
 # PBC.RequestTimeoutSec
 #     Description: HTTP request timeout in seconds.
-#                  Keep low — if the API is unreachable you don't want to block a thread for long.
+#                  Keep low — events are processed sequentially, so if the API is slow or
+#                  unreachable every request will wait up to this timeout, slowing down the
+#                  queue and causing events to pile up.
 #     Default:     30
 PBC.RequestTimeoutSec = 30
 
