@@ -1389,7 +1389,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         s_tickTimer -= diff;
         return;
     }
-    s_tickTimer = 500; // 500 ms gate
+    s_tickTimer = 100; // 100 ms gate
 
     // ---------------------------------------------------------------------------
     // 1. Drain secondary event requests posted by the event thread.
