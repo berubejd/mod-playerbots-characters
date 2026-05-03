@@ -1,4 +1,4 @@
-export default function LoadingView({ steps, error, onRetry }) {
+export default function LoadingView({ steps, error, onRetry, onOpenAccountManager }) {
   return (
     <div class="d-flex justify-content-center align-items-center min-vh-100">
       <div style="max-width: 320px; width: 100%;">
@@ -33,6 +33,17 @@ export default function LoadingView({ steps, error, onRetry }) {
             </div>
             <button class="btn btn-primary" onClick={onRetry}>
               Retry
+            </button>
+          </div>
+        )}
+        {onOpenAccountManager && (
+          <div class="text-center mt-4">
+            <button
+              class="btn btn-link text-body-secondary text-decoration-none small"
+              onClick={onOpenAccountManager}
+              type="button"
+            >
+              Account Manager
             </button>
           </div>
         )}

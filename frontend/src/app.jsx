@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { getToken, setToken as storeToken, removeToken, exchangeOtp, fetchPlayer } from './api.js';
+import { exchangeOtp, fetchPlayer } from './api.js';
+import { getToken, setToken as storeToken, removeToken, saveAccount, removeAccount, hasAccounts } from './account-store.js';
 import { getFaction } from './wow-colors.js';
 import { ToastProvider } from './toast-provider.jsx';
 import { useWebSocket } from './use-websocket.js';
 import OtpInput from './otp-input.jsx';
 import LoadingView from './loading-view.jsx';
 import PlayerView from './player-view.jsx';
+import AccountManager from './account-manager.jsx';
 
-const VIEW = { OTP: 'otp', LOADING: 'loading', MAIN: 'main' };
+const VIEW = { OTP: 'otp', LOADING: 'loading', MAIN: 'main', ACCOUNT_MANAGER: 'account_manager' };
 
 const INITIAL_STEPS = [
   { key: 'token', label: 'Validating token', status: 'pending' },
@@ -154,6 +156,8 @@ export default function App() {
         if (cancelled) return;
         setPlayer(data);
         setFaction(applyFactionTheme(data.race));
+        // Save account info to localStorage for account manager
+        saveAccount(token, data);
         setLoadSteps(prev => prev.map(s => s.key === 'player' ? { ...s, status: 'done' } : s));
 
         // Step 3: Wait for WS connection (handled by separate effect below)
@@ -163,6 +167,7 @@ export default function App() {
         if (cancelled) return;
         if (err.message === 'unauthorized') {
           removeToken();
+          removeAccount(token);
           setAuthToken(null);
           clearFactionTheme();
           setView(VIEW.OTP);
@@ -240,6 +245,30 @@ export default function App() {
     setRetryKey((k) => k + 1);
   }, []);
 
+  // --- Account Manager navigation ---
+
+  const handleOpenAccountManager = useCallback(() => {
+    setView(VIEW.ACCOUNT_MANAGER);
+  }, []);
+
+  const handleSwitchAccount = useCallback((token) => {
+    storeToken(token);
+    setAuthToken(token);
+    setPlayer(null);
+    clearFactionTheme();
+    setLoadSteps(INITIAL_STEPS.map(s => ({ ...s })));
+    setLoadError('');
+    setWsEvent(null);
+    setSubscribeParams({ selectedGuid: null, subscribeReady: false });
+    setWsConnectKey(k => k + 1);
+    setView(VIEW.LOADING);
+  }, []);
+
+  const handleAddAccount = useCallback(() => {
+    setOtpError('');
+    setView(VIEW.OTP);
+  }, []);
+
   if (view === null) {
     return null;
   }
@@ -248,10 +277,20 @@ export default function App() {
     <ToastProvider>
       <div class="d-flex flex-column min-vh-100">
         {view === VIEW.OTP && (
-          <OtpInput onSubmit={handleOtpSubmit} error={otpError} />
+          <OtpInput
+            onSubmit={handleOtpSubmit}
+            error={otpError}
+            showAccountManager={hasAccounts()}
+            onOpenAccountManager={handleOpenAccountManager}
+          />
         )}
         {view === VIEW.LOADING && (
-          <LoadingView steps={loadSteps} error={loadError} onRetry={handleRetry} />
+          <LoadingView
+            steps={loadSteps}
+            error={loadError}
+            onRetry={handleRetry}
+            onOpenAccountManager={handleOpenAccountManager}
+          />
         )}
         {view === VIEW.MAIN && player && (
           <PlayerView
@@ -262,6 +301,13 @@ export default function App() {
             onSubscriptionChange={setSubscribeParams}
             initialSelectedGuid={lastSelectedGuid}
             onDesync={handleDesync}
+            onOpenAccountManager={handleOpenAccountManager}
+          />
+        )}
+        {view === VIEW.ACCOUNT_MANAGER && (
+          <AccountManager
+            onSwitchAccount={handleSwitchAccount}
+            onAddAccount={handleAddAccount}
           />
         )}
       </div>

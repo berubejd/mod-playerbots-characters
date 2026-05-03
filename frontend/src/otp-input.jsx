@@ -2,7 +2,7 @@ import { useRef, useState } from 'preact/hooks';
 
 const OTP_LENGTH = 6;
 
-export default function OtpInput({ onSubmit, error }) {
+export default function OtpInput({ onSubmit, error, showAccountManager, onOpenAccountManager }) {
   const [values, setValues] = useState(() => Array(OTP_LENGTH).fill(''));
   const inputsRef = useRef([]);
   const [submitting, setSubmitting] = useState(false);
@@ -124,6 +124,18 @@ export default function OtpInput({ onSubmit, error }) {
         {submitting && (
           <div class="spinner-border spinner-border-sm text-secondary mt-2" role="status">
             <span class="visually-hidden">Loading...</span>
+          </div>
+        )}
+
+        {showAccountManager && onOpenAccountManager && (
+          <div class="mt-4">
+            <button
+              class="btn btn-link text-body-secondary text-decoration-none small"
+              onClick={onOpenAccountManager}
+              type="button"
+            >
+              Account Manager
+            </button>
           </div>
         )}
       </div>

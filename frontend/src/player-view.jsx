@@ -9,7 +9,7 @@ import { useVisualViewport } from './use-visual-viewport.js';
 
 const TAB = { CHARACTERS: 'characters', CHAT: 'chat', INFO: 'info' };
 
-export default function PlayerView({ player, token, faction, wsEvent, onSubscriptionChange, initialSelectedGuid, onDesync }) {
+export default function PlayerView({ player, token, faction, wsEvent, onSubscriptionChange, initialSelectedGuid, onDesync, onOpenAccountManager }) {
   const characters = (player.party || []).filter((m) => m.character);
 
   // Initialize selectedGuid from initialSelectedGuid if it's a valid character
@@ -126,6 +126,9 @@ export default function PlayerView({ player, token, faction, wsEvent, onSubscrip
           class="faction-icon"
           width="48"
           height="48"
+          onClick={onOpenAccountManager}
+          style="cursor: pointer"
+          title="Account Manager"
         />
       )}
     </div>

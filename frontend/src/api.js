@@ -1,27 +1,6 @@
-const TOKEN_KEY = 'pbc_token';
-
-// Base64URL tokens only contain A-Za-z0-9-_ (no / + =).
-// Old base64 tokens containing these characters are invalidated.
-const TOKEN_FORMAT_RE = /^[A-Za-z0-9-_]+$/;
-
-export function getToken() {
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (token && !TOKEN_FORMAT_RE.test(token)) {
-    localStorage.removeItem(TOKEN_KEY);
-    return null;
-  }
-  return token;
-}
-
-export function setToken(token) {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function removeToken() {
-  localStorage.removeItem(TOKEN_KEY);
-}
-
+// Token management has moved to account-store.js (multi-account support).
 // ---------------------------------------------------------------------------
+
 // HTTP status → error tag mapping helper
 //
 // Checks the response status against the provided map and throws the
