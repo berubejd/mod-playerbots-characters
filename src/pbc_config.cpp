@@ -1585,7 +1585,10 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             ev.histLine  = wr.histLine;
             ev.chatType  = CHAT_MSG_WHISPER;
 
-            if (PBC_RollChance(PBC_GetEffectiveChance(target->GetGUID().GetCounter(), g_PBC_ReplyChanceWhisper)))
+            // Deliberately not applying roll chance modifiers — whispers are direct
+            // conversations and should always use the base chance, same as the
+            // in-game whisper path in pbc_events.cpp.
+            if (PBC_RollChance(g_PBC_ReplyChanceWhisper))
             {
                 PBC_CharacterSnapshot snap = PBC_SnapshotCharacter(target);
                 snap.whisperTargetGuid = ObjectGuid(wr.senderGuid);
