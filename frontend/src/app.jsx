@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { exchangeOtp, fetchPlayer } from './api.js';
-import { getToken, setToken as storeToken, removeToken, saveAccount, removeAccount, hasAccounts } from './account-store.js';
+import { getToken, setToken as storeToken, removeToken, saveAccount, removeAccount, hasAccounts, getAccounts } from './account-store.js';
 import { getFaction } from './wow-colors.js';
 import { ToastProvider } from './toast-provider.jsx';
 import { useWebSocket } from './use-websocket.js';
@@ -120,10 +120,13 @@ export default function App() {
     connectKey: wsConnectKey,
   });
 
-  // On mount: if we have a saved token, go straight to loading
+  // On mount: if multiple accounts exist, show account picker;
+  // otherwise load the single saved account or show OTP
   useEffect(() => {
-    const saved = getToken();
-    if (saved) {
+    const accounts = getAccounts();
+    if (accounts.length > 1) {
+      setView(VIEW.ACCOUNT_MANAGER);
+    } else if (getToken()) {
       setView(VIEW.LOADING);
     } else {
       setView(VIEW.OTP);
