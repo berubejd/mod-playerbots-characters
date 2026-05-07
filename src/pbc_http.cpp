@@ -71,8 +71,9 @@ std::string PBC_HttpClient::Post(const std::string& url,
         if (g_PBC_DebugEnabled)
             LOG_INFO("server.loading", "[PBC] HTTP {} {}:{}{}", proto, host, port, path);
 
+        // Content-Type is set via the content_type parameter of cli.Post(),
+        // not here — adding it to the multimap would create a duplicate header.
         httplib::Headers headers = {
-            {"Content-Type", "application/json"},
             {"Accept",       "application/json"},
             {"User-Agent",   "AzerothCore-PBC/1.0"}
         };

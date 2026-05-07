@@ -144,11 +144,6 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
         bodyStr += "," + extra + "}";
     }
 
-    if (g_PBC_DebugEnabled && g_PBC_DebugShowFullRequest)
-    {
-        LOG_INFO("server.loading", "[PBC] LLM request body:\n{}", PBC_SanitizeForFmt(PBC_TruncateForDebug(bodyStr)));
-    }
-
     // --- Build headers ----------------------------------------------------
     std::vector<std::pair<std::string, std::string>> headers;
 
@@ -164,6 +159,11 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
         // OpenAI-compatible uses Authorization: Bearer
         if (!cfg.apiKey.empty())
             headers.emplace_back("Authorization", "Bearer " + cfg.apiKey);
+    }
+
+    if (g_PBC_DebugEnabled && g_PBC_DebugShowFullRequest)
+    {
+        LOG_INFO("server.loading", "[PBC] LLM request body:\n{}", PBC_SanitizeForFmt(PBC_TruncateForDebug(bodyStr)));
     }
 
     // --- Execute request --------------------------------------------------
