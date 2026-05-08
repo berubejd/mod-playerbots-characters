@@ -115,7 +115,11 @@ export default function App() {
     handleFullReset();
   }, [handleFullReset]);
 
-  const { status: wsStatus } = useWebSocket(authToken, {
+  // Only connect WS when in LOADING or MAIN view — no connection needed
+  // on OTP or ACCOUNT_MANAGER screens (no account is active yet).
+  const wsToken = (view === VIEW.LOADING || view === VIEW.MAIN) ? authToken : null;
+
+  const { status: wsStatus } = useWebSocket(wsToken, {
     ...subscribeParams,
     onEvent: handleWsEvent,
     onDisconnect: handleWsDisconnect,
