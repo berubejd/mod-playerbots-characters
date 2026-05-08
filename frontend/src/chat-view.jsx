@@ -303,6 +303,7 @@ function SendMessageInput({ token, selectedGuid, onDesync, onMessageSent, messag
   const [sending, setSending] = useState(false);
   const textareaRef = useRef(null);
   const toast = useToast();
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   const modeConfig = MODE_OPTIONS.find((m) => m.value === messageMode) || MODE_OPTIONS[0];
 
@@ -377,13 +378,13 @@ function SendMessageInput({ token, selectedGuid, onDesync, onMessageSent, messag
     <div class="d-flex align-items-end gap-2 p-3 border-top bg-body">
       <select
         class="form-select flex-shrink-0"
-        style="width: auto; min-height: 38px;"
+        style={isMobile ? 'width: auto; min-height: 38px; padding-left: 0.4rem; padding-right: 1.4rem; font-size: 0.85rem;' : 'width: auto; min-height: 38px;'}
         value={messageMode}
         onChange={(e) => onMessageModeChange(e.target.value)}
         disabled={sending}
       >
         {MODE_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
+          <option key={opt.value} value={opt.value}>{isMobile ? opt.shortcut : opt.label}</option>
         ))}
       </select>
       <textarea
