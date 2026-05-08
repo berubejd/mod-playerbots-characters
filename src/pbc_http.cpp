@@ -33,6 +33,7 @@
 
 #include <nlohmann/json.hpp>
 #include "pbc_character.h"
+#include "pbc_events.h"
 
 using json = nlohmann::json;
 
@@ -1025,13 +1026,41 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 return;
             }
 
-            // Build JSON response with basic player info and party members
+            // Build JSON response with basic player info
             json response;
             response["name"]   = player->GetName();
             response["gender"] = HttpGenderStr(player->getGender());
             response["race"]   = HttpRaceStr(player->getRace());
             response["class"]  = HttpClassStr(player->getClass());
             response["level"]  = player->GetLevel();
+
+            res.set_content(response.dump(), "application/json");
+        });
+
+        // -------------------------------------------------------------------
+        // GET /api/party
+        //
+        // Returns online party members for the authenticated player.
+        // Requires a valid Authorization: Bearer <token> header.
+        // The authenticated player must be online.
+        // -------------------------------------------------------------------
+        svr->Get("/api/party", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, false, false, ctx))
+                return;
+
+            // Look up the player by GUID
+            ObjectGuid objGuid(ctx.authGuid);
+            Player* player = ObjectAccessor::FindPlayer(objGuid);
+            if (!player)
+            {
+                res.status = 404;
+                res.set_content("{\"error\":\"Player is not online\"}", "application/json");
+                return;
+            }
 
             // Build party array with online group members
             json party = json::array();
@@ -1061,9 +1090,194 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                     party.push_back(memberJson);
                 }
             }
+
+            json response;
             response["party"] = party;
 
             res.set_content(response.dump(), "application/json");
+        });
+
+        // -------------------------------------------------------------------
+        // POST /api/char/:guid/narrate
+        //
+        // Adds a Narrator line to the specified character's history without
+        // producing any character events.  Equivalent to the .chars narrate
+        // command.  Triggers a "history" WS event for the character.
+        //
+        // Request body: JSON with a "message" field.
+        //
+        // Requires auth.  The target character must be online.
+        // -------------------------------------------------------------------
+        svr->Post("/api/char/:guid/narrate", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
+                return;
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {}
+            std::string message = body.value("message", "");
+            if (message.empty())
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing or empty 'message' field in request body\"}", "application/json");
+                return;
+            }
+
+            std::string histLine = PBC_MakeHistLine(message);
+            PBC_AppendHistory(ctx.charGuid, histLine);
+
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] API narrate: character GUID={} message=\"{}\"", ctx.charGuid, message);
+
+            res.set_content("{\"status\":\"ok\"}", "application/json");
+        });
+
+        // -------------------------------------------------------------------
+        // POST /api/party/narrate
+        //
+        // Adds a Narrator line to every character in the authenticated
+        // player's group without producing any character events.
+        // Equivalent to the .chars narrate-group command.  Triggers a
+        // "history" WS event for every character in the group.
+        //
+        // Request body: JSON with a "message" field.
+        //
+        // Requires auth.  The authenticated player must be online and in
+        // a group.
+        // -------------------------------------------------------------------
+        svr->Post("/api/party/narrate", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, false, false, ctx))
+                return;
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {}
+            std::string message = body.value("message", "");
+            if (message.empty())
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing or empty 'message' field in request body\"}", "application/json");
+                return;
+            }
+
+            // Look up the player by GUID
+            ObjectGuid objGuid(ctx.authGuid);
+            Player* player = ObjectAccessor::FindPlayer(objGuid);
+            if (!player)
+            {
+                res.status = 404;
+                res.set_content("{\"error\":\"Player is not online\"}", "application/json");
+                return;
+            }
+
+            Group* grp = player->GetGroup();
+            if (!grp)
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Player is not in a group\"}", "application/json");
+                return;
+            }
+
+            std::string histLine = PBC_MakeHistLine(message);
+            int count = 0;
+
+            for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* member = ref->GetSource();
+                if (!member || !member->IsInWorld()) continue;
+                WorldSession* sess = member->GetSession();
+                if (!sess || !sess->IsBot()) continue;
+
+                PBC_AppendHistory(member->GetGUID().GetCounter(), histLine);
+                ++count;
+            }
+
+            if (count == 0)
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"No characters found in your group\"}", "application/json");
+                return;
+            }
+
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] API party narrate: player GUID={} characters={}", ctx.authGuid, count);
+
+            json response;
+            response["status"]          = "ok";
+            response["characters_count"] = count;
+            res.set_content(response.dump(), "application/json");
+        });
+
+        // -------------------------------------------------------------------
+        // POST /api/party/message
+        //
+        // Emulates a party message sent by the authenticated player.
+        // Adds the message to the history of all characters in the group
+        // and triggers the same character answer logic as an in-game
+        // party chat message (roll chance, LLM call, in-game reply).
+        //
+        // Request body: JSON with a "message" field.
+        //
+        // Requires auth.  The authenticated player must be online and in
+        // a group.  Returns immediately with "queued" status.
+        // -------------------------------------------------------------------
+        svr->Post("/api/party/message", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, false, false, ctx))
+                return;
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {}
+            std::string message = body.value("message", "");
+            if (message.empty())
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing or empty 'message' field in request body\"}", "application/json");
+                return;
+            }
+
+            // Look up the player by GUID to verify they're online and in a group
+            ObjectGuid objGuid(ctx.authGuid);
+            Player* player = ObjectAccessor::FindPlayer(objGuid);
+            if (!player)
+            {
+                res.status = 404;
+                res.set_content("{\"error\":\"Player is not online\"}", "application/json");
+                return;
+            }
+
+            Group* grp = player->GetGroup();
+            if (!grp)
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Player is not in a group\"}", "application/json");
+                return;
+            }
+
+            // Queue the party message request for the main thread
+            {
+                PBC_PendingPartyMessageRequest pm;
+                pm.senderName = player->GetName();
+                pm.senderGuid = ctx.authGuid;
+                pm.message    = message;
+
+                std::lock_guard<std::mutex> lock(g_PBC_PendingPartyMessageRequestsMutex);
+                g_PBC_PendingPartyMessageRequests.push(std::move(pm));
+            }
+
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] API party message queued: player GUID={}", ctx.authGuid);
+
+            res.set_content("{\"status\":\"queued\"}", "application/json");
         });
 
         // -------------------------------------------------------------------
@@ -1465,7 +1679,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         });
 
         // -------------------------------------------------------------------
-        // GET /api/history/:guid?page=&limit=
+        // GET /api/char/:guid/history?page=&limit=
         //
         // Returns character chat history from the in-memory cache as a JSON
         // array.  Each message is an object with "id" (1-based index) and
@@ -1484,7 +1698,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  Works even when the character is offline (reads
         // from the in-memory history map).
         // -------------------------------------------------------------------
-        svr->Get("/api/history/:guid", [](const httplib::Request& req, httplib::Response& res) {
+        svr->Get("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
             if (g_PBC_DebugEnabled)
                 LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
@@ -1639,11 +1853,11 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         });
 
         // -------------------------------------------------------------------
-        // POST /api/history/:guid?id=
+        // POST /api/char/:guid/history?id=
         //
         // Edit a single message in a character's chat history.  The message
         // is identified by its 1-based id (the "id" field returned by
-        // GET /api/history).  Both the in-memory history and the database
+        // GET /api/char/:guid/history).  Both the in-memory history and the database
         // row are updated.
         //
         // Request body: JSON with "message" (new text) and "original"
@@ -1652,7 +1866,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         //
         // Requires auth.  The authenticated player must be online.
         // -------------------------------------------------------------------
-        svr->Post("/api/history/:guid", [](const httplib::Request& req, httplib::Response& res) {
+        svr->Post("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
             if (g_PBC_DebugEnabled)
                 LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
@@ -1660,7 +1874,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
             if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
                 return;
 
-            // Parse id parameter (1-based, matching the "id" field from GET /api/history)
+            // Parse id parameter (1-based, matching the "id" field from GET /api/char/:guid/history)
             std::string idStr = req.get_param_value("id");
             if (idStr.empty())
             {
@@ -1718,11 +1932,11 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         });
 
         // -------------------------------------------------------------------
-        // DELETE /api/history/:guid?id=
+        // DELETE /api/char/:guid/history?id=
         //
         // Delete a single message from a character's chat history.  The
         // message is identified by its 1-based id (the "id" field
-        // returned by GET /api/history).  Both the in-memory history and
+        // returned by GET /api/char/:guid/history).  Both the in-memory history and
         // the database row are deleted.
         //
         // Request body: JSON with "original" (current text for desync
@@ -1731,7 +1945,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         //
         // Requires auth.  The authenticated player must be online.
         // -------------------------------------------------------------------
-        svr->Delete("/api/history/:guid", [](const httplib::Request& req, httplib::Response& res) {
+        svr->Delete("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
             if (g_PBC_DebugEnabled)
                 LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
@@ -1739,7 +1953,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
             if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
                 return;
 
-            // Parse id parameter (1-based, matching the "id" field from GET /api/history)
+            // Parse id parameter (1-based, matching the "id" field from GET /api/char/:guid/history)
             std::string idStr = req.get_param_value("id");
             if (idStr.empty())
             {

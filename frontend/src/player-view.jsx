@@ -9,8 +9,9 @@ import { useVisualViewport } from './use-visual-viewport.js';
 
 const TAB = { CHARACTERS: 'characters', CHAT: 'chat', INFO: 'info' };
 
-export default function PlayerView({ player, token, faction, wsEvent, onSubscriptionChange, initialSelectedGuid, onDesync, onOpenAccountManager }) {
-  const characters = (player.party || []).filter((m) => m.character);
+export default function PlayerView({ player, party, token, faction, wsEvent, onSubscriptionChange, initialSelectedGuid, onDesync, onOpenAccountManager }) {
+  const characters = (party?.party || []).filter((m) => m.character);
+  const [messageMode, setMessageMode] = useState('whisper');
 
   // Initialize selectedGuid from initialSelectedGuid if it's a valid character
   const [selectedGuid, setSelectedGuid] = useState(() => {
@@ -169,6 +170,8 @@ export default function PlayerView({ player, token, faction, wsEvent, onSubscrip
       onLoadComplete={handleChatLoadComplete}
       onDesync={onDesync}
       characters={characters}
+      messageMode={messageMode}
+      onMessageModeChange={setMessageMode}
     />
   ) : (
     <div class="d-flex justify-content-center align-items-center h-100">

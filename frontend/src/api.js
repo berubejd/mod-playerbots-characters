@@ -68,8 +68,16 @@ export async function fetchContext(token, guid) {
   return res.json();
 }
 
+export async function fetchParty(token) {
+  const res = await fetch('/api/party', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  throwForStatus(res, AUTH_STATUS);
+  return res.json();
+}
+
 export async function fetchHistory(token, guid) {
-  const res = await fetch(`/api/history/${encodeURIComponent(guid)}`, {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/history`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   throwForStatus(res, AUTH_STATUS);
@@ -89,8 +97,47 @@ export async function sendWhisper(token, guid, message) {
   return res.json();
 }
 
+export async function sendNarrate(token, guid, message) {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/narrate`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message }),
+  });
+  throwForStatus(res, { ...AUTH_STATUS, 400: 'bad_request', 404: 'offline' });
+  return res.json();
+}
+
+export async function sendPartyMessage(token, message) {
+  const res = await fetch('/api/party/message', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message }),
+  });
+  throwForStatus(res, { ...AUTH_STATUS, 400: 'bad_request', 404: 'not_found' });
+  return res.json();
+}
+
+export async function sendPartyNarrate(token, message) {
+  const res = await fetch('/api/party/narrate', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message }),
+  });
+  throwForStatus(res, { ...AUTH_STATUS, 400: 'bad_request', 404: 'not_found' });
+  return res.json();
+}
+
 export async function editMessage(token, guid, id, message, original) {
-  const res = await fetch(`/api/history/${encodeURIComponent(guid)}?id=${encodeURIComponent(id)}`, {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/history?id=${encodeURIComponent(id)}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -103,7 +150,7 @@ export async function editMessage(token, guid, id, message, original) {
 }
 
 export async function deleteMessage(token, guid, id, original) {
-  const res = await fetch(`/api/history/${encodeURIComponent(guid)}?id=${encodeURIComponent(id)}`, {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/history?id=${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${token}`,

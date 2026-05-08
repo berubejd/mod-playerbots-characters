@@ -367,6 +367,23 @@ extern std::queue<PBC_PendingWhisperRequest> g_PBC_PendingWhisperRequests;
 extern std::mutex                            g_PBC_PendingWhisperRequestsMutex;
 
 // ---------------------------------------------------------------------------
+// A party message request posted from the HTTP API thread to the main thread.
+//
+// The main thread (OnUpdate) resolves the sender to a live Player*,
+// finds group bots, rolls chances, and pushes a proper PBC_EventItem —
+// identical to how an in-game party chat message is processed.
+// ---------------------------------------------------------------------------
+struct PBC_PendingPartyMessageRequest
+{
+    std::string senderName;
+    uint64_t    senderGuid = 0;
+    std::string message;
+};
+
+extern std::queue<PBC_PendingPartyMessageRequest> g_PBC_PendingPartyMessageRequests;
+extern std::mutex                                  g_PBC_PendingPartyMessageRequestsMutex;
+
+// ---------------------------------------------------------------------------
 // Universal event queue.
 //
 // Pushed from the main thread (game hooks, commands).

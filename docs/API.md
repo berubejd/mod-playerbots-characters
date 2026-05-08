@@ -53,7 +53,7 @@ Returns `{"token": "<bearer_token>"}` on success. Returns `400` if `otp` is miss
 
 ### `GET /api/player`
 
-Returns basic info about the authenticated player along with online party members.
+Returns basic info about the authenticated player.
 
 ```json
 {
@@ -61,7 +61,16 @@ Returns basic info about the authenticated player along with online party member
   "gender": "Male",
   "race": "Human",
   "class": "Warrior",
-  "level": 80,
+  "level": 80
+}
+```
+
+### `GET /api/party`
+
+Returns online party members for the authenticated player. Requires the player to be online.
+
+```json
+{
   "party": [
     {
       "name": "Jane",
@@ -110,7 +119,7 @@ Delete a single relationship. Query param `name` is the target character name. B
 
 Returns the fully-built context string for a character with **annotated template variables** — each substituted variable leaves its name before the value (e.g. `{char_name}Jon`). The LLM request uses the non-annotated version.
 
-### `GET /api/history/:guid?page=&limit=`
+### `GET /api/char/:guid/history?page=&limit=`
 
 Returns character chat history. Works even when the character is offline.
 
@@ -125,11 +134,27 @@ Returns `{"messages": [...], "page", "limit", "total", "total_pages"}`.
 
 Post a private message event for a character. Processed identically to an in-game whisper — the character rolls to respond and the reply is whispered back. Returns immediately with "queued" status. Body: `{"message": "Hello, how are you?"}`.
 
-### `POST /api/history/:guid?id=`
+### `POST /api/char/:guid/narrate`
+
+Add a Narrator line to the specified character's history without producing any character events (no LLM call, no response). Equivalent to the `.chars narrate` command. Triggers a `history` WS event for the character. The character must be online. Body: `{"message": "A cold wind blows through the forest"}`.
+
+Returns `{"status": "ok"}` on success.
+
+### `POST /api/party/narrate`
+
+Add a Narrator line to every character in the authenticated player's group without producing any character events. Equivalent to the `.chars narrate-group` command. Triggers a `history` WS event for every character in the group. The player must be online and in a group. Body: `{"message": "The party enters a dark cave"}`.
+
+Returns `{"status": "ok", "characters_count": 3}` on success. Returns `400` if the player is not in a group or no characters are in the group.
+
+### `POST /api/party/message`
+
+Emulate a party message sent by the authenticated player. The message is added to the history of all characters in the group and goes through the same answer logic as an in-game party chat message (roll chance, LLM call, in-game reply). The player must be online and in a group. Returns immediately with "queued" status. Body: `{"message": "Let's move forward"}`.
+
+### `POST /api/char/:guid/history?id=`
 
 Edit a single message in chat history. Query param `id` is the 1-based message ID. Body: `{"message": "New text", "original": "Current text"}`.
 
-### `DELETE /api/history/:guid?id=`
+### `DELETE /api/char/:guid/history?id=`
 
 Delete a single message from chat history. Query param `id` is the 1-based message ID. Body: `{"original": "Current text"}`.
 

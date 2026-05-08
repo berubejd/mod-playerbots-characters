@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
-import { fetchHistory, editMessage, deleteMessage, sendWhisper, formatApiError } from './api.js';
+import { fetchHistory, editMessage, deleteMessage, sendWhisper, sendNarrate, sendPartyMessage, sendPartyNarrate, formatApiError } from './api.js';
 import { parseMessage, formatMessageParts } from './chat-utils.js';
 import { useToast } from './toast-provider.jsx';
 import { useMediaQuery } from './use-media-query.js';
@@ -288,11 +288,23 @@ function BatchDeleteModal({ show, count, onConfirm, onCancel }) {
   );
 }
 
-function SendMessageInput({ token, selectedGuid, onDesync, onWhisperSent }) {
+const MODE_OPTIONS = [
+  { value: 'whisper', label: 'Whisper (/w)', shortcut: '/w', placeholder: 'Send a whisper…' },
+  { value: 'narrate', label: 'Narrate (/n)', shortcut: '/n', placeholder: 'Send a narration…' },
+  { value: 'party', label: 'Party (/p)', shortcut: '/p', placeholder: 'Send a party message…' },
+  { value: 'narrate-party', label: 'Narrate Party (/np)', shortcut: '/np', placeholder: 'Send a party narration…' },
+];
+
+// Ordered longest-shortcut-first so '/np' is tried before '/n'
+const MODE_SHORTCUTS = [...MODE_OPTIONS].sort((a, b) => b.shortcut.length - a.shortcut.length);
+
+function SendMessageInput({ token, selectedGuid, onDesync, onMessageSent, messageMode, onMessageModeChange }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const textareaRef = useRef(null);
   const toast = useToast();
+
+  const modeConfig = MODE_OPTIONS.find((m) => m.value === messageMode) || MODE_OPTIONS[0];
 
   const adjustHeight = useCallback(() => {
     const el = textareaRef.current;
@@ -307,21 +319,44 @@ function SendMessageInput({ token, selectedGuid, onDesync, onWhisperSent }) {
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
+
+    // Bare slash command (e.g. just "/p") — switch mode and clear input
+    const bareMatch = MODE_SHORTCUTS.find((opt) => trimmed.toLowerCase() === opt.shortcut);
+    if (bareMatch) {
+      onMessageModeChange(bareMatch.value);
+      setText('');
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      return;
+    }
+
     setSending(true);
     try {
-      await sendWhisper(token, selectedGuid, trimmed);
+      switch (messageMode) {
+        case 'narrate':
+          await sendNarrate(token, selectedGuid, trimmed);
+          break;
+        case 'party':
+          await sendPartyMessage(token, trimmed);
+          break;
+        case 'narrate-party':
+          await sendPartyNarrate(token, trimmed);
+          break;
+        default:
+          await sendWhisper(token, selectedGuid, trimmed);
+          break;
+      }
       setText('');
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
-      // Show pending whisper in chat — WS events will handle confirmation
-      if (onWhisperSent) onWhisperSent(trimmed);
+      // Show pending message in chat — WS events will handle confirmation
+      if (onMessageSent) onMessageSent(trimmed, messageMode);
     } catch (err) {
       if (err.message === 'player_offline') {
         onDesync(err.message);
         return;
       }
-      toast('Failed to send whisper', 'error');
+      toast(`Failed to send ${modeConfig.label.toLowerCase()}`, 'error');
     } finally {
       setSending(false);
       // Refocus the textarea after re-enable (state update needs a frame to flush)
@@ -329,7 +364,7 @@ function SendMessageInput({ token, selectedGuid, onDesync, onWhisperSent }) {
         if (textareaRef.current) textareaRef.current.focus();
       });
     }
-  }, [text, sending, token, selectedGuid, toast, onDesync, onWhisperSent]);
+  }, [text, sending, token, selectedGuid, toast, onDesync, onMessageSent, messageMode, modeConfig, onMessageModeChange]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -340,15 +375,34 @@ function SendMessageInput({ token, selectedGuid, onDesync, onWhisperSent }) {
 
   return (
     <div class="d-flex align-items-end gap-2 p-3 border-top bg-body">
+      <select
+        class="form-select flex-shrink-0"
+        style="width: auto; min-height: 38px;"
+        value={messageMode}
+        onChange={(e) => onMessageModeChange(e.target.value)}
+        disabled={sending}
+      >
+        {MODE_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
       <textarea
         ref={textareaRef}
         class="form-control"
         rows="1"
-        placeholder="Send a whisper…"
+        placeholder={modeConfig.placeholder}
         value={text}
         onInput={(e) => {
           // Prevent newlines
-          const v = e.target.value.replace(/\n/g, '');
+          let v = e.target.value.replace(/\n/g, '');
+          // Check for slash-command mode switching at the start of input
+          // e.g. "/w hello" → switch to whisper, keep "hello"
+          const lower = v.toLowerCase();
+          const matched = MODE_SHORTCUTS.find((opt) => lower.startsWith(opt.shortcut + ' '));
+          if (matched && matched.value !== messageMode) {
+            onMessageModeChange(matched.value);
+            v = v.slice(matched.shortcut.length + 1); // strip shortcut + space
+          }
           setText(v);
           adjustHeight();
         }}
@@ -368,7 +422,7 @@ function SendMessageInput({ token, selectedGuid, onDesync, onWhisperSent }) {
   );
 }
 
-export default function ChatView({ token, selectedGuid, nameColorMap, charName, playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync, characters }) {
+export default function ChatView({ token, selectedGuid, nameColorMap, charName, playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync, characters, messageMode, onMessageModeChange }) {
   const [messages, setMessages] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -457,9 +511,21 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     setShowScrollDown(!atBottom);
   }, [checkIsAtBottom, checkIsNearBottom]);
 
-  // Add a pending whisper to the chat after successful send
-  const handleWhisperSent = useCallback((message) => {
-    const fullText = `${playerName} (privately to you): ${message}`;
+  // Add a pending message to the chat after successful send
+  const handleMessageSent = useCallback((message, mode) => {
+    let fullText;
+    switch (mode) {
+      case 'narrate':
+      case 'narrate-party':
+        fullText = `Narrator: *${message}*`;
+        break;
+      case 'party':
+        fullText = `${playerName} says: ${message}`;
+        break;
+      default:
+        fullText = `${playerName} (privately to you): ${message}`;
+        break;
+    }
     pendingWhisperRef.current = fullText;
     setMessages((prev) => {
       const withoutPending = prev ? prev.filter((m) => m.id !== 'pending') : [];
@@ -878,7 +944,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
             </div>
           )}
         </div>
-        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onWhisperSent={handleWhisperSent} />
+        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} />
       </div>
     );
   }
@@ -940,7 +1006,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
         )}
       </div>
       <div ref={inputWrapperRef} class="position-absolute bottom-0 start-0 end-0" style="z-index: 10;">
-        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onWhisperSent={handleWhisperSent} />
+        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} />
       </div>
       <EditModal
         show={editModal.show}

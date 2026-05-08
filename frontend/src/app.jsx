@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { exchangeOtp, fetchPlayer } from './api.js';
+import { exchangeOtp, fetchPlayer, fetchParty } from './api.js';
 import { getToken, setToken as storeToken, removeToken, saveAccount, removeAccount, hasAccounts, getAccounts } from './account-store.js';
 import { getFaction } from './wow-colors.js';
 import { ToastProvider } from './toast-provider.jsx';
@@ -43,6 +43,7 @@ function clearFactionTheme() {
 export default function App() {
   const [view, setView] = useState(null);
   const [player, setPlayer] = useState(null);
+  const [party, setParty] = useState(null);
   const [faction, setFaction] = useState(null);
   const [otpError, setOtpError] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -84,6 +85,7 @@ export default function App() {
     }
 
     setPlayer(null);
+    setParty(null);
     setLoadSteps(INITIAL_STEPS.map(s => ({ ...s })));
     setLoadError('');
     setWsEvent(null);
@@ -162,6 +164,20 @@ export default function App() {
         // Save account info to localStorage for account manager
         saveAccount(token, data);
         setLoadSteps(prev => prev.map(s => s.key === 'player' ? { ...s, status: 'done' } : s));
+
+        // Step 2b: Fetch party info (non-fatal — proceed even if it fails)
+        return fetchParty(token)
+          .then((partyData) => {
+            if (cancelled) return;
+            setParty(partyData);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setParty({ party: [] });
+          });
+      })
+      .then(() => {
+        if (cancelled) return;
 
         // Step 3: Wait for WS connection (handled by separate effect below)
         setLoadSteps(prev => prev.map(s => s.key === 'ws' ? { ...s, status: 'active' } : s));
@@ -258,6 +274,7 @@ export default function App() {
     storeToken(token);
     setAuthToken(token);
     setPlayer(null);
+    setParty(null);
     clearFactionTheme();
     setLoadSteps(INITIAL_STEPS.map(s => ({ ...s })));
     setLoadError('');
@@ -295,9 +312,10 @@ export default function App() {
             onOpenAccountManager={handleOpenAccountManager}
           />
         )}
-        {view === VIEW.MAIN && player && (
+        {view === VIEW.MAIN && player && party && (
           <PlayerView
             player={player}
+            party={party}
             token={authToken}
             faction={faction}
             wsEvent={wsEvent}

@@ -101,6 +101,9 @@ std::mutex                          g_PBC_PendingEventRequestsMutex;
 std::queue<PBC_PendingWhisperRequest> g_PBC_PendingWhisperRequests;
 std::mutex                            g_PBC_PendingWhisperRequestsMutex;
 
+std::queue<PBC_PendingPartyMessageRequest> g_PBC_PendingPartyMessageRequests;
+std::mutex                                  g_PBC_PendingPartyMessageRequestsMutex;
+
 std::queue<PBC_EventItem>  g_PBC_EventQueue;
 std::mutex                 g_PBC_EventQueueMutex;
 std::atomic<bool>          g_PBC_EventThreadDone{ true };
@@ -1602,6 +1605,159 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
             PBC_PushEvent(std::move(ev));
             localWhispers.pop();
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 1c. Drain party message requests posted from the HTTP API thread.
+    //
+    //     These are processed identically to in-game party chat messages:
+    //     we find the sender's group characters, roll chances, and push a
+    //     PBC_EventItem.  The event thread then handles the LLM calls,
+    //     history writes, and in-game chat replies.
+    // ---------------------------------------------------------------------------
+    {
+        std::queue<PBC_PendingPartyMessageRequest> localMsgs;
+        {
+            std::lock_guard<std::mutex> lock(g_PBC_PendingPartyMessageRequestsMutex);
+            std::swap(localMsgs, g_PBC_PendingPartyMessageRequests);
+        }
+
+        while (!localMsgs.empty())
+        {
+            PBC_PendingPartyMessageRequest& pm = localMsgs.front();
+
+            // Find the sender (real player) — must be online, otherwise skip
+            Player* sender = ObjectAccessor::FindPlayer(ObjectGuid(pm.senderGuid));
+            if (!sender || !sender->IsInWorld())
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] API party message: sender GUID={} is not online, skipping", pm.senderGuid);
+                localMsgs.pop();
+                continue;
+            }
+
+            Group* grp = sender->GetGroup();
+            if (!grp)
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] API party message: sender {} is not in a group, skipping", pm.senderName);
+                localMsgs.pop();
+                continue;
+            }
+
+            // Collect group bots (same logic as FindGroupBots in pbc_events.cpp)
+            std::vector<Player*> bots;
+            for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* member = ref->GetSource();
+                if (!member || !member->IsInWorld() || member == sender) continue;
+                WorldSession* sess = member->GetSession();
+                if (!sess || !sess->IsBot()) continue;
+                bots.push_back(member);
+            }
+
+            if (bots.empty())
+            {
+                localMsgs.pop();
+                continue;
+            }
+
+            std::string senderName = pm.senderName.empty() ? sender->GetName() : pm.senderName;
+            std::string historyLine = senderName + ": " + pm.message;
+            std::string eventLine   = senderName + " says: " + pm.message;
+
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] API party message: sender={} msg=\"{}\" bots={}",
+                         senderName, pm.message, bots.size());
+
+            // Check if the message mentions any specific character
+            bool anyMention = false;
+            for (Player* bot : bots)
+            {
+                std::string lower = pm.message, lname = bot->GetName();
+                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                std::transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
+                if (lower.find(lname) != std::string::npos) { anyMention = true; break; }
+            }
+
+            PBC_EventItem ev;
+            ev.type      = PBC_EventType::Normal;
+            ev.eventLine = eventLine;
+            ev.histLine  = historyLine;
+            ev.chatType  = CHAT_MSG_PARTY;
+            // Party messages from the API can trigger secondary events
+            // (same as in-game party chat)
+            ev.canCreateEvents = true;
+
+            if (anyMention)
+            {
+                // Build ordered list of mentioned characters (by position in message)
+                std::string lowerMsg = pm.message;
+                std::transform(lowerMsg.begin(), lowerMsg.end(), lowerMsg.begin(), ::tolower);
+
+                std::vector<std::pair<size_t, Player*>> positions;
+                for (Player* bot : bots)
+                {
+                    std::string lname = bot->GetName();
+                    std::transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
+                    size_t pos = lowerMsg.find(lname);
+                    if (pos != std::string::npos)
+                        positions.emplace_back(pos, bot);
+                }
+                std::sort(positions.begin(), positions.end(),
+                          [](const auto& a, const auto& b){ return a.first < b.first; });
+
+                std::unordered_set<uint64_t> mentionedGuids;
+                for (auto& [pos, bot] : positions)
+                {
+                    mentionedGuids.insert(bot->GetGUID().GetCounter());
+                    uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), g_PBC_ReplyChanceMention);
+                    bool rolled = PBC_RollChance(effectiveChance);
+                    if (rolled)
+                        ev.respondingChars.push_back(PBC_SnapshotCharacter(bot));
+                    else
+                        ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
+                }
+
+                for (Player* bot : bots)
+                {
+                    if (mentionedGuids.count(bot->GetGUID().GetCounter())) continue;
+                    ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
+                }
+            }
+            else
+            {
+                // No mention: same penalty logic as HandleChatMessage
+                std::vector<Player*> shuffledBots = bots;
+                std::shuffle(shuffledBots.begin(), shuffledBots.end(), PBC_GetRNG());
+
+                uint32 currentChance = g_PBC_ReplyChanceMessage;
+                for (Player* bot : shuffledBots)
+                {
+                    if (currentChance == 0)
+                    {
+                        ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
+                        continue;
+                    }
+
+                    uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), currentChance);
+                    bool rolled = PBC_RollChance(effectiveChance);
+                    if (rolled)
+                    {
+                        ev.respondingChars.push_back(PBC_SnapshotCharacter(bot));
+                        currentChance = currentChance > g_PBC_RollPenaltyOnAnswer
+                            ? currentChance - g_PBC_RollPenaltyOnAnswer : 0;
+                    }
+                    else
+                    {
+                        ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
+                    }
+                }
+            }
+
+            PBC_PushEvent(std::move(ev));
+            localMsgs.pop();
         }
     }
 
