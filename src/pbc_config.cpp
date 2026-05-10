@@ -1720,10 +1720,40 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                         ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
                 }
 
+                // Non-mentioned bots roll at a reduced chance (same logic
+                // as HandleChatMessage in pbc_events.cpp).
+                uint32 mentionPenalty = g_PBC_RollPenaltyOnAnswer * mentionedGuids.size();
+                uint32 baseChance = g_PBC_ReplyChanceMention > mentionPenalty
+                    ? g_PBC_ReplyChanceMention - mentionPenalty : 0;
+
+                std::vector<Player*> nonMentionedBots;
                 for (Player* bot : bots)
+                    if (!mentionedGuids.count(bot->GetGUID().GetCounter()))
+                        nonMentionedBots.push_back(bot);
+
+                std::shuffle(nonMentionedBots.begin(), nonMentionedBots.end(), PBC_GetRNG());
+
+                uint32 currentChance = baseChance;
+                for (Player* bot : nonMentionedBots)
                 {
-                    if (mentionedGuids.count(bot->GetGUID().GetCounter())) continue;
-                    ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
+                    if (currentChance == 0)
+                    {
+                        ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
+                        continue;
+                    }
+
+                    uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), currentChance);
+                    bool rolled = PBC_RollChance(effectiveChance);
+                    if (rolled)
+                    {
+                        ev.respondingChars.push_back(PBC_SnapshotCharacter(bot));
+                        currentChance = currentChance > g_PBC_RollPenaltyOnAnswer
+                            ? currentChance - g_PBC_RollPenaltyOnAnswer : 0;
+                    }
+                    else
+                    {
+                        ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
+                    }
                 }
             }
             else

@@ -3,6 +3,7 @@
 Here's the list of possible events that characters could react to.
 
 - **Message received** — fires after the character receives a new message as a whisper or otherwise, for example "John tells you privately: How are you doing?" or "John says: It was a nice fight, huh?"
+  - When a message **mentions** specific characters by name, those characters roll at `ReplyChanceMention` to respond. Non-mentioned bystanders also get a chance to chime in: they roll at `ReplyChanceMention` minus (`RollPenaltyOnAnswer` × number of mentions), with each successful bystander roll further reducing the chance by `RollPenaltyOnAnswer`.
 - **Party found item** — fires when any party member picks up a new item, only for rare (blue) items or higher tiers, for example "The party has found a legendary two-handed mace named Bane of the Damned" or "The party acquired an epic cloth robe named Robes of the Great Arcanist"
 - **Character won duel** — fires after the character or someone else in the party wins the duel, for example "John has just won the duel against Joe"
 - **Character leveled up** — fires after the character or someone else in the party reaches every 5th level, in a roleplay-friendly way, for example "John can feel their abilities growing stronger" (other level-ups are ignored to avoid history spam)

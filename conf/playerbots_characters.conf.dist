@@ -215,6 +215,9 @@ PBC.ReplyChanceMessage = 100
 #                  is 45%, the first character rolls at 100%, the second at 55%, the third at 10%,
 #                  and the fourth at 0% (no chance). If a character fails its roll, the next character
 #                  rolls at the same chance without penalty.
+#                  When a message mentions specific characters, non-mentioned bystanders roll at
+#                  ReplyChanceMention minus (RollPenaltyOnAnswer * number of mentions). Each
+#                  successful bystander roll further reduces the chance by RollPenaltyOnAnswer.
 #     Default:     45
 PBC.RollPenaltyOnAnswer = 45
 

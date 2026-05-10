@@ -381,11 +381,49 @@ static void HandleChatMessage(Player* sender, uint32 type, const std::string& ra
                 ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
         }
 
-        // Non-mentioned bots hear the message but always stay silent.
+        // Non-mentioned bots roll at a reduced chance: ReplyChanceMention
+        // minus (RollPenaltyOnAnswer * number of mentions). Each successful
+        // roll further reduces the chance by RollPenaltyOnAnswer.
+        uint32 mentionPenalty = g_PBC_RollPenaltyOnAnswer * mentionedGuids.size();
+        uint32 baseChance = g_PBC_ReplyChanceMention > mentionPenalty
+            ? g_PBC_ReplyChanceMention - mentionPenalty : 0;
+
+        std::vector<Player*> nonMentionedBots;
         for (Player* bot : bots)
+            if (!mentionedGuids.count(bot->GetGUID().GetCounter()))
+                nonMentionedBots.push_back(bot);
+
+        std::shuffle(nonMentionedBots.begin(), nonMentionedBots.end(), PBC_GetRNG());
+
+        uint32 currentChance = baseChance;
+        for (Player* bot : nonMentionedBots)
         {
-            if (mentionedGuids.count(bot->GetGUID().GetCounter())) continue;
-            ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
+            if (currentChance == 0)
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] Roll mention-bystander character={} chance=0% -> silent (no chance left)",
+                             bot->GetName());
+                ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
+                continue;
+            }
+
+            uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), currentChance);
+            bool rolled = PBC_RollChance(effectiveChance);
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] Roll mention-bystander character={} chance={}% (base={}% mod={}) -> {}",
+                         bot->GetName(), effectiveChance, currentChance,
+                         static_cast<int32_t>(effectiveChance) - static_cast<int32_t>(currentChance),
+                         rolled ? "RESPOND" : "silent");
+            if (rolled)
+            {
+                ev.respondingChars.push_back(PBC_SnapshotCharacter(bot));
+                currentChance = currentChance > g_PBC_RollPenaltyOnAnswer
+                    ? currentChance - g_PBC_RollPenaltyOnAnswer : 0;
+            }
+            else
+            {
+                ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
+            }
         }
     }
     else
