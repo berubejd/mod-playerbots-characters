@@ -788,8 +788,8 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 oldLevel)
 {
     if (!g_PBC_Enable || !PBC_PTR_VALID(player)) return;
 
-    // Skip level-up events for low levels to avoid spamming history.
-    if (oldLevel < 30) return;
+    // Only produce level-up events on every 5th level (5, 10, 15, …).
+    if (player->GetLevel() % 5 != 0) return;
 
     WorldSession* sess = player->GetSession();
     bool anchorIsReal = PBC_PTR_VALID(sess) && !sess->IsBot();
