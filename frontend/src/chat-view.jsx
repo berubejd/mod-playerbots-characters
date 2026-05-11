@@ -10,7 +10,7 @@ const SCROLL_BOTTOM_THRESHOLD = 30;
 // Threshold in px to auto-scroll on new messages (more lenient than "at bottom")
 const AUTO_SCROLL_THRESHOLD = 100;
 
-function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selected, onToggleSelect }) {
+function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selected, onToggleSelect, isNew }) {
   const text = typeof msg === 'string' ? msg : msg.text;
   const id = typeof msg === 'string' ? null : msg.id;
   const pending = !!(msg && msg.pending);
@@ -20,7 +20,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
   // Narrator messages: horizontal line with centered smaller white text
   if (isNarrator) {
     return (
-      <div class="py-1 message-line position-relative d-flex align-items-center" style={`word-break: break-word; text-align: center; margin: 0.5rem 0;${pending ? ' opacity: 0.5;' : ''}`}>
+      <div class={`py-1 message-line position-relative d-flex align-items-center${isNew ? ' message-new' : ''}`} style={`word-break: break-word; text-align: center; margin: 0.5rem 0;${pending ? ' opacity: 0.5;' : ''}`}>
         {selectionMode && canSelect && (
           <input
             type="checkbox"
@@ -68,7 +68,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
   const nameColor = nameColorMap && nameColorMap[name] ? nameColorMap[name] : null;
 
   return (
-    <div class="py-1 message-line position-relative d-flex" style={`word-break: break-word;${pending ? ' opacity: 0.5;' : ''}`}>
+    <div class={`py-1 message-line position-relative d-flex${isNew ? ' message-new' : ''}`} style={`word-break: break-word;${pending ? ' opacity: 0.5;' : ''}`}>
       {selectionMode && canSelect && (
         <input
           type="checkbox"
@@ -398,10 +398,13 @@ function SendMessageInput({ token, selectedGuid, onDesync, onMessageSent, messag
           let v = e.target.value.replace(/\n/g, '');
           // Check for slash-command mode switching at the start of input
           // e.g. "/w hello" → switch to whisper, keep "hello"
+          // If already in that mode, just strip the prefix
           const lower = v.toLowerCase();
           const matched = MODE_SHORTCUTS.find((opt) => lower.startsWith(opt.shortcut + ' '));
-          if (matched && matched.value !== messageMode) {
-            onMessageModeChange(matched.value);
+          if (matched) {
+            if (matched.value !== messageMode) {
+              onMessageModeChange(matched.value);
+            }
             v = v.slice(matched.shortcut.length + 1); // strip shortcut + space
           }
           setText(v);
@@ -442,6 +445,10 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [batchDeleteModal, setBatchDeleteModal] = useState({ show: false, count: 0 });
+
+  // Track newly arrived message IDs for highlight animation
+  const [newMessageIds, setNewMessageIds] = useState(new Set());
+  const newTimersRef = useRef(new Map()); // id → timeout
 
   const containerRef = useRef(null);
   const lastIdRef = useRef(0);
@@ -550,6 +557,11 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     setSelectionMode(false);
     setSelectedIds(new Set());
 
+    // Clear highlight timers on character change
+    for (const t of newTimersRef.current.values()) clearTimeout(t);
+    newTimersRef.current.clear();
+    setNewMessageIds(new Set());
+
     fetchHistory(token, selectedGuid)
       .then((data) => {
         if (!cancelled) {
@@ -596,12 +608,27 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
       const expectedId = lastIdRef.current + 1;
       const pendingText = pendingWhisperRef.current;
 
+      // Helper: mark a message as new (highlight) and auto-remove after animation
+      const markAsNew = (msgId) => {
+        setNewMessageIds((prev) => new Set(prev).add(msgId));
+        if (newTimersRef.current.has(msgId)) clearTimeout(newTimersRef.current.get(msgId));
+        newTimersRef.current.set(msgId, setTimeout(() => {
+          setNewMessageIds((prev) => {
+            const next = new Set(prev);
+            next.delete(msgId);
+            return next;
+          });
+          newTimersRef.current.delete(msgId);
+        }, 3000));
+      };
+
       if (pendingText !== null) {
         pendingWhisperRef.current = null;
         if (text === pendingText) {
           // Same message confirmed — replace pending with real (removes opacity)
           setMessages((prev) => prev.map((m) => m.id === 'pending' ? { id, text } : m));
           lastIdRef.current = id;
+          markAsNew(id);
         } else {
           // Different message — remove pending, add the real one
           setMessages((prev) => {
@@ -613,6 +640,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
           });
           if (id === expectedId) {
             lastIdRef.current = id;
+            markAsNew(id);
           } else {
             setRetryKey((k) => k + 1);
           }
@@ -624,6 +652,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
           // here; the messages effect will scroll synchronously if appropriate.
           setMessages((prev) => prev ? [...prev, { id, text }] : prev);
           lastIdRef.current = id;
+          markAsNew(id);
         } else {
           // ID mismatch — something went wrong, invalidate and re-fetch
           setRetryKey((k) => k + 1);
@@ -682,6 +711,13 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     observer.observe(el);
     return () => observer.disconnect();
   }, [messages]);
+
+  // Cleanup highlight timers on unmount
+  useEffect(() => {
+    return () => {
+      for (const t of newTimersRef.current.values()) clearTimeout(t);
+    };
+  }, []);
 
   // When the input overlay height changes, scroll to the new bottom if user was at bottom
   useEffect(() => {
@@ -965,6 +1001,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
               selectionMode={selectionMode}
               selected={selectedIds.has(msg.id)}
               onToggleSelect={toggleMessageSelection}
+              isNew={newMessageIds.has(msg.id)}
             />
           ))}
         </div>

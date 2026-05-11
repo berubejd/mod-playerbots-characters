@@ -265,3 +265,18 @@ body {
 .chat-toolbar .btn:hover {
   color: var(--bs-body-color) !important;
 }
+
+/* New message highlight — green flash that fades out over 2 seconds */
+@keyframes message-highlight {
+  0% {
+    background-color: rgba(25, 135, 84, 0.35);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.message-new {
+  animation: message-highlight 3s ease-out forwards;
+  border-radius: 0.25rem;
+}
