@@ -357,8 +357,7 @@ extern std::mutex                          g_PBC_PendingEventRequestsMutex;
 // ---------------------------------------------------------------------------
 struct PBC_PendingWhisperRequest
 {
-    std::string eventLine;   // e.g. "PlayerName tells you privately: hello"
-    std::string histLine;    // e.g. "PlayerName (privately to you): hello"
+    std::string message;         // raw message text (formatting done by PBC_DispatchWhisperEvent)
     uint64_t    senderGuid = 0;  // GUID of the whispering player
     uint64_t    targetGuid = 0;  // GUID of the target character (bot)
 };
@@ -465,14 +464,5 @@ void PBC_LoadCardAdditionsFromDB();
 void PBC_SaveCardAdditionsToDB();
 void PBC_LoadCharacterDataFromDB();
 void PBC_LoadRelationshipsFromDB();
-
-class PBC_WorldScript : public WorldScript
-{
-public:
-    PBC_WorldScript();
-    void OnStartup() override;
-    void OnShutdown() override;
-    void OnUpdate(uint32_t diff) override;
-};
 
 #endif // MOD_PBC_CONFIG_H

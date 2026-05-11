@@ -1830,15 +1830,10 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 return;
             }
 
-            // Build event/hist lines matching the whisper format used in pbc_events.cpp
-            std::string eventLine = senderName + " tells you privately: " + message;
-            std::string histLine  = senderName + " (privately to you): " + message;
-
             // Queue the whisper request for the main thread
             {
                 PBC_PendingWhisperRequest wr;
-                wr.eventLine  = eventLine;
-                wr.histLine   = histLine;
+                wr.message    = message;
                 wr.senderGuid = ctx.authGuid;
                 wr.targetGuid = ctx.charGuid;
 

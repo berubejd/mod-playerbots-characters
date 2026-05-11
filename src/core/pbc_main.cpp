@@ -1,5 +1,6 @@
 #include "pbc_config.h"
 #include "pbc_events.h"
+#include "pbc_world.h"
 #include "pbc_commands.h"
 #include "Log.h"
 

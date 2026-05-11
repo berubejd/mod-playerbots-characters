@@ -1,10 +1,14 @@
 #include "pbc_utils.h"
 #include "Log.h"
+#include "Player.h"
+#include "Group.h"
+#include "WorldSession.h"
 
 #include <chrono>
 #include <thread>
 #include <set>
 #include <regex>
+#include <algorithm>
 
 // ---------------------------------------------------------------------------
 // Debug output helpers
@@ -141,6 +145,61 @@ uint32_t PBC_CountMentions(const std::deque<std::string>& history, const std::st
         }
     }
     return total;
+}
+
+// ---------------------------------------------------------------------------
+// Chat / message helpers
+// ---------------------------------------------------------------------------
+
+std::string PBC_SanitizeChatMessage(const std::string& msg)
+{
+    static const std::regex linkPattern(
+        R"((?:\|c[0-9a-fA-F]{8})?\|H[^|]+\|h(\[[^\]]*\])\|h(?:\|r)?)",
+        std::regex::optimize);
+
+    std::string result;
+    result.reserve(msg.size());
+
+    auto it  = msg.cbegin();
+    auto end = msg.cend();
+    std::smatch m;
+
+    while (std::regex_search(it, end, m, linkPattern))
+    {
+        result.append(it, m.prefix().second);
+        result += m[1].str();
+        it = m.suffix().first;
+    }
+    result.append(it, end);
+    return result;
+}
+
+bool PBC_MentionsCharacter(const std::string& msg, const std::string& charName)
+{
+    std::string lower = msg, lname = charName;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    std::transform(lname.begin(), lname.end(), lname.begin(), ::tolower);
+    return lower.find(lname) != std::string::npos;
+}
+
+// ---------------------------------------------------------------------------
+// Group helpers
+// ---------------------------------------------------------------------------
+
+bool PBC_BotIsGroupedWithRealPlayer(Player* bot)
+{
+    if (!PBC_PTR_VALID(bot)) return false;
+    Group* grp = bot->GetGroup();
+    if (!grp) return false;
+    for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!PBC_PTR_VALID(member) || !member->IsInWorld()) continue;
+        WorldSession* sess = member->GetSession();
+        if (!PBC_PTR_VALID(sess)) continue;
+        if (!sess->IsBot()) return true;
+    }
+    return false;
 }
 
 // ---------------------------------------------------------------------------

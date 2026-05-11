@@ -3,6 +3,7 @@
 #include "pbc_database.h"
 #include "pbc_http.h"
 #include "pbc_utils.h"
+#include "pbc_item_helpers.h"
 #include "Log.h"
 #include "DatabaseEnv.h"
 #include "Player.h"
@@ -178,14 +179,6 @@ std::string PBC_BuildLosStr(Player* bot)
 // Equipment helpers (main-thread only)
 // ---------------------------------------------------------------------------
 
-// Returns "a" or "an" based on the first character of the word that follows.
-static const char* ArticleFor(const std::string& word)
-{
-    if (word.empty()) return "a";
-    char c = static_cast<char>(std::tolower(static_cast<unsigned char>(word[0])));
-    return (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u') ? "an" : "a";
-}
-
 static std::string EquipQualityStr(uint32 quality)
 {
     switch (quality)
@@ -200,35 +193,12 @@ static std::string EquipQualityStr(uint32 quality)
     }
 }
 
-static std::string EquipWeaponTypeStr(uint32 subClass)
-{
-    switch (subClass)
-    {
-        case ITEM_SUBCLASS_WEAPON_AXE:      return "one-handed axe";
-        case ITEM_SUBCLASS_WEAPON_AXE2:     return "two-handed axe";
-        case ITEM_SUBCLASS_WEAPON_BOW:      return "bow";
-        case ITEM_SUBCLASS_WEAPON_GUN:      return "gun";
-        case ITEM_SUBCLASS_WEAPON_MACE:     return "one-handed mace";
-        case ITEM_SUBCLASS_WEAPON_MACE2:    return "two-handed mace";
-        case ITEM_SUBCLASS_WEAPON_POLEARM:  return "polearm";
-        case ITEM_SUBCLASS_WEAPON_SWORD:    return "one-handed sword";
-        case ITEM_SUBCLASS_WEAPON_SWORD2:   return "two-handed sword";
-        case ITEM_SUBCLASS_WEAPON_STAFF:    return "staff";
-        case ITEM_SUBCLASS_WEAPON_FIST:     return "fist weapon";
-        case ITEM_SUBCLASS_WEAPON_DAGGER:   return "dagger";
-        case ITEM_SUBCLASS_WEAPON_THROWN:   return "thrown weapon";
-        case ITEM_SUBCLASS_WEAPON_CROSSBOW: return "crossbow";
-        case ITEM_SUBCLASS_WEAPON_WAND:     return "wand";
-        default:                            return "weapon";
-    }
-}
-
 // Returns a human-readable off-hand type string (shield, relic, holdable, etc.)
 static std::string EquipOffhandTypeStr(ItemTemplate const* tmpl)
 {
     if (!tmpl) return "off-hand item";
     if (tmpl->Class == ITEM_CLASS_WEAPON)
-        return EquipWeaponTypeStr(tmpl->SubClass);
+        return PBC_WeaponTypeStr(tmpl->SubClass);
     if (tmpl->Class == ITEM_CLASS_ARMOR)
     {
         switch (tmpl->SubClass)
@@ -252,13 +222,13 @@ static std::string EquipOffhandTypeStr(ItemTemplate const* tmpl)
 static std::string DescribeWeapon(ItemTemplate const* tmpl)
 {
     if (!tmpl) return "";
-    std::string type = EquipWeaponTypeStr(tmpl->SubClass);
+    std::string type = PBC_WeaponTypeStr(tmpl->SubClass);
     if (tmpl->Quality >= ITEM_QUALITY_RARE)
     {
         std::string qual = EquipQualityStr(tmpl->Quality);
-        return std::string(ArticleFor(qual)) + " " + qual + " " + type + " called " + tmpl->Name1;
+        return std::string(PBC_ArticleFor(qual)) + " " + qual + " " + type + " called " + tmpl->Name1;
     }
-    return std::string(ArticleFor(type)) + " " + type;
+    return std::string(PBC_ArticleFor(type)) + " " + type;
 }
 
 // Builds a phrase for an off-hand item (shield, relic, holdable, or weapon).
@@ -271,9 +241,9 @@ static std::string DescribeOffhand(ItemTemplate const* tmpl)
     if (tmpl->Quality >= ITEM_QUALITY_RARE)
     {
         std::string qual = EquipQualityStr(tmpl->Quality);
-        return std::string(ArticleFor(qual)) + " " + qual + " " + type + " called " + tmpl->Name1;
+        return std::string(PBC_ArticleFor(qual)) + " " + qual + " " + type + " called " + tmpl->Name1;
     }
-    return std::string(ArticleFor(type)) + " " + type;
+    return std::string(PBC_ArticleFor(type)) + " " + type;
 }
 
 // Returns a bag-space summary string for roleplaying purposes.
@@ -451,7 +421,7 @@ std::string PBC_BuildEquipmentStr(Player* bot)
             mhT->Quality >= ITEM_QUALITY_RARE && ohT->Quality >= ITEM_QUALITY_RARE)
         {
             std::string qual = EquipQualityStr(mhT->Quality);
-            std::string type = EquipWeaponTypeStr(mhT->SubClass);
+            std::string type = PBC_WeaponTypeStr(mhT->SubClass);
             weaponDesc = "you wield two " + qual + " " + type + "s, called " + mhT->Name1 + " and " + ohT->Name1;
         }
         else

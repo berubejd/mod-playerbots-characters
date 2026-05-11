@@ -14,6 +14,15 @@
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// Pointer sanity guard
+//
+// On a 64-bit system, valid heap/stack pointers are always well above the
+// first 64 KiB of address space.  Values in that range are garbage that the
+// playerbots module occasionally passes to hooks during bot packet processing.
+// ---------------------------------------------------------------------------
+#define PBC_PTR_VALID(p) (reinterpret_cast<uintptr_t>(p) > 0xFFFFu)
+
+// ---------------------------------------------------------------------------
 // Template substitution helpers
 // ---------------------------------------------------------------------------
 
@@ -38,6 +47,25 @@ std::string PBC_TruncateForDebug(const std::string& s, size_t maxLen = 1000, siz
 // Replace curly braces with parentheses so the string is safe to pass
 // through AzerothCore's fmt-based LOG macros (which double-format).
 std::string PBC_SanitizeForFmt(const std::string& s);
+
+// ---------------------------------------------------------------------------
+// Chat / message helpers
+// ---------------------------------------------------------------------------
+
+// Strip WoW item/object link markup, keeping only the display name.
+std::string PBC_SanitizeChatMessage(const std::string& msg);
+
+// Case-insensitive check: does msg contain charName?
+bool PBC_MentionsCharacter(const std::string& msg, const std::string& charName);
+
+// ---------------------------------------------------------------------------
+// Group helpers (require Player* — implementation in pbc_utils.cpp)
+// ---------------------------------------------------------------------------
+
+class Player;
+
+// Returns true if bot is in a group that contains at least one real (non-bot) player.
+bool PBC_BotIsGroupedWithRealPlayer(Player* bot);
 
 // ---------------------------------------------------------------------------
 // String formatting helpers
