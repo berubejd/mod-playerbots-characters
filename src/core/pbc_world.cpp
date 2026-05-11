@@ -235,6 +235,43 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
     }
 
     // ---------------------------------------------------------------------------
+    // 1d. Drain trigger requests posted from the HTTP API thread.
+    // ---------------------------------------------------------------------------
+    {
+        std::queue<PBC_PendingTriggerRequest> localTriggers;
+        {
+            std::lock_guard<std::mutex> lock(g_PBC_PendingTriggerRequestsMutex);
+            std::swap(localTriggers, g_PBC_PendingTriggerRequests);
+        }
+
+        while (!localTriggers.empty())
+        {
+            PBC_PendingTriggerRequest& tr = localTriggers.front();
+
+            Player* target = ObjectAccessor::FindPlayer(ObjectGuid(tr.targetGuid));
+            if (!target || !target->IsInWorld())
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] API trigger: target GUID={} is not online, skipping", tr.targetGuid);
+                localTriggers.pop();
+                continue;
+            }
+
+            WorldSession* ts = target->GetSession();
+            if (!ts || !ts->IsBot())
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] API trigger: target GUID={} is not a character, skipping", tr.targetGuid);
+                localTriggers.pop();
+                continue;
+            }
+
+            PBC_DispatchTriggerEvent(target);
+            localTriggers.pop();
+        }
+    }
+
+    // ---------------------------------------------------------------------------
     // 2. Drain completed chat-send actions from the event thread.
     // ---------------------------------------------------------------------------
     {

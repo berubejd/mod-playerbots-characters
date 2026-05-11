@@ -596,11 +596,46 @@ static bool HandleCharsNarrate(ChatHandler* handler,
 }
 
 // ---------------------------------------------------------------------------
-// .chars narrate-group <message>
+// .chars trigger <char_name>
+// Triggers a response from the specified character. The character responds
+// as a party message if they are in a group, or as a say otherwise.
+// The trigger event (*you feel the urge to say something*) is NOT written
+// into the character's history.
+// ---------------------------------------------------------------------------
+static bool HandleCharsTrigger(ChatHandler* handler, std::string_view charNameArg)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+
+    if (charNameArg.empty())
+    {
+        handler->PSendSysMessage("[PBC] Usage: chars trigger <char_name>");
+        return false;
+    }
+
+    Player* target = ObjectAccessor::FindPlayerByName(std::string(charNameArg));
+    if (!target)
+    {
+        handler->PSendSysMessage("[PBC] Character '{}' not found or not online.", charNameArg);
+        return false;
+    }
+
+    if (!target->GetSession() || !target->GetSession()->IsBot())
+    {
+        handler->PSendSysMessage("[PBC] '{}' is not a playerbot.", target->GetName());
+        return false;
+    }
+
+    PBC_DispatchTriggerEvent(target);
+    handler->PSendSysMessage("[PBC] Trigger event queued for '{}'.", target->GetName());
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// .chars narrate-party <message>
 // Adds a Narrator: *<message>* line to every playerbot in the caller's group.
 // In-game only — fails if the caller has no bots in their group.
 // ---------------------------------------------------------------------------
-static bool HandleCharsNarrateGroup(ChatHandler* handler, Tail messageArg)
+static bool HandleCharsNarrateParty(ChatHandler* handler, Tail messageArg)
 {
     if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
 
@@ -612,7 +647,7 @@ static bool HandleCharsNarrateGroup(ChatHandler* handler, Tail messageArg)
 
     if (messageArg.empty())
     {
-        handler->PSendSysMessage("[PBC] Usage: chars narrate-group <message>");
+        handler->PSendSysMessage("[PBC] Usage: chars narrate-party <message>");
         return false;
     }
 
@@ -677,7 +712,8 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
         { "alt-api-test",     HandleCharsAltApiTest,      SEC_GAMEMASTER, Console::Yes },
         { "web",                 HandleCharsWeb,                SEC_PLAYER,    Console::No  },
         { "narrate",             HandleCharsNarrate,            SEC_GAMEMASTER, Console::No  },
-        { "narrate-group",       HandleCharsNarrateGroup,       SEC_GAMEMASTER, Console::No  },
+        { "narrate-party",       HandleCharsNarrateParty,       SEC_GAMEMASTER, Console::No  },
+        { "trigger",             HandleCharsTrigger,            SEC_GAMEMASTER, Console::Yes },
     };
 
     static ChatCommandTable rootTable =

@@ -383,6 +383,21 @@ extern std::queue<PBC_PendingPartyMessageRequest> g_PBC_PendingPartyMessageReque
 extern std::mutex                                  g_PBC_PendingPartyMessageRequestsMutex;
 
 // ---------------------------------------------------------------------------
+// A trigger request posted from the HTTP API thread to the main thread.
+//
+// The main thread (OnUpdate) resolves the target bot GUID to a live Player*,
+// then calls PBC_DispatchTriggerEvent — identical to how the .chars trigger
+// command works.
+// ---------------------------------------------------------------------------
+struct PBC_PendingTriggerRequest
+{
+    uint64_t targetGuid = 0;  // GUID of the target character (bot)
+};
+
+extern std::queue<PBC_PendingTriggerRequest> g_PBC_PendingTriggerRequests;
+extern std::mutex                            g_PBC_PendingTriggerRequestsMutex;
+
+// ---------------------------------------------------------------------------
 // Universal event queue.
 //
 // Pushed from the main thread (game hooks, commands).

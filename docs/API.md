@@ -142,9 +142,15 @@ Returns `{"status": "ok"}` on success.
 
 ### `POST /api/party/narrate`
 
-Add a Narrator line to every character in the authenticated player's group without producing any character events. Equivalent to the `.chars narrate-group` command. Triggers a `history` WS event for every character in the group. The player must be online and in a group. Body: `{"message": "The party enters a dark cave"}`.
+Add a Narrator line to every character in the authenticated player's group without producing any character events. Equivalent to the `.chars narrate-party` command. Triggers a `history` WS event for every character in the group. The player must be online and in a group. Body: `{"message": "The party enters a dark cave"}`.
 
 Returns `{"status": "ok", "characters_count": 3}` on success. Returns `400` if the player is not in a group or no characters are in the group.
+
+### `POST /api/char/:guid/trigger`
+
+Trigger a response from the specified character. The character responds as a party message if they are in a group, or as a say otherwise. The trigger event (`*you feel the urge to say something*`) is not written into the character's history. No request body required. The character must be online.
+
+Returns `{"status": "queued"}` immediately — the actual LLM call and in-game reply happen asynchronously.
 
 ### `POST /api/party/message`
 

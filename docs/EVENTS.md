@@ -11,4 +11,6 @@ Here's the list of possible events that characters could react to.
 - **Quest taken** — fires when the **party leader** accepts a new quest from an NPC, game object, or item, only when the group contains at least one real player; a preliminary LLM call generates a one-line narrative summary of the quest, phrased naturally based on the source type (person, object, or item)
 - **Quest completed** — fires when the **party leader** completes a quest, only when the group contains at least one real player; a preliminary LLM call generates a one-line narrative summary of the quest, phrased naturally based on the ender type (person or object)
 
+- **Trigger** — fires when a character is triggered via the `.chars trigger` command or the `POST /api/char/:guid/trigger` API endpoint. The character always responds (no roll chance). The event line is `*you feel the urge to say something*` and is NOT written into the character's history. The response is sent as a party message if the character is in a group, or as a say otherwise.
+
 When more than 5 minutes pass between consecutive history entries for a character, a narrator line `Narrator: *some time passes*` is automatically inserted to indicate the time gap. This line is not inserted if both the last and current messages are private (whisper) messages between the same characters.

@@ -104,6 +104,9 @@ std::mutex                            g_PBC_PendingWhisperRequestsMutex;
 std::queue<PBC_PendingPartyMessageRequest> g_PBC_PendingPartyMessageRequests;
 std::mutex                                  g_PBC_PendingPartyMessageRequestsMutex;
 
+std::queue<PBC_PendingTriggerRequest> g_PBC_PendingTriggerRequests;
+std::mutex                            g_PBC_PendingTriggerRequestsMutex;
+
 std::queue<PBC_EventItem>  g_PBC_EventQueue;
 std::mutex                 g_PBC_EventQueueMutex;
 std::atomic<bool>          g_PBC_EventThreadDone{ true };

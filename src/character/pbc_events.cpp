@@ -768,6 +768,34 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
 }
 
 // ---------------------------------------------------------------------------
+// PBC_DispatchTriggerEvent
+// ---------------------------------------------------------------------------
+void PBC_DispatchTriggerEvent(Player* bot)
+{
+    if (!PBC_PTR_VALID(bot)) return;
+
+    // Determine chat type: party if in a group, say otherwise
+    uint32_t chatType = bot->GetGroup() ? CHAT_MSG_PARTY : CHAT_MSG_SAY;
+
+    PBC_EventItem ev;
+    ev.type             = PBC_EventType::Normal;
+    ev.eventLine        = PBC_MakeEventLine("you feel the urge to say something");
+    ev.histLine         = "";  // Do NOT write trigger into character's history
+    ev.chatType         = chatType;
+    ev.canCreateEvents  = false;
+
+    // Always respond — this is a forced trigger, no roll
+    PBC_CharacterSnapshot snap = PBC_SnapshotCharacter(bot);
+    ev.respondingChars.push_back(std::move(snap));
+
+    if (g_PBC_DebugEnabled)
+        LOG_INFO("server.loading", "[PBC] Trigger event: character={} chatType={}",
+                 bot->GetName(), chatType);
+
+    PBC_PushEvent(std::move(ev));
+}
+
+// ---------------------------------------------------------------------------
 // PBC_DispatchPartyMessageEvent
 // ---------------------------------------------------------------------------
 

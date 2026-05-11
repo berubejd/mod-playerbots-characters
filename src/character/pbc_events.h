@@ -115,6 +115,14 @@ void PBC_RollBotsForMessage(PBC_EventItem& ev,
 void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string& msg);
 
 // ---------------------------------------------------------------------------
+// Dispatch a trigger event for a single character.
+// The character always responds (no roll). The event line is
+// "*you feel the urge to say something*" and is NOT written to history.
+// Chat type is PARTY if the character is in a group, SAY otherwise.
+// ---------------------------------------------------------------------------
+void PBC_DispatchTriggerEvent(Player* bot);
+
+// ---------------------------------------------------------------------------
 // Dispatch a party/raid chat message event from sender to their group bots.
 // Finds group bots, rolls chances (mention-aware), pushes PBC_EventItem.
 // senderNameOverride: when non-empty, replaces sender->GetName() (used by API

@@ -97,6 +97,15 @@ export async function sendWhisper(token, guid, message) {
   return res.json();
 }
 
+export async function sendTrigger(token, guid) {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/trigger`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  throwForStatus(res, { ...AUTH_STATUS, 404: 'offline' });
+  return res.json();
+}
+
 export async function sendNarrate(token, guid, message) {
   const res = await fetch(`/api/char/${encodeURIComponent(guid)}/narrate`, {
     method: 'POST',

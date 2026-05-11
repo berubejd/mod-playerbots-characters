@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
-import { fetchHistory, editMessage, deleteMessage, sendWhisper, sendNarrate, sendPartyMessage, sendPartyNarrate, formatApiError } from './api.js';
+import { fetchHistory, editMessage, deleteMessage, sendWhisper, sendNarrate, sendPartyMessage, sendPartyNarrate, sendTrigger, formatApiError } from './api.js';
 import { parseMessage, formatMessageParts } from './chat-utils.js';
 import { useToast } from './toast-provider.jsx';
 import { useMediaQuery } from './use-media-query.js';
@@ -293,12 +293,13 @@ const MODE_OPTIONS = [
   { value: 'narrate', label: 'Narrate (/n)', shortcut: '/n', placeholder: 'Send a narration…' },
   { value: 'party', label: 'Party (/p)', shortcut: '/p', placeholder: 'Send a party message…' },
   { value: 'narrate-party', label: 'Narrate Party (/np)', shortcut: '/np', placeholder: 'Send a party narration…' },
+  { value: 'trigger', label: 'Trigger (/tr)', shortcut: '/tr', placeholder: 'Enter character name to trigger…' },
 ];
 
 // Ordered longest-shortcut-first so '/np' is tried before '/n'
 const MODE_SHORTCUTS = [...MODE_OPTIONS].sort((a, b) => b.shortcut.length - a.shortcut.length);
 
-function SendMessageInput({ token, selectedGuid, onDesync, onMessageSent, messageMode, onMessageModeChange }) {
+function SendMessageInput({ token, selectedGuid, onDesync, onMessageSent, messageMode, onMessageModeChange, characters }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const textareaRef = useRef(null);
@@ -342,6 +343,18 @@ function SendMessageInput({ token, selectedGuid, onDesync, onMessageSent, messag
         case 'narrate-party':
           await sendPartyNarrate(token, trimmed);
           break;
+        case 'trigger': {
+          const char = (characters || []).find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
+          if (!char) {
+            toast(`Character "${trimmed}" not found`, 'error');
+            setSending(false);
+            requestAnimationFrame(() => { if (textareaRef.current) textareaRef.current.focus(); });
+            return;
+          }
+          await sendTrigger(token, char.guid);
+          toast(`Triggered ${char.name}`, 'success');
+          break;
+        }
         default:
           await sendWhisper(token, selectedGuid, trimmed);
           break;
@@ -351,7 +364,8 @@ function SendMessageInput({ token, selectedGuid, onDesync, onMessageSent, messag
         textareaRef.current.style.height = 'auto';
       }
       // Show pending message in chat — WS events will handle confirmation
-      if (onMessageSent) onMessageSent(trimmed, messageMode);
+      // (skip for trigger — it doesn't produce a chat message)
+      if (onMessageSent && messageMode !== 'trigger') onMessageSent(trimmed, messageMode);
     } catch (err) {
       if (err.message === 'player_offline') {
         onDesync(err.message);
@@ -365,7 +379,7 @@ function SendMessageInput({ token, selectedGuid, onDesync, onMessageSent, messag
         if (textareaRef.current) textareaRef.current.focus();
       });
     }
-  }, [text, sending, token, selectedGuid, toast, onDesync, onMessageSent, messageMode, modeConfig, onMessageModeChange]);
+  }, [text, sending, token, selectedGuid, toast, onDesync, onMessageSent, messageMode, modeConfig, onMessageModeChange, characters]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -981,7 +995,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
             </div>
           )}
         </div>
-        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} />
+        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} characters={characters} />
       </div>
     );
   }
@@ -1044,7 +1058,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
         )}
       </div>
       <div ref={inputWrapperRef} class="position-absolute bottom-0 start-0 end-0" style="z-index: 10;">
-        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} />
+        <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} characters={characters} />
       </div>
       <EditModal
         show={editModal.show}

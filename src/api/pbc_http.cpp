@@ -1140,7 +1140,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         //
         // Adds a Narrator line to every character in the authenticated
         // player's group without producing any character events.
-        // Equivalent to the .chars narrate-group command.  Triggers a
+        // Equivalent to the .chars narrate-party command.  Triggers a
         // "history" WS event for every character in the group.
         //
         // Request body: JSON with a "message" field.
@@ -1843,6 +1843,42 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
             if (g_PBC_DebugEnabled)
                 LOG_INFO("server.loading", "[PBC] API whisper queued: player GUID={} -> character GUID={}", ctx.authGuid, ctx.charGuid);
+
+            res.set_content("{\"status\":\"queued\"}", "application/json");
+        });
+
+        // -------------------------------------------------------------------
+        // POST /api/char/:guid/trigger
+        //
+        // Triggers a response from the specified character. The character
+        // responds as a party message if they are in a group, or as a say
+        // otherwise. The trigger event (*you feel the urge to say something*)
+        // is NOT written into the character's history.
+        //
+        // No request body required.
+        //
+        // Requires auth.  The target character must be online.
+        // Returns immediately with "queued" status.
+        // -------------------------------------------------------------------
+        svr->Post("/api/char/:guid/trigger", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
+                return;
+
+            // Queue the trigger request for the main thread
+            {
+                PBC_PendingTriggerRequest tr;
+                tr.targetGuid = ctx.charGuid;
+
+                std::lock_guard<std::mutex> lock(g_PBC_PendingTriggerRequestsMutex);
+                g_PBC_PendingTriggerRequests.push(std::move(tr));
+            }
+
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] API trigger queued: character GUID={}", ctx.charGuid);
 
             res.set_content("{\"status\":\"queued\"}", "application/json");
         });
