@@ -4,6 +4,7 @@
 #include "pbc_http.h"
 #include "pbc_utils.h"
 #include "pbc_item_helpers.h"
+#include "pbc_wmo_areas.h"
 #include "Log.h"
 #include "DatabaseEnv.h"
 #include "Player.h"
@@ -103,17 +104,70 @@ static std::string GenderStr(uint8_t gender)
 std::string PBC_BuildPlaceName(Player* player)
 {
     uint32_t areaId = player->GetAreaId();
-    uint32_t zoneId = player->GetZoneId();
-    std::string areaName, zoneName;
-    if (AreaTableEntry const* a = sAreaTableStore.LookupEntry(areaId))
-        areaName = a->area_name[0];
-    if (AreaTableEntry const* z = sAreaTableStore.LookupEntry(zoneId))
-        zoneName = z->area_name[0];
-    if (!areaName.empty() && !zoneName.empty() && areaName != zoneName)
-        return areaName + " (" + zoneName + ")";
-    if (!areaName.empty())
-        return areaName;
-    return zoneName;
+
+    // Collect the full area hierarchy by walking up the parent chain via zone field.
+    // e.g. "Goldshire" -> "Elwynn Forest"
+    std::vector<std::string> names;
+    uint32_t currentId = areaId;
+    int maxDepth = 10; // safety guard against unexpected cycles
+
+    while (currentId != 0 && maxDepth-- > 0)
+    {
+        AreaTableEntry const* entry = sAreaTableStore.LookupEntry(currentId);
+        if (!entry)
+            break;
+
+        std::string name = entry->area_name[0];
+        if (!name.empty())
+            names.push_back(name);
+
+        currentId = entry->zone;
+    }
+
+    // Try to get a more specific WMO area name when indoors.
+    // The server's WMOAreaTableEntry doesn't load name fields, so we parse
+    // the DBC ourselves (pbc_wmo_areas) to get names like "Lion's Pride Inn".
+    std::string wmoName;
+    if (!g_PBC_WmoAreaNames.empty())
+    {
+        uint32_t mogpFlags;
+        int32_t adtId, rootId, groupId;
+        if (player->GetMap()->GetAreaInfo(
+                player->GetPhaseMask(),
+                player->GetPositionX(),
+                player->GetPositionY(),
+                player->GetPositionZ(),
+                mogpFlags, adtId, rootId, groupId))
+        {
+            wmoName = PBC_GetWmoAreaName(rootId, adtId, groupId);
+        }
+    }
+
+    // If we got a WMO name that differs from the first area name, prepend it.
+    // e.g. names = ["Goldshire", "Elwynn Forest"], wmoName = "Lion's Pride Inn"
+    //      -> "Lion's Pride Inn (Goldshire, Elwynn Forest)"
+    if (!wmoName.empty() && (names.empty() || wmoName != names[0]))
+    {
+        names.insert(names.begin(), wmoName);
+    }
+
+    if (names.empty())
+        return "Unknown";
+
+    if (names.size() == 1)
+        return names[0];
+
+    // Format: "SubZone (Parent, GrandParent, ...)"
+    // e.g. "Lion's Pride Inn (Goldshire, Elwynn Forest)"
+    std::string result = names[0] + " (";
+    for (size_t i = 1; i < names.size(); ++i)
+    {
+        if (i > 1)
+            result += ", ";
+        result += names[i];
+    }
+    result += ")";
+    return result;
 }
 
 std::string PBC_BuildFlightDestination(Player* bot)

@@ -4,6 +4,7 @@
 #include "pbc_character.h"
 #include "pbc_http.h"
 #include "pbc_utils.h"
+#include "pbc_wmo_areas.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
@@ -28,6 +29,7 @@ void PBC_WorldScript::OnStartup()
         return;
     }
 
+    PBC_LoadWMOAreaNames();
     PBC_LoadCharacterCards();
     PBC_LoadCardAdditionsFromDB();
     PBC_LoadHistoryFromDB();
