@@ -229,7 +229,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 continue;
             }
 
-            PBC_DispatchPartyMessageEvent(sender, pm.message, pm.senderName);
+            PBC_DispatchPartyMessageEvent(sender, pm.message, pm.senderName, CHAT_MSG_PARTY);
             localMsgs.pop();
         }
     }

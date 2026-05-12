@@ -788,9 +788,18 @@ void PBC_DispatchTriggerEvent(Player* bot)
     PBC_CharacterSnapshot snap = PBC_SnapshotCharacter(bot);
     ev.respondingChars.push_back(std::move(snap));
 
+    // Add other group bots as silent characters so the triggered character's
+    // reply is propagated to their histories (and produces WS history events).
+    if (chatType == CHAT_MSG_PARTY)
+    {
+        auto groupBots = PBC_FindGroupBots(bot);
+        for (Player* groupBot : groupBots)
+            ev.silentCharGuids.push_back(groupBot->GetGUID().GetCounter());
+    }
+
     if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] Trigger event: character={} chatType={}",
-                 bot->GetName(), chatType);
+        LOG_INFO("server.loading", "[PBC] Trigger event: character={} chatType={} silentChars={}",
+                 bot->GetName(), chatType, ev.silentCharGuids.size());
 
     PBC_PushEvent(std::move(ev));
 }
@@ -816,7 +825,13 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
                         chatType == CHAT_MSG_RAID_WARNING);
 
     std::vector<Player*> bots = isGroupChat ? PBC_FindGroupBots(sender) : FindNearbyBots(sender);
-    if (bots.empty()) return;
+    if (bots.empty())
+    {
+        if (g_PBC_DebugEnabled)
+            LOG_INFO("server.loading", "[PBC] Chat message event from {} type={} discarded — no bots found ({})",
+                     senderName, chatType, isGroupChat ? "group empty" : "none nearby");
+        return;
+    }
 
     if (g_PBC_DebugEnabled)
         LOG_INFO("server.loading", "[PBC] Chat message event from {} type={} ({} bots): \"{}\"",
@@ -1466,22 +1481,25 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     // -----------------------------------------------------------------------
     // Update silent characters' history.
     // -----------------------------------------------------------------------
+    // Write the event's histLine (e.g. Narrator line) to silent characters.
+    // For trigger events histLine is empty, so this is a no-op.
     if (!ev.histLine.empty())
     {
         for (uint64_t guid : ev.silentCharGuids)
             PBC_AppendHistory(guid, ev.histLine);
+    }
 
-        // Propagate all responding characters' replies to silent peers so their
-        // history stays current.  completedReplyLines holds every reply line
-        // in the order they were generated, which is exactly what silent bots
-        // need to see.
-        if (!completedReplyLines.empty() && ev.chatType != CHAT_MSG_WHISPER)
+    // Propagate all responding characters' replies to silent peers so their
+    // history stays current.  This is independent of histLine — even when
+    // histLine is empty (e.g. trigger events), silent group members still
+    // need to see the replies in their history.
+    if (!completedReplyLines.empty() && !ev.silentCharGuids.empty()
+        && ev.chatType != CHAT_MSG_WHISPER)
+    {
+        for (uint64_t guid : ev.silentCharGuids)
         {
-            for (uint64_t guid : ev.silentCharGuids)
-            {
-                for (const auto& replyLine : completedReplyLines)
-                    PBC_AppendHistory(guid, replyLine);
-            }
+            for (const auto& replyLine : completedReplyLines)
+                PBC_AppendHistory(guid, replyLine);
         }
     }
 
