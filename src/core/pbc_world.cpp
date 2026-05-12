@@ -55,13 +55,7 @@ void PBC_WorldScript::OnStartup()
         LOG_INFO("server.loading", "[PBC] HTTP server disabled (PBC.HttpServerPort = 0).");
     }
 
-    LOG_INFO("server.loading", "[PBC] Module started ({}).",
-#ifndef PBC_GIT_COMMIT_HASH
-        "UNKNOWN"
-#else
-        PBC_GIT_COMMIT_HASH
-#endif
-    );
+    LOG_INFO("server.loading", "[PBC] Module started.");
 }
 
 void PBC_WorldScript::OnShutdown()

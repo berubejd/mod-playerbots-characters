@@ -953,6 +953,64 @@ static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
 }
 
 // ---------------------------------------------------------------------------
+// QueueRelationshipUpdatesAfterCondensation
+//
+// After condensation succeeds, queue RelationshipUpdate events for all party
+// members of the given character, using the pre-condensation history so the
+// LLM has full context.  Resets mentionCountAtLastUpdate to 0 so the normal
+// threshold tracking accumulates fresh counts from the new post-condensation
+// history.
+// ---------------------------------------------------------------------------
+static void QueueRelationshipUpdatesAfterCondensation(
+    const PBC_CharacterSnapshot& snap,
+    const std::deque<std::string>& preCondensationHistory)
+{
+    if (g_PBC_RelationshipUpdateThreshold == 0 ||
+        g_PBC_RelationshipUpdateSystemPrompt.empty() ||
+        g_PBC_RelationshipUpdateUserPrompt.empty() ||
+        snap.partyMemberNames.empty())
+        return;
+
+    for (const auto& memberName : snap.partyMemberNames)
+    {
+        std::string currentRel;
+        {
+            std::lock_guard<std::mutex> lk(g_PBC_RelationshipsMutex);
+            auto botIt = g_PBC_Relationships.find(snap.charGuidRaw);
+            if (botIt != g_PBC_Relationships.end())
+            {
+                auto tgtIt = botIt->second.find(memberName);
+                if (tgtIt != botIt->second.end())
+                    currentRel = tgtIt->second.text;
+            }
+        }
+        if (currentRel.empty())
+            currentRel = PBC_DefaultRelationshipText(memberName);
+
+        // Use the pre-condensation history so the LLM has full context.
+        PBC_CharacterSnapshot relSnap = snap;
+        relSnap.history = preCondensationHistory;
+
+        PBC_EventItem relEv;
+        relEv.type                       = PBC_EventType::RelationshipUpdate;
+        relEv.relationshipChar            = std::move(relSnap);
+        relEv.relationshipTargetName     = memberName;
+        relEv.relationshipTargetInfo     = PBC_BuildTargetInfo(memberName);
+        relEv.relationshipCurrentText    = currentRel;
+        relEv.relationshipMentionTotal   = 0; // reset baseline for post-condensation tracking
+        relEv.relationshipSystemPrompt   = g_PBC_RelationshipUpdateSystemPrompt;
+        relEv.relationshipUserPromptTmpl = g_PBC_RelationshipUpdateUserPrompt;
+
+        PBC_PushEvent(std::move(relEv));
+
+        if (g_PBC_DebugEnabled)
+            LOG_INFO("server.loading",
+                     "[PBC] Condensation: queuing relationship update for character={} target={}",
+                     snap.charName, memberName);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // PBC_ProcessEventItem
 //
 // Worker function — runs in a detached thread.  Processes one PBC_EventItem
@@ -1032,55 +1090,8 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         }
 
         // Condensation succeeded — queue relationship updates for all party
-        // members.  No threshold check needed here.  The history has been
-        // wiped, so we must capture relationships now before that context is gone.
-        // We pass mention_count=0 to reset the baseline; the normal threshold
-        // tracking will accumulate fresh counts from the new post-condensation history.
-        {
-            const PBC_CharacterSnapshot& snap = ev.condensationChar;
-            if (!g_PBC_RelationshipUpdateSystemPrompt.empty() &&
-                !g_PBC_RelationshipUpdateUserPrompt.empty() &&
-                !snap.partyMemberNames.empty())
-            {
-                for (const auto& memberName : snap.partyMemberNames)
-                {
-                    std::string currentRel;
-                    {
-                        std::lock_guard<std::mutex> lk(g_PBC_RelationshipsMutex);
-                        auto botIt = g_PBC_Relationships.find(snap.charGuidRaw);
-                        if (botIt != g_PBC_Relationships.end())
-                        {
-                            auto tgtIt = botIt->second.find(memberName);
-                            if (tgtIt != botIt->second.end())
-                                currentRel = tgtIt->second.text;
-                        }
-                    }
-                    if (currentRel.empty())
-                        currentRel = PBC_DefaultRelationshipText(memberName);
-
-                    // Use the pre-condensation history so the LLM has full context.
-                    PBC_CharacterSnapshot relSnap = snap;
-                    relSnap.history = preCondensationHistory;
-
-                    PBC_EventItem relEv;
-                    relEv.type                       = PBC_EventType::RelationshipUpdate;
-                    relEv.relationshipChar            = std::move(relSnap);
-                    relEv.relationshipTargetName     = memberName;
-                    relEv.relationshipTargetInfo     = PBC_BuildTargetInfo(memberName);
-                    relEv.relationshipCurrentText    = currentRel;
-                    relEv.relationshipMentionTotal   = 0; // reset baseline for post-condensation tracking
-                    relEv.relationshipSystemPrompt   = g_PBC_RelationshipUpdateSystemPrompt;
-                    relEv.relationshipUserPromptTmpl = g_PBC_RelationshipUpdateUserPrompt;
-
-                    PBC_PushEvent(std::move(relEv));
-
-                    if (g_PBC_DebugEnabled)
-                        LOG_INFO("server.loading",
-                                 "[PBC] Condensation: queuing relationship update for character={} target={}",
-                                 snap.charName, memberName);
-                }
-            }
-        }
+        // members using the pre-condensation history for full LLM context.
+        QueueRelationshipUpdatesAfterCondensation(ev.condensationChar, preCondensationHistory);
 
         g_PBC_EventThreadDone.store(true);
         return;
@@ -1239,12 +1250,22 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         int histTokens = PBC_EstimateHistoryTokens(snap.charGuidRaw);
         if (histTokens > static_cast<int>(g_PBC_MaxCtx))
         {
+            // Capture the full history BEFORE condensation truncates it
+            // so the relationship LLM calls have complete context.
+            std::deque<std::string> preCondensationHistory = snap.history;
+
             bool condensed = PBC_CondenseInline(snap, condenseSysPrompt, condenseUsrTmpl);
-            // If condensation succeeded, snap.history is now the condensed tail.
-            // If it failed, snap.history still contains the full uncondensed
-            // history — the LLM call below will use it as-is, and condensation
-            // will be retried on the next event for this character.
-            (void)condensed; // suppress unused-variable warning
+            if (condensed)
+            {
+                // Inline condensation succeeded — queue relationship updates
+                // for all party members using the pre-condensation history.
+                // This mirrors the explicit Condensation event handler above.
+                QueueRelationshipUpdatesAfterCondensation(snap, preCondensationHistory);
+            }
+            // If condensation failed, snap.history still contains the full
+            // uncondensed history — the LLM call below will use it as-is,
+            // and condensation will be retried on the next event for this
+            // character.
         }
 
         // Build user prompt from snapshot (uses snap.history for {chat_history}).
