@@ -22,6 +22,7 @@
 #include "QuestDef.h"
 #include "Chat.h"
 #include "DBCStores.h"
+#include "WorldSessionMgr.h"
 
 #include <algorithm>
 #include <regex>
@@ -122,33 +123,11 @@ std::vector<Player*> PBC_FindGroupBots(Player* player)
 }
 
 // ---------------------------------------------------------------------------
-// BuildCharacterEvent
-//
-// Rolls chance for each character in the provided list, builds snapshots for
-// responders, collects GUIDs for silent characters, and returns a ready-to-push
-// PBC_EventItem.  chatType and combatSkip are passed through.
-// ---------------------------------------------------------------------------
-static PBC_EventItem BuildCharacterEvent(const std::vector<Player*>& bots,
-                                    const std::string& eventLine,
-                                    const std::string& histLine,
-                                    uint32_t chance,
-                                    uint32_t chatType,
-                                    bool canCreateEvents = false)
-{
-    PBC_EventItem ev;
-    ev.type                  = PBC_EventType::Normal;
-    ev.eventLine             = eventLine;
-    ev.histLine              = histLine;
-    ev.chatType              = chatType;
-    ev.canCreateEvents       = canCreateEvents;
-
-    PBC_RollBotsWithPenalty(ev, bots, chance, "event");
-
-    return ev;
-}
-
-// ---------------------------------------------------------------------------
 // PBC_DispatchGroupEvent
+//
+// Central dispatch for all standard group events.  Validates the anchor,
+// checks for a real player in the group, notifies real players, finds and
+// shuffles group bots, rolls with penalty, and pushes the event.
 // ---------------------------------------------------------------------------
 
 void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
@@ -174,12 +153,22 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
     auto bots = PBC_FindGroupBots(anchor);
     if (bots.empty() && !anchorIsBot) return;
 
+    // Shuffle so the penalty-based roll doesn't always favour the same
+    // character (group members are iterated in a fixed order).
+    std::shuffle(bots.begin(), bots.end(), PBC_GetRNG());
+
     if (g_PBC_DebugEnabled)
         LOG_INFO("server.loading", "[PBC] DispatchGroupEvent: anchor={} bots={} chance={}% event=\"{}\"",
                  anchor->GetName(), bots.size(), chance, eventLine);
 
-    PBC_EventItem ev = BuildCharacterEvent(bots, eventLine, histLine, chance, CHAT_MSG_PARTY,
-                                     /*canCreateEvents=*/true);
+    PBC_EventItem ev;
+    ev.type            = PBC_EventType::Normal;
+    ev.eventLine       = eventLine;
+    ev.histLine        = histLine;
+    ev.chatType        = CHAT_MSG_PARTY;
+    ev.canCreateEvents = true;
+
+    PBC_RollBotsWithPenalty(ev, bots, chance, "event");
 
     // If the anchor is itself a bot (e.g. a bot leveling up), it was excluded
     // from PBC_FindGroupBots() but still needs to receive the histLine and any
@@ -190,6 +179,25 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
     PBC_PushEvent(std::move(ev));
 }
 
+
+// ---------------------------------------------------------------------------
+// PBC_RollGroupBotsIntoEvent
+//
+// Finds group bots for 'player', shuffles them, and rolls with penalty into
+// the provided event item.  Returns true if any bots were found (regardless
+// of roll outcomes), false if the player has no group bots — in which case
+// the caller should abort the event.
+// ---------------------------------------------------------------------------
+bool PBC_RollGroupBotsIntoEvent(PBC_EventItem& ev, Player* player,
+                                 uint32_t chance, const char* debugLabel)
+{
+    auto bots = PBC_FindGroupBots(player);
+    if (bots.empty()) return false;
+
+    std::shuffle(bots.begin(), bots.end(), PBC_GetRNG());
+    PBC_RollBotsWithPenalty(ev, bots, chance, debugLabel);
+    return true;
+}
 
 // ---------------------------------------------------------------------------
 // HandleChatMessage  (shared for all chat types)
@@ -315,15 +323,6 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 oldLevel)
     // Only produce level-up events on every 5th level (5, 10, 15, …).
     if (player->GetLevel() % 5 != 0) return;
 
-    WorldSession* sess = player->GetSession();
-    bool anchorIsReal = PBC_PTR_VALID(sess) && !sess->IsBot();
-    bool anchorIsBot  = PBC_PTR_VALID(sess) && sess->IsBot();
-
-    if (!anchorIsReal && !PBC_BotIsGroupedWithRealPlayer(player)) return;
-
-    auto bots = PBC_FindGroupBots(player);
-    if (bots.empty() && !anchorIsBot) return;
-
     static const char* levelUpEventPhrases[] = {
         " can feel their abilities growing stronger",
         " grows more powerful, their skills sharpened by experience",
@@ -344,20 +343,7 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 oldLevel)
     std::string eventLine = PBC_MakeEventLine(name + levelUpEventPhrases[idx]);
     std::string histLine  = PBC_MakeHistLine(name + levelUpHistPhrases[idx]);
 
-    PBC_NotifyRealPlayersInGroup(player, eventLine);
-
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] OnPlayerLevelChanged: player={} level={} bots={} chance={}%",
-                 player->GetName(), player->GetLevel(), bots.size(), g_PBC_ReplyChanceLevelUp);
-
-    PBC_EventItem ev = BuildCharacterEvent(bots, eventLine, histLine,
-                                     g_PBC_ReplyChanceLevelUp, CHAT_MSG_PARTY,
-                                     /*canCreateEvents=*/true);
-
-    if (anchorIsBot)
-        ev.silentCharGuids.push_back(player->GetGUID().GetCounter());
-
-    PBC_PushEvent(std::move(ev));
+    PBC_DispatchGroupEvent(player, eventLine, histLine, g_PBC_ReplyChanceLevelUp);
 }
 
 // ---------------------------------------------------------------------------
@@ -402,20 +388,12 @@ void PBC_PlayerEvents::OnPlayerCreatureKill(Player* killer, Creature* killed)
     Group* grp = killer->GetGroup();
     if (!grp) return;
 
-    WorldSession* killerSess = killer->GetSession();
-    bool killerIsBot = PBC_PTR_VALID(killerSess) && killerSess->IsBot();
-
     if (!PBC_BotIsGroupedWithRealPlayer(killer))
     {
         // Also allow real players as the killer themselves.
+        WorldSession* killerSess = killer->GetSession();
         if (!PBC_PTR_VALID(killerSess) || killerSess->IsBot()) return;
     }
-
-    auto bots = PBC_FindGroupBots(killer);
-    // If killer is a bot they are excluded from PBC_FindGroupBots; still proceed so
-    // they receive the event.  If killer is a real player and no bots are in the
-    // group there is nothing to dispatch.
-    if (bots.empty() && !killerIsBot) return;
 
     std::string bossLabel = BuildBossLabel(killed);
 
@@ -438,22 +416,7 @@ void PBC_PlayerEvents::OnPlayerCreatureKill(Player* killer, Creature* killed)
     std::string eventLine = PBC_MakeEventLine("The party has slain " + eventSuffix);
     std::string histLine  = PBC_MakeHistLine("The party fought and slain " + eventSuffix);
 
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] OnPlayerCreatureKill: killer={} boss='{}' location='{}' bots={} chance={}%",
-                 killer->GetName(), bossLabel, location, bots.size(), g_PBC_ReplyChanceBossKill);
-
-    PBC_NotifyRealPlayersInGroup(killer, eventLine);
-
-    PBC_EventItem ev = BuildCharacterEvent(bots, eventLine, histLine,
-                                     g_PBC_ReplyChanceBossKill, CHAT_MSG_PARTY,
-                                     /*canCreateEvents=*/true);
-
-    // If the killer is itself a bot it was excluded from PBC_FindGroupBots() but
-    // still needs to receive the event in its own history.
-    if (killerIsBot)
-        ev.silentCharGuids.push_back(killer->GetGUID().GetCounter());
-
-    PBC_PushEvent(std::move(ev));
+    PBC_DispatchGroupEvent(killer, eventLine, histLine, g_PBC_ReplyChanceBossKill);
 }
 
 // ---------------------------------------------------------------------------
@@ -489,9 +452,6 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
         questTitle, questDescription, questLogDescription, questCompletionLog,
         questRewardText, questGiver, questEnder, questGiverType, questEnderType);
 
-    auto bots = PBC_FindGroupBots(player);
-    if (bots.empty()) return;
-
     PBC_EventItem ev;
     ev.type               = PBC_EventType::QuestSummarization;
     ev.chatType           = CHAT_MSG_PARTY;
@@ -500,10 +460,8 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     ev.questUserPrompt    = userPrompt;
     ev.anchorObjGuid      = player->GetGUID();
 
-    PBC_EventItem rolled = BuildCharacterEvent(bots, "", "", g_PBC_ReplyChanceQuestCompleted,
-                                         CHAT_MSG_PARTY, /*canCreateEvents=*/true);
-    ev.respondingChars  = std::move(rolled.respondingChars);
-    ev.silentCharGuids  = std::move(rolled.silentCharGuids);
+    if (!PBC_RollGroupBotsIntoEvent(ev, player, g_PBC_ReplyChanceQuestCompleted, "quest-completed"))
+        return;
 
     PBC_PushEvent(std::move(ev));
 }
@@ -538,9 +496,6 @@ static void HandleQuestTaken(Player* player, Quest const* quest,
         questTitle, questDescription, questLogDescription, questCompletionLog,
         /*rewardText=*/"", questGiver, /*questEnder=*/"", questGiverType, /*questEnderType=*/"");
 
-    auto bots = PBC_FindGroupBots(player);
-    if (bots.empty()) return;
-
     PBC_EventItem ev;
     ev.type               = PBC_EventType::QuestSummarization;
     ev.chatType           = CHAT_MSG_PARTY;
@@ -549,10 +504,8 @@ static void HandleQuestTaken(Player* player, Quest const* quest,
     ev.questUserPrompt    = userPrompt;
     ev.anchorObjGuid      = player->GetGUID();
 
-    PBC_EventItem rolled = BuildCharacterEvent(bots, "", "", g_PBC_ReplyChanceQuestTaken,
-                                         CHAT_MSG_PARTY, /*canCreateEvents=*/true);
-    ev.respondingChars  = std::move(rolled.respondingChars);
-    ev.silentCharGuids  = std::move(rolled.silentCharGuids);
+    if (!PBC_RollGroupBotsIntoEvent(ev, player, g_PBC_ReplyChanceQuestTaken, "quest-taken"))
+        return;
 
     PBC_PushEvent(std::move(ev));
 }
@@ -1007,6 +960,206 @@ static void QueueRelationshipUpdatesAfterCondensation(
             LOG_INFO("server.loading",
                      "[PBC] Condensation: queuing relationship update for character={} target={}",
                      snap.charName, memberName);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PBC_PollPartyState
+//
+// Called from OnUpdate every 5 seconds.  Walks all groups that contain at
+// least one real player and one bot, checks for two conditions:
+//
+//   1. Party flight started — all members are in flight and we haven't
+//      already recorded this flight.  Produces:
+//        event: "*Party has started a flight to X*"
+//        hist:  "Narrator: *Party started a flight to X*"
+//
+//   2. Party location changed — all members share the same zone name
+//      (e.g. "Mulgore", "Elwynn Forest") and it differs from the last
+//      tracked zone.  Sub-zone changes (Goldshire → Eastvale) within the
+//      same zone do NOT trigger an event.  Location checks are skipped
+//      entirely while the party is in flight — the event fires after
+//      landing when the zone settles.  On server boot the tracked zone
+//      is empty, so the first poll only *records* the current zone
+//      without producing an event.  Produces:
+//        event: "*Party has arrived in X*"
+//        hist:  "Narrator: *Party moved to X*"
+//
+// Both events use g_PBC_ReplyChanceLocationChanged as the base roll chance.
+// Rolls use the same penalty system as other group events (see
+// PBC_DispatchGroupEvent / PBC_RollBotsWithPenalty).
+// ---------------------------------------------------------------------------
+void PBC_PollPartyState()
+{
+    if (!g_PBC_Enable) return;
+    if (g_PBC_ReplyChanceLocationChanged == 0) return;
+
+    // Collect all groups that have at least one real player and one bot.
+    struct GroupInfo
+    {
+        Group* grp;
+        Player* anchor;          // any member (used for dispatch)
+        std::vector<Player*> bots;
+        bool allInFlight;
+        std::string sharedZone;  // zone-level location (empty if mismatch)
+    };
+
+    std::vector<GroupInfo> groups;
+
+    // Walk all sessions to find groups with mixed real/bot membership.
+    // We use a set of already-seen group GUIDs to avoid processing a
+    // group more than once.
+    std::unordered_set<uint32_t> seenGroups;
+
+    WorldSessionMgr::SessionMap const& sessions = sWorldSessionMgr->GetAllSessions();
+    for (auto const& [id, session] : sessions)
+    {
+        Player* player = session->GetPlayer();
+        if (!player || !player->IsInWorld()) continue;
+
+        Group* grp = player->GetGroup();
+        if (!grp) continue;
+
+        uint32_t grpGuid = grp->GetGUID().GetCounter();
+        if (seenGroups.count(grpGuid)) continue;
+
+        // Check group composition: need at least one real player and one bot.
+        bool hasReal = false;
+        bool hasBot  = false;
+        for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (!member || !member->IsInWorld()) continue;
+            WorldSession* ms = member->GetSession();
+            if (!PBC_PTR_VALID(ms)) continue;
+            if (ms->IsBot())
+                hasBot = true;
+            else
+                hasReal = true;
+        }
+        if (!hasReal || !hasBot) continue;
+
+        seenGroups.insert(grpGuid);
+
+        GroupInfo info;
+        info.grp = grp;
+        info.allInFlight = true;
+        info.sharedZone.clear();
+
+        bool firstMember = true;
+        bool zoneMismatch = false;
+
+        for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (!member || !member->IsInWorld()) continue;
+
+            WorldSession* ms = member->GetSession();
+            if (PBC_PTR_VALID(ms) && ms->IsBot())
+                info.bots.push_back(member);
+
+            // Flight check
+            if (!member->IsInFlight())
+                info.allInFlight = false;
+
+            // Zone check — use zone-level name only (e.g. "Elwynn Forest")
+            std::string zone = PBC_BuildZoneName(member);
+            if (firstMember)
+            {
+                info.sharedZone = zone;
+                firstMember = false;
+            }
+            else if (zone != info.sharedZone)
+            {
+                zoneMismatch = true;
+            }
+        }
+
+        if (zoneMismatch)
+            info.sharedZone.clear();   // not all in the same zone
+
+        // Pick an anchor — prefer the leader, fall back to first bot
+        Player* anchor = nullptr;
+        if (Player* leader = ObjectAccessor::FindPlayer(grp->GetLeaderGUID()))
+            if (leader->IsInWorld())
+                anchor = leader;
+        if (!anchor && !info.bots.empty())
+            anchor = info.bots.front();
+
+        if (!anchor) continue;
+        info.anchor = anchor;
+        groups.push_back(std::move(info));
+    }
+
+    // Now check state transitions for each group.
+    std::lock_guard<std::mutex> lock(g_PBC_PartyStateMutex);
+
+    for (auto const& gi : groups)
+    {
+        uint32_t grpGuid = gi.grp->GetGUID().GetCounter();
+        PBC_PartyState& state = g_PBC_PartyStates[grpGuid];
+
+        // --- Flight event ---
+        if (gi.allInFlight && !state.inFlight)
+        {
+            // All members just entered flight — dispatch event.
+            std::string dest = PBC_BuildFlightDestination(gi.anchor);
+            if (dest.empty())
+                dest = "an unknown destination";
+
+            std::string eventLine = PBC_MakeEventLine("The party has started a flight to " + dest);
+            std::string histLine  = PBC_MakeHistLine("The party started a flight to " + dest);
+
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] PollPartyState: flight started — group={} dest={} bots={} chance={}%",
+                         grpGuid, dest, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
+
+            PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
+                                   g_PBC_ReplyChanceLocationChanged);
+        }
+        state.inFlight = gi.allInFlight;
+
+        // --- Location event ---
+        // Skip location checks while the party is in flight.  The event
+        // will fire naturally after landing when the zone settles.
+        if (!gi.allInFlight && !gi.sharedZone.empty())
+        {
+            if (state.location.empty())
+            {
+                // First poll after boot — just record, don't produce event.
+                state.location = gi.sharedZone;
+            }
+            else if (gi.sharedZone != state.location)
+            {
+                // Zone changed — dispatch event.
+                std::string eventLine = PBC_MakeEventLine("Party has arrived in " + gi.sharedZone);
+                std::string histLine  = PBC_MakeHistLine("Party moved to " + gi.sharedZone);
+
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] PollPartyState: location changed — group={} from='{}' to='{}' bots={} chance={}%",
+                             grpGuid, state.location, gi.sharedZone, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
+
+                state.location = gi.sharedZone;
+
+                PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
+                                       g_PBC_ReplyChanceLocationChanged);
+            }
+        }
+    }
+
+    // Clean up state for groups that no longer exist or no longer qualify.
+    // (Simple approach: remove entries that weren't touched this cycle.)
+    // We rebuild the set of valid group GUIDs from the groups we processed.
+    std::unordered_set<uint32_t> activeGroups;
+    for (auto const& gi : groups)
+        activeGroups.insert(gi.grp->GetGUID().GetCounter());
+
+    for (auto it = g_PBC_PartyStates.begin(); it != g_PBC_PartyStates.end(); )
+    {
+        if (!activeGroups.count(it->first))
+            it = g_PBC_PartyStates.erase(it);
+        else
+            ++it;
     }
 }
 

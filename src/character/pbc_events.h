@@ -98,6 +98,15 @@ void PBC_RollBotsWithPenalty(PBC_EventItem& ev,
                               const char* debugLabel = "Roll");
 
 // ---------------------------------------------------------------------------
+// Convenience wrapper: finds group bots for 'player', shuffles them, and
+// rolls with penalty into the provided event item.  Returns true if any bots
+// were found (regardless of roll outcomes), false if the player has no group
+// bots — in which case the caller should abort the event.
+// ---------------------------------------------------------------------------
+bool PBC_RollGroupBotsIntoEvent(PBC_EventItem& ev, Player* player,
+                                 uint32_t chance, const char* debugLabel = "event");
+
+// ---------------------------------------------------------------------------
 // Full message roll logic: checks for mentions, sorts mentioned bots by
 // position in the message, rolls mentioned bots at mention chance, then
 // non-mentioned bots at a reduced chance with decaying penalty.
@@ -142,6 +151,13 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
 // ---------------------------------------------------------------------------
 std::vector<Player*> PBC_FindGroupBotsExcluding(Player* player,
     const std::unordered_set<uint64_t>& excludedGuids);
+
+// ---------------------------------------------------------------------------
+// Poll party flight/location state (called from OnUpdate every 5 seconds).
+// Checks all groups with at least one real player and one bot, dispatches
+// events for flight starts and location changes.
+// ---------------------------------------------------------------------------
+void PBC_PollPartyState();
 
 // ---------------------------------------------------------------------------
 // Process a single event item (runs in a detached thread).

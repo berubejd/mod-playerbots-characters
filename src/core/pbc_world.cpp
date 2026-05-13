@@ -86,6 +86,20 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
     s_tickTimer = 100; // 100 ms gate
 
     // ---------------------------------------------------------------------------
+    // 0. Poll party flight/location state every 5 seconds.
+    // ---------------------------------------------------------------------------
+    {
+        static uint32_t s_partyPollTimer = 5000;
+        if (s_partyPollTimer > diff)
+            s_partyPollTimer -= diff;
+        else
+        {
+            s_partyPollTimer = 5000;
+            PBC_PollPartyState();
+        }
+    }
+
+    // ---------------------------------------------------------------------------
     // 1. Drain secondary event requests posted by the event thread.
     //    The worker thread cannot do Player* lookups or take snapshots, so it
     //    posts a lightweight PBC_PendingEventRequest and we resolve it here.

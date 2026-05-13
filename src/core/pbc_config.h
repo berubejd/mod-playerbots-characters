@@ -92,6 +92,7 @@ extern uint32_t g_PBC_ReplyChanceLevelUp;
 extern uint32_t g_PBC_ReplyChanceBossKill;
 extern uint32_t g_PBC_ReplyChanceQuestCompleted;
 extern uint32_t g_PBC_ReplyChanceQuestTaken;
+extern uint32_t g_PBC_ReplyChanceLocationChanged;
 
 // ---------------------------------------------------------------------------
 // Quest LLM prompts
@@ -452,6 +453,19 @@ extern std::mutex g_PBC_RelationshipsMutex;
 // Character cards loaded from disk: character name -> card text
 // ---------------------------------------------------------------------------
 extern std::unordered_map<std::string, std::string> g_PBC_CharacterCards;
+
+// ---------------------------------------------------------------------------
+// In-memory party state tracking for location/flight events.
+// Key: group leader GUID (low part).  Only groups with at least one real
+// player and one bot are tracked.
+// ---------------------------------------------------------------------------
+struct PBC_PartyState
+{
+    bool   inFlight     = false;   // true while the whole party is in flight
+    std::string location;         // last known shared location name
+};
+extern std::unordered_map<uint32_t, PBC_PartyState> g_PBC_PartyStates;
+extern std::mutex g_PBC_PartyStateMutex;
 
 
 // ---------------------------------------------------------------------------

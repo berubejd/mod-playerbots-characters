@@ -135,6 +135,11 @@ std::string PBC_BuildTargetInfo(const std::string& name);
 // e.g. "Lion's Pride Inn (Goldshire, Elwynn Forest)" or "Goldshire (Elwynn Forest)" or just "Elwynn Forest".
 std::string PBC_BuildPlaceName(Player* player);
 
+// Returns the top-level zone name for a player's current location,
+// e.g. "Elwynn Forest" or "Mulgore".  Sub-areas (Goldshire, Crossroads, etc.)
+// are not included — only the root zone in the area hierarchy.
+std::string PBC_BuildZoneName(Player* player);
+
 // Returns the taxi destination name for a flying player, or empty string.
 std::string PBC_BuildFlightDestination(Player* bot);
 

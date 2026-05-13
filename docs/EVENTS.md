@@ -1,16 +1,25 @@
 # Events
 
-Here's the list of possible events that characters could react to.
+Events are in-game occurrences that characters may react to. When an event fires, each eligible character rolls to decide whether they respond — the chance depends on the event type and is further reduced by a decaying penalty after each successful roll (configured via `RollPenaltyOnAnswer`).
 
-- **Message received** — fires after the character receives a new message as a whisper or otherwise, for example "John tells you privately: How are you doing?" or "John says: It was a nice fight, huh?"
-  - When a message **mentions** specific characters by name, those characters roll at `ReplyChanceMention` to respond. Non-mentioned bystanders also get a chance to chime in: they roll at `ReplyChanceMention` minus (`RollPenaltyOnAnswer` × number of mentions), with each successful bystander roll further reducing the chance by `RollPenaltyOnAnswer`.
-- **Party found item** — fires when any party member picks up a new item, only for rare (blue) items or higher tiers, for example "The party has found a legendary two-handed mace named Bane of the Damned" or "The party acquired an epic cloth robe named Robes of the Great Arcanist"
-- **Character won duel** — fires after the character or someone else in the party wins the duel, for example "John has just won the duel against Joe"
-- **Character leveled up** — fires after the character or someone else in the party reaches every 5th level, in a roleplay-friendly way, for example "John can feel their abilities growing stronger" (other level-ups are ignored to avoid history spam)
-- **Boss slain** — fires when any party member lands the killing blow on a significant opponent (dungeon/raid boss, world boss, or named elite), only when the group contains at least one real player; **always written to all character histories** regardless of whether anyone rolls to respond, for example: "The party has slain Kel'Thuzad (The Lich's Champion) in Naxxramas"
-- **Quest taken** — fires when the **party leader** accepts a new quest from an NPC, game object, or item, only when the group contains at least one real player; a preliminary LLM call generates a one-line narrative summary of the quest, phrased naturally based on the source type (person, object, or item)
-- **Quest completed** — fires when the **party leader** completes a quest, only when the group contains at least one real player; a preliminary LLM call generates a one-line narrative summary of the quest, phrased naturally based on the ender type (person or object)
+| Event | When it triggers | Example |
+|---|---|---|
+| **Whisper received** | A character receives a private whisper from another player. | `John tells you privately: How are you doing?` |
+| **Chat message received** | A character hears a say, yell, or group message. If the message **mentions** specific characters by name, those characters roll at `ReplyChanceMention`; non-mentioned bystanders roll at a reduced chance. | `John says: It was a nice fight, huh?` |
+| **Party found item** | A party member picks up a rare (blue) or higher weapon or armor. | `*The party has found a legendary two-handed mace named Bane of the Damned*` |
+| **Character won duel** | A party member wins a duel. | `*John just won the duel against Joe*` |
+| **Character leveled up** | A party member reaches every 5th level (5, 10, 15 …). Other level-ups are ignored. | `*John can feel their abilities growing stronger*` |
+| **Boss slain** | A party member lands the killing blow on a dungeon/raid boss, world boss, or named elite. | `*The party has slain Kel'Thuzad (The Lich's Champion) in Naxxramas*` |
+| **Quest taken** | The party leader accepts a quest from an NPC, game object, or item. A preliminary LLM call generates a one-line narrative summary. | `*The party has agreed to help Farmer Fung with his troubles*` |
+| **Quest completed** | The party leader completes a quest. A preliminary LLM call generates a one-line narrative summary. | `*The party has delivered the supplies to Crossroads*` |
+| **Party flight started** | All party members are in flight at the same time (polled every 5 s). | `*The party has started a flight to Crossroads*` |
+| **Party location changed** | All party members share the same zone and it differs from the last tracked zone. Sub-zone changes within the same zone do not trigger this. Location checks are skipped while in flight. | `*Party has arrived in Elwynn Forest*` |
+| **Trigger** | Fired manually via the `.chars trigger` command or the `POST /api/char/:guid/trigger` API endpoint. The character always responds (no roll). The event is **not** written into the character's history. Response is sent as a party message if grouped, or as a say otherwise. | `*you feel the urge to say something*` |
 
-- **Trigger** — fires when a character is triggered via the `.chars trigger` command or the `POST /api/char/:guid/trigger` API endpoint. The character always responds (no roll chance). The event line is `*you feel the urge to say something*` and is NOT written into the character's history. The response is sent as a party message if the character is in a group, or as a say otherwise.
+### Time-gap narrator line
 
-When more than 5 minutes pass between consecutive history entries for a character, a narrator line `Narrator: *some time passes*` is automatically inserted to indicate the time gap. This line is not inserted if both the last and current messages are private (whisper) messages between the same characters.
+When more than 5 minutes pass between consecutive history entries for a character, a narrator line is automatically inserted to indicate the time gap:
+
+> `Narrator: *some time passes*`
+
+This line is not inserted if both the last and current messages are private (whisper) messages between the same two characters.

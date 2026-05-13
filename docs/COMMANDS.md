@@ -2,19 +2,21 @@
 
 List of commands that can be used by the player or in the server console.
 
-- `.chars reload` — reloads module config, prompts, character cards, card additions and character data; also queues a history and relationship reload from the database that runs after all currently pending events are processed (so no in-flight history is lost)
-- `.chars condense <char_name>` — forcefully condenses current history, updates character definition and clears current history; also triggers relationship updates for party members that have enough mention data
-- `.chars info <char_name>` — prints current character card with historical condensed additions and some basic statistics (number of additions, current number of messages in history, roll chance modifier)
-- `.chars reset <char_name>` — removes all historical condensed additions, current chat history and relationship data for the `char_name` character
-- `.chars reset @ALL` — removes all historical condensed additions, current chat history and relationship data for all characters, basically restoring the module to its initial state
-- `.chars history [char_name] [num=5]` — prints the last `num` entries from the character's in-memory chat history (capped at 20)
-- `.chars relationship <char_name> <target_char_name>` — outputs `char_name`'s current LLM-generated relationship description towards `target_char_name`
-- `.chars relationship-update <char_name> <target_char_name>` — forcefully queues an immediate relationship update LLM call for `char_name`'s relationship towards `target_char_name`
-- `.chars roll-modifier <char_name> [roll_modifier]` — sets or displays the per-character roll chance modifier (integer from -100 to 100). A positive value makes the character more talkative on average (adds to every roll chance), a negative value makes them less talkative (duh). Does not affect whisper or mention reply chances. Omit `[roll_modifier]` to display the current value.
-- `.chars context <char_name>` — builds and prints the current `{context}` variable for the character (defined by `PBC.CharacterContext` with all template variables substituted). Mostly useful for debugging to inspect what context the character would see at the current moment.
-- `.chars web` — generates a one-time password for the web interface and displays the connection URL. In-game only (not available from console).
-- `.chars api-test [query=hi]` — sends a quick test request to the configured main LLM API with the system prompt "Answer in one single short sentence." and prints the response (or an error message if the request fails)
-- `.chars alt-api-test [query=hi]` — same as `api-test` but uses the alternative model configuration (see `ALTERNATIVE API` in the config)
-- `.chars narrate <char_name> <message>` — adds a `Narrator: *message*` line to the specified character's chat history. Useful for injecting narrative context, e.g. `.chars narrate Jaina You feel exhausted.`. In-game only (not available from console).
-- `.chars narrate-party <message>` — adds a `Narrator: *message*` line to every character's chat history in the caller's group. Does not trigger LLM responses. Fails if there are no characters in the group. Useful for adding shared narrative context, e.g. `.chars narrate-party The party got new mounts.`. In-game only (not available from console).
-- `.chars trigger <char_name>` — triggers a response from the specified character. The character responds as a party message if they are in a group, or as a say otherwise. The trigger event (`*you feel the urge to say something*`) is not written into the character's history. Available from both in-game and console.
+| Command | Description |
+|---|---|
+| `.chars reload` | Reloads module config, prompts, character cards, and data. Also reloads history and relationships from the database after all pending events are processed. |
+| `.chars condense <name>` | Condenses a character's history into their card definition and clears the history. Also triggers relationship updates for party members. |
+| `.chars info <name>` | Prints the character's card, condensed additions, and basic stats (addition count, history length, roll modifier). |
+| `.chars reset <name>` | Removes all additions, history, and relationship data for a character. |
+| `.chars reset @ALL` | Removes all additions, history, and relationship data for every character. |
+| `.chars history <name> [num=5]` | Shows the last `num` entries from a character's chat history (max 20). |
+| `.chars relationship <name> <target>` | Shows a character's LLM-generated relationship description towards another character. |
+| `.chars relationship-update <name> <target>` | Queues an immediate relationship update LLM call for a character towards a target. |
+| `.chars roll-modifier <name> [value]` | Sets or displays the per-character roll chance modifier (−100 to 100). Positive = more talkative, negative = less talkative. Does not affect whisper or mention chances. Omit value to display current. |
+| `.chars context <name>` | Prints the character's current context variable with all template substitutions applied (useful for debugging). |
+| `.chars web` | Generates a one-time password for the web interface and displays the connection URL. In-game only. |
+| `.chars api-test [query=hi]` | Sends a test request to the main LLM API and prints the response. |
+| `.chars alt-api-test [query=hi]` | Same as `api-test` but uses the alternative model configuration. |
+| `.chars narrate <name> <message>` | Adds a narrator line to a character's chat history. In-game only. |
+| `.chars narrate-party <message>` | Adds a narrator line to every group character's chat history. Does not trigger LLM responses. In-game only. |
+| `.chars trigger <name>` | Forces a character to respond (party message if grouped, say otherwise). The trigger event is not written into history. |

@@ -77,6 +77,7 @@ uint32_t g_PBC_ReplyChanceLevelUp  = 5;
 uint32_t g_PBC_ReplyChanceBossKill       = 35;
 uint32_t g_PBC_ReplyChanceQuestCompleted = 20;
 uint32_t g_PBC_ReplyChanceQuestTaken     = 10;
+uint32_t g_PBC_ReplyChanceLocationChanged = 15;
 
 std::string g_PBC_QuestCompletedSystemPrompt;
 std::string g_PBC_QuestCompletedUserPrompt;
@@ -125,6 +126,9 @@ std::mutex g_PBC_RelationshipsMutex;
 std::unordered_map<uint64_t, int32_t> g_PBC_RollChanceModifiers;
 
 std::unordered_map<uint64_t, time_t> g_PBC_LastHistoryTime;
+
+std::unordered_map<uint32_t, PBC_PartyState> g_PBC_PartyStates;
+std::mutex g_PBC_PartyStateMutex;
 
 // ---------------------------------------------------------------------------
 // PBC_PushEvent
@@ -203,6 +207,7 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_ReplyChanceBossKill       = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceBossKill", 35);
     g_PBC_ReplyChanceQuestCompleted = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestCompleted", 20);
     g_PBC_ReplyChanceQuestTaken     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestTaken", 10);
+    g_PBC_ReplyChanceLocationChanged = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLocationChanged", 15);
 
     g_PBC_RelationshipUpdateThreshold    = sConfigMgr->GetOption<uint32_t>("PBC.RelationshipUpdateThreshold", 100);
 

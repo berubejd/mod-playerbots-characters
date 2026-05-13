@@ -170,6 +170,30 @@ std::string PBC_BuildPlaceName(Player* player)
     return result;
 }
 
+std::string PBC_BuildZoneName(Player* player)
+{
+    // Walk up the area hierarchy and return the root zone name
+    // (the topmost entry whose zone field is 0, or the last name found).
+    uint32_t currentId = player->GetAreaId();
+    std::string rootName;
+    int maxDepth = 10;
+
+    while (currentId != 0 && maxDepth-- > 0)
+    {
+        AreaTableEntry const* entry = sAreaTableStore.LookupEntry(currentId);
+        if (!entry)
+            break;
+
+        std::string name = entry->area_name[0];
+        if (!name.empty())
+            rootName = name;
+
+        currentId = entry->zone;
+    }
+
+    return rootName.empty() ? "Unknown" : rootName;
+}
+
 std::string PBC_BuildFlightDestination(Player* bot)
 {
     const std::deque<uint32>& path = bot->m_taxi.GetPath();

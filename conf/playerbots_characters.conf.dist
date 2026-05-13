@@ -266,6 +266,13 @@ PBC.ReplyChanceQuestCompleted = 20
 #     Default:     10
 PBC.ReplyChanceQuestTaken = 10
 
+# PBC.ReplyChanceLocationChanged
+#     Description: The percent chance (0-100) that each character in the party would react
+#                  when the party starts a flight or arrives in a new zone. Applies to both
+#                  the "party flight started" and "party location changed" events.
+#     Default:     15
+PBC.ReplyChanceLocationChanged = 15
+
 
 # --------------------------------------------
 # HTTP SERVER
