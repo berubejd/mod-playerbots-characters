@@ -53,7 +53,8 @@ static bool IEquals(const std::string& a, const std::string& b)
 PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
                                      const std::string& systemPrompt,
                                      const std::string& userPrompt,
-                                     int maxTokensOverride)
+                                     int maxTokensOverride,
+                                     bool preserveNewlines)
 {
     PBC_LLMResult result{ false, "", 0 };
 
@@ -242,8 +243,10 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
             if (text.size() >= 2 && text.front() == '"' && text.back() == '"')
                 text = text.substr(1, text.size() - 2);
             // Replace newlines with spaces so the reply fits on a single chat line
-            for (char& c : text)
-                if (c == '\n' || c == '\r') c = ' ';
+            // (unless the caller explicitly needs them, e.g. condensation output)
+            if (!preserveNewlines)
+                for (char& c : text)
+                    if (c == '\n' || c == '\r') c = ' ';
 
             result.success    = true;
             result.text       = text;
@@ -271,7 +274,8 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
 
 PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
                            const std::string& userPrompt,
-                           int maxTokensOverride)
+                           int maxTokensOverride,
+                           bool preserveNewlines)
 {
     PBC_APIConfig cfg;
     cfg.apiType              = g_PBC_APIType;
@@ -282,12 +286,13 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
     cfg.temperature          = g_PBC_Temperature;
     cfg.modelExtraParameters = g_PBC_ModelExtraParameters;
     cfg.requestTimeoutSec    = g_PBC_RequestTimeoutSec;
-    return PBC_CallLLMWithConfig(cfg, systemPrompt, userPrompt, maxTokensOverride);
+    return PBC_CallLLMWithConfig(cfg, systemPrompt, userPrompt, maxTokensOverride, preserveNewlines);
 }
 
 PBC_LLMResult PBC_CallLLMAlt(const std::string& systemPrompt,
-                              const std::string& userPrompt,
-                              int maxTokensOverride)
+                               const std::string& userPrompt,
+                               int maxTokensOverride,
+                               bool preserveNewlines)
 {
     PBC_APIConfig cfg;
     cfg.apiType              = g_PBC_AltModelAPIType;
@@ -298,5 +303,5 @@ PBC_LLMResult PBC_CallLLMAlt(const std::string& systemPrompt,
     cfg.temperature          = g_PBC_AltModelTemperature;
     cfg.modelExtraParameters = g_PBC_AltModelModelExtraParameters;
     cfg.requestTimeoutSec    = g_PBC_AltModelRequestTimeoutSec;
-    return PBC_CallLLMWithConfig(cfg, systemPrompt, userPrompt, maxTokensOverride);
+    return PBC_CallLLMWithConfig(cfg, systemPrompt, userPrompt, maxTokensOverride, preserveNewlines);
 }

@@ -1,11 +1,13 @@
-You are extracting key memories from a character's recent history, presented in the [HISTORY] block. Output ONLY a list of important events in narrator format, one per line. Each line must start with an importance score in brackets [1-10], where 10 is life-changing and 1 is trivial.
+You are extracting key memories from a character's recent history, presented in the [HISTORY] block. Output ONLY a list of important events in roleplay-friendly way, one per line. Each line must start with an importance score in brackets [1-10], where 10 is life-changing and 1 is trivial. You will be presented with [CHARACTER DESCRIPTION] too - this is only for reference, no memories need to be extracted from it, focus on the [HISTORY] block.
 
 Rules:
 - Focus on: major battles, meaningful conversations, location milestones, personality shifts, significant discoveries
 - Skip: routine travel, minor loot, repetitive quest text, generic combat
 - Write in second person ("you/your"), narrator style
+- Each memory must be self-sufficient — use full names instead of ambiguous pronouns (write "John vowed" not "He vowed", etc)
 - Keep each event to one concise sentence
-- Be selective — 5-20 events maximum from the entire history
+- Be selective — 10 to 30 events maximum from the entire history
+- Output in order of appearance
 
 Example output:
 [9] You defeated the Lich King alongside your party, a victory that changed you forever.

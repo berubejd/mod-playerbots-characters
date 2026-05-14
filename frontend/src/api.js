@@ -44,11 +44,71 @@ export async function fetchCard(token, guid) {
   return res.json();
 }
 
-export async function fetchCardAdditions(token, guid) {
-  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/card/additions`, {
+export async function fetchCharData(token, guid) {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/data`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   throwForStatus(res, CHAR_STATUS);
+  return res.json();
+}
+
+export async function updateCharData(token, guid, data) {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/data`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+  throwForStatus(res, MUTATE_STATUS);
+  return res.json();
+}
+
+export async function fetchMemoryCount(token, guid) {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/memory/count`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  throwForStatus(res, CHAR_STATUS);
+  return res.json();
+}
+
+export async function fetchMemories(token, guid, { order_by = 'id', order_dir = 'desc', page = 1, limit = 10 } = {}) {
+  const params = new URLSearchParams();
+  if (order_by) params.set('order_by', order_by);
+  if (order_dir) params.set('order_dir', order_dir);
+  if (page) params.set('page', page);
+  if (limit) params.set('limit', limit);
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/memory?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  throwForStatus(res, CHAR_STATUS);
+  return res.json();
+}
+
+export async function editMemory(token, guid, id, memory_text, importance, original) {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/memory/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ memory_text, importance, original }),
+  });
+  throwForStatus(res, MUTATE_STATUS);
+  return res.json();
+}
+
+export async function deleteMemory(token, guid, id, original) {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/memory/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ original }),
+  });
+  throwForStatus(res, MUTATE_STATUS);
   return res.json();
 }
 
@@ -160,32 +220,6 @@ export async function editMessage(token, guid, id, message, original) {
 
 export async function deleteMessage(token, guid, id, original) {
   const res = await fetch(`/api/char/${encodeURIComponent(guid)}/history?id=${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ original }),
-  });
-  throwForStatus(res, MUTATE_STATUS);
-  return res.json();
-}
-
-export async function editCardAddition(token, guid, id, text, original) {
-  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/card/additions?id=${encodeURIComponent(id)}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ text, original }),
-  });
-  throwForStatus(res, MUTATE_STATUS);
-  return res.json();
-}
-
-export async function deleteCardAddition(token, guid, id, original) {
-  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/card/additions?id=${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${token}`,

@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS `mod_pbc_memories` (
 -- Per-bot chat and event history lines for LLM context.
 -- Each row is one pre-formatted single-line string, e.g.:
 --   "John: Hello, how are you?"
---   "*John picked up [Thunderfury, Blessed Blade of the Windseeker]*"
+--   "Narrator: *John picked up [Thunderfury, Blessed Blade of the Windseeker]*"
 CREATE TABLE IF NOT EXISTS `mod_pbc_chat_history` (
     `id`        BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `bot_guid`  BIGINT UNSIGNED NOT NULL COMMENT 'GUID of the playerbot this history belongs to',

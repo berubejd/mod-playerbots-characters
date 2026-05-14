@@ -861,8 +861,8 @@ static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
 
     std::string userPrompt = PBC_BuildCondensationPromptFromSnapshot(snap, userPromptTmpl);
     PBC_LLMResult res = g_PBC_UseAltModelForCondensation
-        ? PBC_CallLLMAlt(sysPrompt, userPrompt, /*maxTokensOverride=*/-1)
-        : PBC_CallLLM(sysPrompt, userPrompt, /*maxTokensOverride=*/-1);
+        ? PBC_CallLLMAlt(sysPrompt, userPrompt, /*maxTokensOverride=*/-1, /*preserveNewlines=*/true)
+        : PBC_CallLLM(sysPrompt, userPrompt, /*maxTokensOverride=*/-1, /*preserveNewlines=*/true);
 
     if (!res.success || res.text.empty())
     {
@@ -893,12 +893,9 @@ static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
         // Insert into DB
         DB_InsertMemory(snap.charGuidRaw, memText, importance);
 
-        // Insert into in-memory store (need DB id for chronological ordering,
-        // but we just inserted — query the last id for this bot)
-        // Instead, we load all memories from DB after condensation to keep
-        // things simple and consistent. For now, push with dbId=0; the next
-        // LoadMemoriesFromDB call (or reload) will fix ordering. Since
-        // condensation is rare and memories accumulate, this is fine.
+        // Insert into in-memory store with a temporary dbId of 0.
+        // PBC_LoadMemoriesFromDB() is called after the condensation loop
+        // finishes to reload all memories with proper DB row ids.
         PBC_MemoryEntry entry;
         entry.dbId       = 0;
         entry.text       = std::move(memText);
@@ -1269,8 +1266,12 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
             return;
         }
 
-        // Condensation succeeded — queue relationship updates for all party
-        // members using the pre-condensation history for full LLM context.
+        // Condensation succeeded — reload memories from DB so in-memory entries
+        // have proper DB row ids (PBC_CondenseInline inserts with dbId=0).
+        PBC_LoadMemoriesFromDB();
+
+        // Queue relationship updates for all party members using the
+        // pre-condensation history for full LLM context.
         QueueRelationshipUpdatesAfterCondensation(ev.condensationChar, preCondensationHistory);
 
         g_PBC_EventThreadDone.store(true);
@@ -1412,8 +1413,8 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
 
             // Call the LLM
             PBC_LLMResult res = g_PBC_UseAltModelForCondensation
-                ? PBC_CallLLMAlt(ev.migrationCondensationSystemPrompt, userPrompt, /*maxTokensOverride=*/-1)
-                : PBC_CallLLM(ev.migrationCondensationSystemPrompt, userPrompt, /*maxTokensOverride=*/-1);
+                ? PBC_CallLLMAlt(ev.migrationCondensationSystemPrompt, userPrompt, /*maxTokensOverride=*/-1, /*preserveNewlines=*/true)
+                : PBC_CallLLM(ev.migrationCondensationSystemPrompt, userPrompt, /*maxTokensOverride=*/-1, /*preserveNewlines=*/true);
 
             if (!res.success || res.text.empty())
             {
@@ -1463,6 +1464,10 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
                      charName.empty() ? fmt::format("guid:{}", botGuid) : charName,
                      additions.size(), memCount, processed, totalAdditions);
         }
+
+        // Reload memories from DB so in-memory entries have proper DB row ids
+        // (the migration loop inserts with dbId=0).
+        PBC_LoadMemoriesFromDB();
 
         LOG_INFO("server.loading",
                  "[PBC] CardAdditionsMigration: complete. {} additions processed, {} memories created. "
@@ -1573,9 +1578,14 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
             bool condensed = PBC_CondenseInline(snap, condenseSysPrompt, condenseUsrTmpl);
             if (condensed)
             {
-                // Inline condensation succeeded — queue relationship updates
-                // for all party members using the pre-condensation history.
-                // This mirrors the explicit Condensation event handler above.
+                // Inline condensation succeeded — reload memories from DB so
+                // in-memory entries have proper DB row ids (PBC_CondenseInline
+                // inserts with dbId=0).
+                PBC_LoadMemoriesFromDB();
+
+                // Queue relationship updates for all party members using the
+                // pre-condensation history. This mirrors the explicit
+                // Condensation event handler above.
                 QueueRelationshipUpdatesAfterCondensation(snap, preCondensationHistory);
             }
             // If condensation failed, snap.history still contains the full

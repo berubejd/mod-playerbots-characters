@@ -62,11 +62,12 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
         // Re-request character info (includes relationships)
         setInfoReloadKey((k) => k + 1);
         break;
-      case 'additions':
-        // Re-request additions AND reload chat (contents changed)
-        setInfoReloadKey((k) => k + 1);
-        setChatReloadKey((k) => k + 1);
+      case 'memory': {
+        // Toast notification — no need to re-request data
+        const memCharName = selectedCharName || 'character';
+        toast(`The memory of ${memCharName} was updated`, 'success');
         break;
+      }
       // subscribed/unsubscribed are internal only, no action needed
     }
   }, [wsEvent, toast]);
@@ -185,6 +186,7 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
       token={token}
       selectedGuid={selectedGuid}
       nameColorMap={nameColorMap}
+      charName={selectedCharName}
       reloadKey={infoReloadKey}
       onDesync={onDesync}
     />

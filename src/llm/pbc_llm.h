@@ -40,20 +40,29 @@ struct PBC_APIConfig
 //  -1             – omit max_tokens entirely (let the model decide);
 //                   intended for condensation and relationship updates
 //                   where truncation would corrupt the output.
+//
+// preserveNewlines:
+//   false (default) – newlines in the response are replaced with spaces
+//                     so the reply fits on a single in-game chat line.
+//   true            – newlines are kept intact; required for condensation
+//                     output where each memory is on its own line.
 PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
                                      const std::string& systemPrompt,
                                      const std::string& userPrompt,
-                                     int maxTokensOverride = 0);
+                                     int maxTokensOverride = 0,
+                                     bool preserveNewlines = false);
 
 // Convenience wrapper — uses the main model globals (g_PBC_*).
 PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
                            const std::string& userPrompt,
-                           int maxTokensOverride = 0);
+                           int maxTokensOverride = 0,
+                           bool preserveNewlines = false);
 
 // Convenience wrapper — uses the alt model globals (g_PBC_AltModel*).
 PBC_LLMResult PBC_CallLLMAlt(const std::string& systemPrompt,
-                              const std::string& userPrompt,
-                              int maxTokensOverride = 0);
+                               const std::string& userPrompt,
+                               int maxTokensOverride = 0,
+                               bool preserveNewlines = false);
 
 // Estimate token count (rough: 1 token ≈ 4 chars).
 int PBC_EstimateTokens(const std::string& text);

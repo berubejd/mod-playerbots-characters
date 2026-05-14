@@ -750,7 +750,7 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
         { "narrate",                  HandleCharsNarrate,                 SEC_GAMEMASTER, Console::No  },
         { "narrate-party",            HandleCharsNarrateParty,            SEC_GAMEMASTER, Console::No  },
         { "trigger",                  HandleCharsTrigger,                 SEC_GAMEMASTER, Console::Yes },
-        { "migrate-card-additions",   HandleCharsMigrateCardAdditions,    SEC_GAMEMASTER, Console::No  },
+        { "migrate-card-additions",   HandleCharsMigrateCardAdditions,    SEC_GAMEMASTER, Console::Yes },
     };
 
     static ChatCommandTable rootTable =
