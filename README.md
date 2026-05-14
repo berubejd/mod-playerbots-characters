@@ -12,7 +12,7 @@ Think old Bioware games with companions — that's the core idea. The intended u
 
 This module extends the bots provided by `mod-playerbots` into full characters — giving them a voice, memories, relationships, and the ability to react to events and converse with companions. The bot logic (combat, movement, questing) remains entirely untouched; this module only adds the personality layer on top.
 
-Characters react to in-game events (chat, item pickups, duels, level-ups, boss kills, quests) based on configurable reply chances. When a character rolls to respond, a prompt is built from its character card, chat history, relationships, live context, and the event itself — then sent to an OpenAI-compatible LLM API, and the response is spoken by the character in-game.
+Characters react to in-game events (chat, item pickups, duels, level-ups, boss kills, quests) based on configurable reply chances. When a character rolls to respond, a prompt is built from its character card, chat history, relationships, live context, and the event itself — then sent to a compatible LLM API, and the response is spoken by the character in-game.
 
 Over time, chat history grows. When it reaches the configured token limit, a condensation process extracts discrete narrator-style memories with importance scores from the history, then clears all history. These memories are selected by importance at prompt-build time within a token budget, keeping the in-memory context bounded while preserving what matters. This way, characters gradually develop lasting memories and personality traits.
 
@@ -27,7 +27,7 @@ Next, clone this repository into the `modules` directory of your acore sources a
 
 > [!NOTE]
 > 1. Only Linux is officially supported as a build target. Technically nothing should stop you from using the module on Windows, but this is untested and unsupported.
-> 2. The module includes bundled copies of [nlohmann/json](https://github.com/nlohmann/json) in `deps/nlohmann/json.hpp` and [cpp-httplib](https://github.com/yhirose/cpp-httplib) in `deps/yhirose/cpp-httplib/httplib.h`, so no external libraries are required for these. The build system will use the bundled versions by default, falling back to a system-installed version of nlohmann/json if the bundled one is not present.
+> 2. The module includes bundled copies of [nlohmann/json](https://github.com/nlohmann/json) in `deps/nlohmann/json.hpp` and [yhirose/cpp-httplib](https://github.com/yhirose/cpp-httplib) in `deps/yhirose/cpp-httplib/httplib.h`, so no external libraries are required.
 
 If [mod_weather_vibe](https://github.com/hermensbas/mod_weather_vibe) is also installed, weather states from it will be included in the character's scene description.
 
@@ -101,7 +101,9 @@ Condensation and relationship updates are critical — their output becomes perm
 
 ### HTTP Server & Web App
 
-The module can optionally run a built-in HTTP/WS server with a web frontend, providing an interface for managing the characters, as well as an API for external tools and integrations. The web interface supports viewing and editing chat history and relationships. This is disabled by default and could be enabled in the config, read the `HTTP SERVER` section and follow the comments there.
+![PBC Web App](https://d7.wtf/s/pbc-web.png)
+
+The module can optionally run a built-in HTTP/WS server with a web frontend, providing an interface for managing the characters, as well as an API for external tools and integrations. The web interface supports viewing and editing chat history, relationships and memories. This is disabled by default and could be enabled in the config, read the `HTTP SERVER` section and follow the comments there.
 
 > [!NOTE]
 > If you plan to use the web app for a considerable amount of time without touching the game, it's also recommended to set `PreventAFKLogout` to `2` in your `worldserver.conf`.
@@ -131,11 +133,9 @@ Start playing, chat with your characters, discuss anything you like, build relat
 > [!NOTE]
 > Depending on the model you are using, your mileage may vary. Do regular backups with `modules/mod-playerbots-characters/tools/pbc_backup.sh` and adjust things as needed either in the database (followed by `.chars reload` command) or via the included web app. There are also two helper tools (`pbc_info.sh` and `pbc_history.sh`) which might help with tracking what's going on. You can also steer the narration a bit by using `.chars narrate` and `.chars narrate-party` commands. Check out [available commands](docs/COMMANDS.md) for more info.
 
-### API & Web App
+### Web App
 
 If you have the HTTP server configured, you can use `.chars web` command to get a one-time password that you can then use to authorize in the web app.
-
-![PBC Web App](https://d7.wtf/s/pbc-web.png)
 
 ## Debugging
 
