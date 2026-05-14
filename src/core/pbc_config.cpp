@@ -29,6 +29,7 @@ bool     g_PBC_Enable              = true;
 bool     g_PBC_DebugEnabled        = false;
 bool     g_PBC_DebugShowFullRequest = false;
 bool     g_PBC_DisplayNarratorEvents = true;
+bool     g_PBC_CardAdditionsMigrationNeeded = false;
 
 std::string g_PBC_APIType          = "openai";
 std::string g_PBC_BaseUrl          = "";

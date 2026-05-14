@@ -777,7 +777,7 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
   const sections = [
     {
       key: 'card',
-      title: 'Character Card',
+      title: 'Character Info',
       content: (
         <>
           {loading.card || loading.chardata ? renderLoading('card') : (
@@ -809,7 +809,7 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
               </div>
               {cardData && cardData.card && (
                 <div class="message-line mb-2 position-relative">
-                  <span class="small fw-bold">Base Card</span>
+                  <span class="small fw-bold">Card</span>
                   <div class="small text-body-secondary" style="white-space: pre-wrap; word-break: break-word;">
                     <FormattedText text={cardData.card} />
                   </div>

@@ -50,16 +50,16 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
               </>
             )}
           </div>
-          {id != null && !pending && (
-            <div class="action-menu position-absolute top-0 end-0">
-              <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
-            </div>
-          )}
           <div style="position: relative;">
             <div style="position: absolute; top: 50%; left: 0; right: 0; border-top: 1px solid #555;"></div>
             <span style="position: relative; display: inline-block; max-width: 75%; color: #fff; font-size: 0.85rem; padding: 0 0.75rem; background: var(--bs-body-bg);">{message}</span>
           </div>
         </div>
+      {id != null && !pending && (
+        <div class="action-menu position-absolute top-0 end-0">
+          <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
+        </div>
+      )}
       </div>
     );
   }
@@ -98,11 +98,6 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
             </>
           )}
         </div>
-        {id != null && !pending && (
-          <div class="action-menu position-absolute top-0 end-0">
-            <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
-          </div>
-        )}
         {name && (
           <span class="fw-bold" style={nameColor ? `color: ${nameColor}` : undefined}>{name}</span>
         )}
@@ -121,6 +116,11 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
           return <span key={j} style="white-space: pre-wrap">{part.text}</span>;
         })}
       </div>
+      {id != null && !pending && (
+        <div class="action-menu position-absolute top-0 end-0">
+          <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1049,7 +1049,7 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
         {showScrollDown && (
           <button
             class="btn btn-secondary position-absolute"
-            style={`bottom: ${inputHeight + 18}px; right: 18px; border-radius: 50%; width: 36px; height: 36px; padding: 0; font-size: 1.3rem; line-height: 36px; text-align: center;`}
+            style={`bottom: ${inputHeight + 18}px; right: 18px; border-radius: 50%; width: 36px; height: 36px; padding: 0; font-size: 1.3rem; line-height: 36px; text-align: center; z-index: 5;`}
             onClick={scrollToBottom}
             title="Scroll to bottom"
           >

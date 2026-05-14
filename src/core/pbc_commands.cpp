@@ -721,6 +721,8 @@ static bool HandleCharsMigrateCardAdditions(ChatHandler* handler, Optional<std::
     ev.migrationCondensationUserPromptTmpl = g_PBC_CondensationUserPrompt;
     PBC_PushEvent(std::move(ev));
 
+    g_PBC_CardAdditionsMigrationNeeded = false;
+
     handler->PSendSysMessage("[PBC] Card additions migration queued. Watch the server console for progress.");
     return true;
 }

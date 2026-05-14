@@ -2,6 +2,7 @@
 #include "pbc_config.h"
 #include "pbc_events.h"
 #include "pbc_character.h"
+#include "pbc_database.h"
 #include "pbc_http.h"
 #include "pbc_utils.h"
 #include "pbc_wmo_areas.h"
@@ -56,6 +57,16 @@ void PBC_WorldScript::OnStartup()
     }
 
     LOG_INFO("server.loading", "[PBC] Module started.");
+
+    // Check if legacy card additions need migration to the new memories system.
+    if (DB_MemoriesTableEmpty() && DB_CardAdditionsTableNotEmpty())
+    {
+        g_PBC_CardAdditionsMigrationNeeded = true;
+        LOG_WARN("server.loading",
+                 "[PBC] Legacy card additions detected but no memories found. "
+                 "Run `.chars migrate-card-additions` from the server console to migrate. "
+                 "This warning will repeat every 60 seconds until the migration is performed or the `mod_pbc_character_card_additions` table is deleted.");
+    }
 }
 
 void PBC_WorldScript::OnShutdown()
@@ -96,6 +107,23 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         {
             s_partyPollTimer = 5000;
             PBC_PollPartyState();
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 0b. Warn about pending card additions migration every 60 seconds.
+    // ---------------------------------------------------------------------------
+    if (g_PBC_CardAdditionsMigrationNeeded)
+    {
+        static uint32_t s_migrationWarnTimer = 60000;
+        if (s_migrationWarnTimer > diff)
+            s_migrationWarnTimer -= diff;
+        else
+        {
+            s_migrationWarnTimer = 60000;
+            LOG_WARN("server.loading",
+                     "[PBC] Legacy card additions detected but no memories found. "
+                     "Run `.chars migrate-card-additions` from the server console to migrate.");
         }
     }
 

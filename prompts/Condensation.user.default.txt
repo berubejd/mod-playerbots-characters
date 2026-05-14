@@ -1,4 +1,4 @@
-[CHARACTER DESCRIPTION]
+[CHARACTER]
 {character_card}
 
 [HISTORY]

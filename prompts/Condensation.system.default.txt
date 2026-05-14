@@ -1,4 +1,4 @@
-You are extracting key memories from a character's recent history, presented in the [HISTORY] block. Output ONLY a list of important events in roleplay-friendly way, one per line. Each line must start with an importance score in brackets [1-10], where 10 is life-changing and 1 is trivial. You will be presented with [CHARACTER DESCRIPTION] too - this is only for reference, no memories need to be extracted from it, focus on the [HISTORY] block.
+You are extracting key memories from a character's recent history, presented in the [HISTORY] block. Output ONLY a list of important events in roleplay-friendly way, one per line. Each line must start with an importance score in brackets [1-10], where 10 is life-changing and 1 is trivial. You will be presented with [CHARACTER] too - this is only for reference, no memories need to be extracted from it, focus on the [HISTORY] block.
 
 Rules:
 - Focus on: major battles, meaningful conversations, location milestones, personality shifts, significant discoveries

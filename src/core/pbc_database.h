@@ -90,7 +90,9 @@ inline void DB_InsertMemory(uint64_t botGuid, const std::string& memoryText, uin
 {
     std::string escaped = memoryText;
     CharacterDatabase.EscapeString(escaped);
-    CharacterDatabase.Execute(
+    // DirectExecute is synchronous — the row is committed before the call
+    // returns.
+    CharacterDatabase.DirectExecute(
         "INSERT INTO mod_pbc_memories (bot_guid, memory_text, importance) VALUES ({}, '{}', {})",
         botGuid,
         escaped,
@@ -227,6 +229,33 @@ inline void DB_DeleteRelationship(uint64_t botGuid, const std::string& targetNam
         botGuid,
         escapedName
     );
+}
+
+// ---------------------------------------------------------------------------
+// Migration helpers
+// ---------------------------------------------------------------------------
+
+// Check whether the memories table has any rows.
+// Must be called after the DB is available (i.e. on or after OnStartup).
+inline bool DB_MemoriesTableEmpty()
+{
+    QueryResult result = CharacterDatabase.Query("SELECT 1 FROM mod_pbc_memories LIMIT 1");
+    return !result;
+}
+
+// Check whether the legacy card additions table exists and has any rows.
+inline bool DB_CardAdditionsTableNotEmpty()
+{
+    // First check if the table exists at all
+    QueryResult tableCheck = CharacterDatabase.Query(
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = DATABASE() AND table_name = 'mod_pbc_character_card_additions'"
+    );
+    if (!tableCheck || (*tableCheck)[0].Get<uint64_t>() == 0)
+        return false;
+
+    QueryResult result = CharacterDatabase.Query("SELECT 1 FROM mod_pbc_character_card_additions LIMIT 1");
+    return !!result;
 }
 
 #endif // MOD_PBC_DATABASE_H
