@@ -59,14 +59,15 @@ DEALLOCATE PREPARE stmt;
 -- ============================================================
 
 -- Discrete narrator-style event memories for a character, each with an importance score.
--- Populated by condensation; queried at prompt-build time ordered by importance DESC then created_at DESC.
+-- Populated by condensation; loaded at startup ordered by bot_guid ASC, id ASC.
+-- Importance-based selection is done in C++ at prompt-build time, not via SQL ORDER BY.
 CREATE TABLE IF NOT EXISTS `mod_pbc_memories` (
     `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `bot_guid`      BIGINT UNSIGNED NOT NULL COMMENT 'GUID of the playerbot character',
     `memory_text`   TEXT NOT NULL                COMMENT 'Narrator-style memory sentence (second person)',
     `importance`    TINYINT UNSIGNED NOT NULL DEFAULT 5 COMMENT 'Importance score 1-10, where 10 is life-changing',
     `created_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX `idx_bot_guid` (`bot_guid`),
+    INDEX `idx_bot_guid_id` (`bot_guid`, `id`),
     INDEX `idx_bot_importance` (`bot_guid`, `importance` DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='Discrete narrator-style event memories per bot character';

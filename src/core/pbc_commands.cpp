@@ -129,6 +129,7 @@ static bool HandleCharsInfo(ChatHandler* handler, Optional<std::string_view> nam
 
     int32_t rollMod = 0;
     {
+        std::lock_guard<std::mutex> lock(g_PBC_DataMutex);
         auto it = g_PBC_RollChanceModifiers.find(botGuid);
         if (it != g_PBC_RollChanceModifiers.end())
             rollMod = it->second;
@@ -410,8 +411,13 @@ static bool HandleCharsRollModifier(ChatHandler* handler,
     // No modifier argument: display current value
     if (!modifierArg)
     {
-        auto it = g_PBC_RollChanceModifiers.find(botGuid);
-        int32_t currentMod = (it != g_PBC_RollChanceModifiers.end()) ? it->second : 0;
+        int32_t currentMod = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_PBC_DataMutex);
+            auto it = g_PBC_RollChanceModifiers.find(botGuid);
+            if (it != g_PBC_RollChanceModifiers.end())
+                currentMod = it->second;
+        }
         handler->PSendSysMessage("[PBC] {}'s roll chance modifier: {:+d}", target->GetName(), currentMod);
         return true;
     }
@@ -424,10 +430,13 @@ static bool HandleCharsRollModifier(ChatHandler* handler,
     }
 
     // Update in-memory map
-    if (modifier == 0)
-        g_PBC_RollChanceModifiers.erase(botGuid);
-    else
-        g_PBC_RollChanceModifiers[botGuid] = modifier;
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_DataMutex);
+        if (modifier == 0)
+            g_PBC_RollChanceModifiers.erase(botGuid);
+        else
+            g_PBC_RollChanceModifiers[botGuid] = modifier;
+    }
 
     // Persist to database
     DB_UpsertRollChanceModifier(botGuid, modifier);

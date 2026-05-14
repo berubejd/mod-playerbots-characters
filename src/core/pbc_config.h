@@ -121,8 +121,10 @@ extern std::vector<std::string> g_PBC_Blacklist;
 // Per-character roll chance modifiers (bot_guid -> modifier, range -100..100)
 // A positive modifier makes a character more talkative; negative less talkative.
 // Applied to every roll chance for the character.
+// Protected by g_PBC_DataMutex.
 // ---------------------------------------------------------------------------
 extern std::unordered_map<uint64_t, int32_t> g_PBC_RollChanceModifiers;
+extern std::mutex g_PBC_DataMutex;
 
 // ---------------------------------------------------------------------------
 // Snapshot of a single character's state, taken on the main thread at the moment

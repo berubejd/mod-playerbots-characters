@@ -1094,6 +1094,71 @@ PBC_HistoryResult PBC_DeleteRelationship(uint64_t botGuid, const std::string& ta
 }
 
 // ---------------------------------------------------------------------------
+// PBC_UpdateMemory  (thread-safe)
+//
+// Updates the text and importance of a single memory identified by its DB row
+// id.  The current text is compared against originalText first — a mismatch
+// returns PBC_HistoryResult::Desync without modifying anything.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_UpdateMemory(uint64_t botGuid, uint64_t memoryId,
+                                    const std::string& newText,
+                                    uint8_t newImportance,
+                                    const std::string& originalText)
+{
+    std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+    auto it = g_PBC_Memories.find(botGuid);
+    if (it == g_PBC_Memories.end())
+        return PBC_HistoryResult::NotFound;
+
+    for (auto& entry : it->second)
+    {
+        if (entry.dbId != memoryId)
+            continue;
+
+        if (entry.text != originalText)
+            return PBC_HistoryResult::Desync;
+
+        entry.text       = newText;
+        entry.importance = newImportance;
+        DB_UpdateMemoryById(memoryId, newText, newImportance);
+        return PBC_HistoryResult::Ok;
+    }
+
+    return PBC_HistoryResult::NotFound;
+}
+
+// ---------------------------------------------------------------------------
+// PBC_DeleteMemory  (thread-safe)
+//
+// Deletes a single memory identified by its DB row id.  The current text is
+// compared against originalText first — a mismatch returns
+// PBC_HistoryResult::Desync without modifying anything.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_DeleteMemory(uint64_t botGuid, uint64_t memoryId,
+                                    const std::string& originalText)
+{
+    std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+    auto it = g_PBC_Memories.find(botGuid);
+    if (it == g_PBC_Memories.end())
+        return PBC_HistoryResult::NotFound;
+
+    for (auto vit = it->second.begin(); vit != it->second.end(); ++vit)
+    {
+        if (vit->dbId != memoryId)
+            continue;
+
+        if (vit->text != originalText)
+            return PBC_HistoryResult::Desync;
+
+        it->second.erase(vit);
+        DB_DeleteMemoryById(memoryId);
+        return PBC_HistoryResult::Ok;
+    }
+
+    return PBC_HistoryResult::NotFound;
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot var substitution helper (thread-safe, uses snapshot only)
 //
 // Replaces all snapshot-based template variables in the given string.

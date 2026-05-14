@@ -911,7 +911,7 @@ static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
         ++memCount;
     }
 
-    PBC_WsNotify(snap.charGuidRaw, "memories");
+    PBC_WsNotify(snap.charGuidRaw, "memory");
 
     // Clear ALL history — memories capture what matters, keeping recent
     // history would only duplicate information already present in the

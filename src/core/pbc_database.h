@@ -113,6 +113,28 @@ inline void DB_DeleteAllMemories()
     CharacterDatabase.Execute("DELETE FROM mod_pbc_memories");
 }
 
+// Update a single memory by DB row id.
+inline void DB_UpdateMemoryById(uint64_t memoryId, const std::string& newText, uint8_t importance)
+{
+    std::string escaped = newText;
+    CharacterDatabase.EscapeString(escaped);
+    CharacterDatabase.Execute(
+        "UPDATE mod_pbc_memories SET memory_text = '{}', importance = {} WHERE id = {}",
+        escaped,
+        static_cast<uint32_t>(importance),
+        memoryId
+    );
+}
+
+// Delete a single memory by DB row id.
+inline void DB_DeleteMemoryById(uint64_t memoryId)
+{
+    CharacterDatabase.Execute(
+        "DELETE FROM mod_pbc_memories WHERE id = {}",
+        memoryId
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Character data (roll chance modifier)
 // ---------------------------------------------------------------------------

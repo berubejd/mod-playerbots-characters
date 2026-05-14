@@ -1,9 +1,11 @@
 #include "pbc_http.h"
 #include "pbc_config.h"
+#include "pbc_database.h"
 #include "pbc_utils.h"
 #include "Log.h"
 
 #include <httplib.h>
+#include <algorithm>
 #include <regex>
 #include <sstream>
 #include <thread>
@@ -1849,6 +1851,418 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 LOG_INFO("server.loading", "[PBC] API history delete: character GUID={} index={}", ctx.charGuid, index);
 
             res.set_content("{\"status\":\"deleted\"}", "application/json");
+        });
+
+        // -------------------------------------------------------------------
+        // GET /api/char/:guid/memory/count
+        //
+        // Returns the number of memory entries for a character.
+        // Requires auth.  Works even when the character is offline.
+        // -------------------------------------------------------------------
+        svr->Get("/api/char/:guid/memory/count", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
+                return;
+
+            size_t count = 0;
+            {
+                std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+                auto it = g_PBC_Memories.find(ctx.charGuid);
+                if (it != g_PBC_Memories.end())
+                    count = it->second.size();
+            }
+
+            json response;
+            response["count"] = count;
+            res.set_content(response.dump(), "application/json");
+        });
+
+        // -------------------------------------------------------------------
+        // GET /api/char/:guid/memory?order_by=&order_dir=&page=&limit=
+        //
+        // Returns character memories from the in-memory cache as a JSON array.
+        // Each memory is an object with "id" (DB row id), "memory_text", and
+        // "importance".
+        //
+        // Query parameters:
+        //   order_by  — field to sort by: "id" (default), "memory_text",
+        //               "importance"
+        //   order_dir — "asc" or "desc" (default "desc" for id, "desc" for
+        //               importance, "asc" for memory_text)
+        //   page      — page number, 1-based (default 1)
+        //   limit     — items per page (1–200, default 50). Omit or set to 0
+        //               to return all memories (no pagination).
+        //
+        // Requires auth.  Works even when the character is offline (reads
+        // from the in-memory memories map).
+        // -------------------------------------------------------------------
+        svr->Get("/api/char/:guid/memory", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
+                return;
+
+            // Parse query parameters
+            std::string orderBy  = req.get_param_value("order_by");
+            std::string orderDir = req.get_param_value("order_dir");
+            int page  = 1;
+            int limit = 0;
+
+            std::string pageStr  = req.get_param_value("page");
+            std::string limitStr = req.get_param_value("limit");
+
+            if (!pageStr.empty())
+            {
+                try { page = std::stoi(pageStr); } catch (...) { page = 1; }
+                if (page < 1) page = 1;
+            }
+            if (!limitStr.empty())
+            {
+                try { limit = std::stoi(limitStr); } catch (...) { limit = 50; }
+                if (limit < 0)  limit = 0;
+                if (limit > 200) limit = 200;
+            }
+
+            // Validate order_by
+            if (orderBy.empty()) orderBy = "id";
+            if (orderBy != "id" && orderBy != "memory_text" && orderBy != "importance")
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Invalid order_by. Must be id, memory_text, or importance\"}", "application/json");
+                return;
+            }
+
+            // Validate / default order_dir
+            if (orderDir.empty())
+            {
+                // Default direction depends on the field
+                orderDir = (orderBy == "memory_text") ? "asc" : "desc";
+            }
+            if (orderDir != "asc" && orderDir != "desc")
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Invalid order_dir. Must be asc or desc\"}", "application/json");
+                return;
+            }
+
+            bool desc = (orderDir == "desc");
+
+            // Read from in-memory store (thread-safe via mutex)
+            size_t total = 0;
+            json memories = json::array();
+
+            {
+                std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+                auto it = g_PBC_Memories.find(ctx.charGuid);
+                if (it != g_PBC_Memories.end())
+                {
+                    // Build a sortable copy
+                    std::vector<const PBC_MemoryEntry*> entries;
+                    entries.reserve(it->second.size());
+                    for (const auto& e : it->second)
+                        entries.push_back(&e);
+
+                    // Sort
+                    std::sort(entries.begin(), entries.end(),
+                        [orderBy, desc](const PBC_MemoryEntry* a, const PBC_MemoryEntry* b)
+                        {
+                            bool less;
+                            if (orderBy == "id")
+                                less = a->dbId < b->dbId;
+                            else if (orderBy == "importance")
+                                less = a->importance < b->importance;
+                            else // memory_text
+                                less = a->text < b->text;
+                            return desc ? !less : less;
+                        });
+
+                    total = entries.size();
+
+                    if (total > 0)
+                    {
+                        if (limit == 0)
+                        {
+                            // No pagination: return all
+                            for (const auto* e : entries)
+                                memories.push_back({{"id", e->dbId}, {"memory_text", e->text}, {"importance", e->importance}});
+                        }
+                        else
+                        {
+                            // Paginate from the beginning (sorted order)
+                            size_t startIdx = static_cast<size_t>((page - 1) * limit);
+                            if (startIdx < total)
+                            {
+                                size_t endIdx = std::min(startIdx + static_cast<size_t>(limit), total);
+                                for (size_t i = startIdx; i < endIdx; ++i)
+                                    memories.push_back({{"id", entries[i]->dbId}, {"memory_text", entries[i]->text}, {"importance", entries[i]->importance}});
+                            }
+                        }
+                    }
+                }
+            }
+
+            int totalPages = (limit > 0 && total > 0)
+                             ? static_cast<int>((total + limit - 1) / limit)
+                             : (total > 0 ? 1 : 0);
+
+            json response;
+            response["memories"]    = memories;
+            response["page"]        = page;
+            response["limit"]       = limit;
+            response["total"]       = total;
+            response["total_pages"] = totalPages;
+
+            res.set_content(response.dump(), "application/json");
+        });
+
+        // -------------------------------------------------------------------
+        // POST /api/char/:guid/memory/:id
+        //
+        // Edit a single memory for a character.  The memory is identified by
+        // its DB row id (the "id" field returned by GET /api/char/:guid/memory).
+        // Both the in-memory entry and the database row are updated.
+        //
+        // Request body: JSON with "memory_text" (new text), "importance"
+        // (new importance 1-10), and "original" (current text for desync
+        // detection).  If "original" does not match the server's copy,
+        // 409 Conflict is returned.
+        //
+        // Requires auth.  Works even when the character is offline.
+        // -------------------------------------------------------------------
+        svr->Post("/api/char/:guid/memory/:id", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
+                return;
+
+            // Parse memory id from URL path parameter
+            std::string memIdStr;
+            auto it = req.path_params.find("id");
+            if (it != req.path_params.end())
+                memIdStr = it->second;
+
+            uint64_t memId = 0;
+            try { memId = std::stoull(memIdStr); } catch (...) {}
+            if (memId == 0)
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Invalid memory id in URL path\"}", "application/json");
+                return;
+            }
+
+            // Parse JSON body
+            json body;
+            try { body = json::parse(req.body); } catch (...) {}
+            std::string newText = body.value("memory_text", "");
+            if (newText.empty())
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing or empty 'memory_text' field in request body\"}", "application/json");
+                return;
+            }
+            uint8_t newImportance = 5;
+            if (body.contains("importance"))
+            {
+                try { newImportance = static_cast<uint8_t>(std::clamp(body["importance"].get<int>(), 1, 10)); } catch (...) {}
+            }
+            std::string originalText = body.value("original", "");
+            if (originalText.empty())
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing or empty 'original' field in request body\"}", "application/json");
+                return;
+            }
+
+            PBC_HistoryResult result = PBC_UpdateMemory(ctx.charGuid, memId, newText, newImportance, originalText);
+            if (result == PBC_HistoryResult::NotFound)
+            {
+                res.status = 404;
+                res.set_content("{\"error\":\"Memory not found\"}", "application/json");
+                return;
+            }
+            if (result == PBC_HistoryResult::Desync)
+            {
+                res.status = 409;
+                res.set_content("{\"error\":\"desync\"}", "application/json");
+                return;
+            }
+
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] API memory edit: character GUID={} memory id={}", ctx.charGuid, memId);
+
+            res.set_content("{\"status\":\"updated\"}", "application/json");
+        });
+
+        // -------------------------------------------------------------------
+        // DELETE /api/char/:guid/memory/:id
+        //
+        // Delete a single memory for a character.  The memory is identified
+        // by its DB row id (the "id" field returned by
+        // GET /api/char/:guid/memory).  Both the in-memory entry and the
+        // database row are deleted.
+        //
+        // Request body: JSON with "original" (current text for desync
+        // detection).  If "original" does not match the server's copy,
+        // 409 Conflict is returned.
+        //
+        // Requires auth.  Works even when the character is offline.
+        // -------------------------------------------------------------------
+        svr->Delete("/api/char/:guid/memory/:id", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
+                return;
+
+            // Parse memory id from URL path parameter
+            std::string memIdStr;
+            auto it = req.path_params.find("id");
+            if (it != req.path_params.end())
+                memIdStr = it->second;
+
+            uint64_t memId = 0;
+            try { memId = std::stoull(memIdStr); } catch (...) {}
+            if (memId == 0)
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Invalid memory id in URL path\"}", "application/json");
+                return;
+            }
+
+            // Parse JSON body for desync detection
+            json body;
+            try { body = json::parse(req.body); } catch (...) {}
+            std::string originalText = body.value("original", "");
+            if (originalText.empty())
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing or empty 'original' field in request body\"}", "application/json");
+                return;
+            }
+
+            PBC_HistoryResult result = PBC_DeleteMemory(ctx.charGuid, memId, originalText);
+            if (result == PBC_HistoryResult::NotFound)
+            {
+                res.status = 404;
+                res.set_content("{\"error\":\"Memory not found\"}", "application/json");
+                return;
+            }
+            if (result == PBC_HistoryResult::Desync)
+            {
+                res.status = 409;
+                res.set_content("{\"error\":\"desync\"}", "application/json");
+                return;
+            }
+
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] API memory delete: character GUID={} memory id={}", ctx.charGuid, memId);
+
+            res.set_content("{\"status\":\"deleted\"}", "application/json");
+        });
+
+        // -------------------------------------------------------------------
+        // GET /api/char/:guid/data
+        //
+        // Returns character parameters as a JSON array.  Currently only
+        // roll_modifier is supported.
+        //
+        // Response: {"data": [{"key": "roll_modifier", "value": 0}]}
+        //
+        // Requires auth.  Works even when the character is offline.
+        // -------------------------------------------------------------------
+        svr->Get("/api/char/:guid/data", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
+                return;
+
+            int32_t rollMod = 0;
+            {
+                std::lock_guard<std::mutex> lock(g_PBC_DataMutex);
+                auto it = g_PBC_RollChanceModifiers.find(ctx.charGuid);
+                if (it != g_PBC_RollChanceModifiers.end())
+                    rollMod = it->second;
+            }
+
+            json data = json::array();
+            data.push_back({{"key", "roll_modifier"}, {"value", rollMod}});
+
+            json response;
+            response["data"] = data;
+
+            res.set_content(response.dump(), "application/json");
+        });
+
+        // -------------------------------------------------------------------
+        // POST /api/char/:guid/data
+        //
+        // Updates character parameters.  Accepts the same JSON array format
+        // as returned by GET /api/char/:guid/data.  Currently only
+        // "roll_modifier" is supported (range -100 to 100).
+        //
+        // Request body: {"data": [{"key": "roll_modifier", "value": 5}]}
+        //
+        // Requires auth.  Works even when the character is offline.
+        // -------------------------------------------------------------------
+        svr->Post("/api/char/:guid/data", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
+                return;
+
+            // Parse JSON body
+            json body;
+            try { body = json::parse(req.body); } catch (...) {}
+
+            if (!body.contains("data") || !body["data"].is_array())
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing or invalid 'data' array in request body\"}", "application/json");
+                return;
+            }
+
+            for (const auto& item : body["data"])
+            {
+                std::string key = item.value("key", "");
+                if (key == "roll_modifier")
+                {
+                    int32_t value = 0;
+                    try { value = item["value"].get<int32_t>(); } catch (...) {}
+                    if (value < -100 || value > 100)
+                    {
+                        res.status = 400;
+                        res.set_content("{\"error\":\"roll_modifier must be between -100 and 100\"}", "application/json");
+                        return;
+                    }
+
+                    {
+                        std::lock_guard<std::mutex> lock(g_PBC_DataMutex);
+                        if (value == 0)
+                            g_PBC_RollChanceModifiers.erase(ctx.charGuid);
+                        else
+                            g_PBC_RollChanceModifiers[ctx.charGuid] = value;
+                    }
+                    DB_UpsertRollChanceModifier(ctx.charGuid, value);
+
+                    if (g_PBC_DebugEnabled)
+                        LOG_INFO("server.loading", "[PBC] API data update: character GUID={} roll_modifier={}", ctx.charGuid, value);
+                }
+                // Unknown keys are silently ignored for forward compatibility
+            }
+
+            res.set_content("{\"status\":\"updated\"}", "application/json");
         });
 
         // -------------------------------------------------------------------

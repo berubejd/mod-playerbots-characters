@@ -84,6 +84,21 @@ PBC_HistoryResult PBC_DeleteRelationship(uint64_t botGuid, const std::string& ta
                                           const std::string& originalText);
 
 // ---------------------------------------------------------------------------
+// Memory mutation (thread-safe, also updates the database)
+//
+// memoryId is the DB row id (the "id" field returned by GET /api/char/:guid/memory).
+// originalText: the current memory text is compared against this value before
+// applying the mutation.  If they differ, Desync is returned and no
+// modification is made.
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_UpdateMemory(uint64_t botGuid, uint64_t memoryId,
+                                    const std::string& newText,
+                                    uint8_t newImportance,
+                                    const std::string& originalText);
+PBC_HistoryResult PBC_DeleteMemory(uint64_t botGuid, uint64_t memoryId,
+                                    const std::string& originalText);
+
+// ---------------------------------------------------------------------------
 // Character card / context (main-thread only)
 // ---------------------------------------------------------------------------
 std::string PBC_GetCharacterCard(Player* bot);

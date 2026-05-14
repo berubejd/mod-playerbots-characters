@@ -20,4 +20,4 @@ List of commands that can be used by the player or in the server console.
 | `.chars narrate <name> <message>` | Adds a narrator line to a character's chat history. Does not trigger a response. In-game only. |
 | `.chars narrate-party <message>` | Adds a narrator line to every group character's chat history. Does not trigger responses. In-game only. |
 | `.chars trigger <name>` | Forces a character to respond (party message if grouped, say otherwise). The trigger event is not written into history. |
-| `.chars migrate-card-additions` | Console-only. Migrates legacy card additions into discrete memories by feeding each bot's additions through the condensation LLM prompt. The old table is NOT deleted — verify results and drop manually. |
+| `.chars migrate-card-additions` | Console-only. Migrates legacy card additions into discrete memories by feeding each character's card additions through the condensation LLM prompt. The old table is NOT deleted — verify results and drop manually. |

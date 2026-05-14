@@ -124,6 +124,7 @@ std::unordered_map<uint64_t, std::unordered_map<std::string, PBC_RelationshipEnt
 std::mutex g_PBC_RelationshipsMutex;
 
 std::unordered_map<uint64_t, int32_t> g_PBC_RollChanceModifiers;
+std::mutex g_PBC_DataMutex;
 
 std::unordered_map<uint64_t, time_t> g_PBC_LastHistoryTime;
 
@@ -526,6 +527,7 @@ void PBC_LoadCharacterDataFromDB()
         "SELECT bot_guid, roll_chance_modifier FROM mod_pbc_data"
     );
 
+    std::lock_guard<std::mutex> lock(g_PBC_DataMutex);
     g_PBC_RollChanceModifiers.clear();
 
     if (!result)
@@ -553,6 +555,7 @@ void PBC_LoadCharacterDataFromDB()
 
 uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance)
 {
+    std::lock_guard<std::mutex> lock(g_PBC_DataMutex);
     auto it = g_PBC_RollChanceModifiers.find(botGuid);
     if (it == g_PBC_RollChanceModifiers.end())
         return baseChance;
