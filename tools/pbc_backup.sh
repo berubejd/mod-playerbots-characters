@@ -5,7 +5,7 @@
 
 TABLES=(
     mod_pbc_chat_history
-    mod_pbc_character_card_additions
+    mod_pbc_memories
     mod_pbc_data
     mod_pbc_relationships
 )

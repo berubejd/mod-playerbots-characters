@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pbc_info.sh — Show card additions and relationships for a PBC character.
+# pbc_info.sh — Show memories count, relationships and roll modifier for a PBC character.
 # Usage: ./pbc_info.sh <CharacterName>
 
 if [[ -z "$1" ]]; then
@@ -19,12 +19,11 @@ if [[ -z "$GUID" ]]; then
     exit 1
 fi
 
-# ── card additions ────────────────────────────────────────────────────────────
-ADDITIONS=$(mysql -NB acore_characters 2>/dev/null <<SQL
-SELECT id, created_at, addition
-FROM mod_pbc_character_card_additions
-WHERE bot_guid = ${GUID}
-ORDER BY created_at ASC;
+# ── memories ──────────────────────────────────────────────────────────────────
+MEM_COUNT=$(mysql -NB acore_characters 2>/dev/null <<SQL
+SELECT COUNT(*)
+FROM mod_pbc_memories
+WHERE bot_guid = ${GUID};
 SQL
 )
 
@@ -33,18 +32,8 @@ echo "  Character: ${CHAR_NAME}  (guid: ${GUID})"
 echo "════════════════════════════════════════"
 
 echo ""
-echo "── Card Additions ───────────────────────"
-if [[ -z "$ADDITIONS" ]]; then
-    echo "(none)"
-else
-    idx=1
-    while IFS=$'\t' read -r id created_at addition; do
-        echo ""
-        echo "  [#${idx}] ${created_at}"
-        echo "${addition}" | fold -s -w 76 | sed 's/^/    /'
-        (( idx++ ))
-    done <<< "$ADDITIONS"
-fi
+echo "── Memories ──────────────────────────────"
+echo "  ${MEM_COUNT:-0}"
 
 # ── roll modifier ─────────────────────────────────────────────────────────────
 ROLL_MOD=$(mysql -NB acore_characters 2>/dev/null <<SQL
