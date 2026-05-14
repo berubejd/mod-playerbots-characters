@@ -30,7 +30,7 @@ Most endpoints share the following response codes:
 | `200` | Success |
 | `400` | Missing or invalid parameter, GUID, or request body field |
 | `401` | Invalid or missing authentication (except `GET /` and `GET /api/token`) |
-| `404` | Requested resource not found (character offline, message/addition/relationship ID out of range) |
+| `404` | Requested resource not found (character offline, message/relationship ID out of range) |
 | `409` | Desync — `original` text doesn't match server's copy (edit/delete endpoints only) |
 | `410` | Authenticated player is not online |
 
@@ -89,19 +89,7 @@ The `party` array contains all online group members (excluding the authenticated
 
 ### `GET /api/char/:guid/card`
 
-Returns the immutable character card (base card with variable substitution, without additions).
-
-### `GET /api/char/:guid/card/additions`
-
-Returns the dynamic card additions for a character as `{"additions": [{"id": 1, "text": "..."}, ...]}`.
-
-### `POST /api/char/:guid/card/additions?id=`
-
-Edit a single card addition. Query param `id` is the 1-based addition ID. Body: `{"text": "New text", "original": "Current text"}`.
-
-### `DELETE /api/char/:guid/card/additions?id=`
-
-Delete a single card addition. Query param `id` is the 1-based addition ID. Body: `{"original": "Current text"}`.
+Returns the character card (base card with variable substitution).
 
 ### `GET /api/char/:guid/relationships`
 
@@ -205,6 +193,6 @@ unsubscribe
 | `history` | New message in chat history | `{"event":"history","message":{"id":5,"text":"..."}}` |
 | `thinks` | Character is about to respond (LLM call starting) | `{"event":"thinks"}` |
 | `relationship` | Character's relationship updated | `{"event":"relationship"}` |
-| `additions` | Character's card received a new condensed addition | `{"event":"additions"}` |
+| `memories` | Character received new memories from condensation | `{"event":"memories"}` |
 
-`thinks`, `relationship`, and `additions` events are simple triggers — fetch updated data via the REST API when received.
+`thinks`, `relationship`, and `memories` events are simple triggers — fetch updated data via the REST API when received.

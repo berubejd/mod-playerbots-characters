@@ -782,26 +782,87 @@ std::string PBC_GetCharacterCard(Player* bot)
 {
     const std::string& name = bot->GetName();
 
-    std::string base;
     auto it = g_PBC_CharacterCards.find(name);
     if (it != g_PBC_CharacterCards.end())
-        base = PBC_SubstituteVars(it->second, bot, "", false);
-    else
-        base = PBC_SubstituteVars(g_PBC_DefaultCharacterDescription, bot, "", false);
+        return PBC_SubstituteVars(it->second, bot, "", false);
+    return PBC_SubstituteVars(g_PBC_DefaultCharacterDescription, bot, "", false);
+}
 
-    uint64_t guid = bot->GetGUID().GetCounter();
+// ---------------------------------------------------------------------------
+// PBC_GetMemoriesBlock  (thread-safe)
+//
+// Builds the [MEMORIES] text block for a character's user prompt.
+// Selection: sort all memories by importance DESC, take the most important
+// ones until the token budget (g_PBC_MaxMemoriesCtx) is exceeded.
+// Output: the selected memories are sorted chronologically (by DB id ASC)
+// so the narrative flows naturally.
+// ---------------------------------------------------------------------------
+std::string PBC_GetMemoriesBlock(uint64_t botGuid)
+{
+    // We need both the entries and their original positions for chronological
+    // ordering. The vector in g_PBC_Memories is always maintained in
+    // chronological order (loaded by id ASC from DB, new entries appended at
+    // end during condensation), so the vector index is a reliable proxy.
+    struct IndexedEntry
     {
-        std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
-        auto addit = g_PBC_CardAdditions.find(guid);
-        if (addit != g_PBC_CardAdditions.end() && !addit->second.empty())
-        {
-            base += "\n\n";
-            for (const auto& add : addit->second)
-                base += add + "\n";
-        }
+        size_t           origIndex;
+        PBC_MemoryEntry  entry;
+    };
+
+    std::vector<IndexedEntry> entries;
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+        auto it = g_PBC_Memories.find(botGuid);
+        if (it == g_PBC_Memories.end() || it->second.empty())
+            return "";
+        entries.reserve(it->second.size());
+        for (size_t i = 0; i < it->second.size(); ++i)
+            entries.push_back({i, it->second[i]});
     }
 
-    return base;
+    // Sort by importance DESC (most important first) for selection
+    std::sort(entries.begin(), entries.end(),
+        [](const IndexedEntry& a, const IndexedEntry& b)
+        {
+            if (a.entry.importance != b.entry.importance)
+                return a.entry.importance > b.entry.importance;
+            return a.origIndex < b.origIndex; // tie-break: earlier first
+        });
+
+    // Select memories that fit within the token budget
+    // Token estimation: ~4 chars per token
+    const uint32_t budget = g_PBC_MaxMemoriesCtx;
+    uint32_t usedTokens = 0;
+    std::vector<IndexedEntry> selected;
+
+    for (const auto& ie : entries)
+    {
+        uint32_t entryTokens = static_cast<uint32_t>(ie.entry.text.size()) / 4 + 1;
+        if (usedTokens + entryTokens > budget)
+            break;
+        usedTokens += entryTokens;
+        selected.push_back(ie);
+    }
+
+    if (selected.empty())
+        return "";
+
+    // Re-sort selected chronologically (by original index ASC) for output
+    std::sort(selected.begin(), selected.end(),
+        [](const IndexedEntry& a, const IndexedEntry& b)
+        {
+            return a.origIndex < b.origIndex;
+        });
+
+    std::ostringstream oss;
+    for (const auto& ie : selected)
+        oss << ie.entry.text << "\n";
+
+    std::string result = oss.str();
+    // Trim trailing newline
+    if (!result.empty() && result.back() == '\n')
+        result.pop_back();
+    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -976,52 +1037,6 @@ PBC_HistoryResult PBC_DeleteHistoryLine(uint64_t botGuid, size_t index,
     return PBC_HistoryResult::Ok;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_UpdateCardAddition  (thread-safe)
-//
-// Updates a single card addition at the given 0-based index for a character.
-// The current text at the index is compared against originalText first — a
-// mismatch returns PBC_HistoryResult::Desync without modifying anything.
-// ---------------------------------------------------------------------------
-PBC_HistoryResult PBC_UpdateCardAddition(uint64_t botGuid, size_t index,
-                                          const std::string& newText,
-                                          const std::string& originalText)
-{
-    std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
-    auto it = g_PBC_CardAdditions.find(botGuid);
-    if (it == g_PBC_CardAdditions.end() || index >= it->second.size())
-        return PBC_HistoryResult::NotFound;
-
-    if (it->second[index] != originalText)
-        return PBC_HistoryResult::Desync;
-
-    it->second[index] = newText;
-    DB_UpdateCardAdditionByIndex(botGuid, index, newText);
-    return PBC_HistoryResult::Ok;
-}
-
-// ---------------------------------------------------------------------------
-// PBC_DeleteCardAddition  (thread-safe)
-//
-// Deletes a single card addition at the given 0-based index for a character.
-// The current text at the index is compared against originalText first — a
-// mismatch returns PBC_HistoryResult::Desync without modifying anything.
-// ---------------------------------------------------------------------------
-PBC_HistoryResult PBC_DeleteCardAddition(uint64_t botGuid, size_t index,
-                                          const std::string& originalText)
-{
-    std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
-    auto it = g_PBC_CardAdditions.find(botGuid);
-    if (it == g_PBC_CardAdditions.end() || index >= it->second.size())
-        return PBC_HistoryResult::NotFound;
-
-    if (it->second[index] != originalText)
-        return PBC_HistoryResult::Desync;
-
-    it->second.erase(it->second.begin() + static_cast<std::ptrdiff_t>(index));
-    DB_DeleteCardAdditionByIndex(botGuid, index);
-    return PBC_HistoryResult::Ok;
-}
 
 // ---------------------------------------------------------------------------
 // PBC_UpdateRelationship  (thread-safe)
@@ -1091,6 +1106,7 @@ static void ReplaceSnapshotVars(std::string& out, const PBC_CharacterSnapshot& s
 {
     // Composite vars
     PBC_ReplaceToken(out, "character_card", snap.characterCard);
+    PBC_ReplaceToken(out, "memories",       PBC_GetMemoriesBlock(snap.charGuidRaw));
     PBC_ReplaceToken(out, "context",        snap.context);
 
     // Chat history from the snapshot's local (thread-local) copy

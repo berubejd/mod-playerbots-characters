@@ -58,18 +58,16 @@ PBC_HistoryResult PBC_DeleteHistoryLine(uint64_t botGuid, size_t index,
                                         const std::string& originalMessage);
 
 // ---------------------------------------------------------------------------
-// Card addition mutation (thread-safe, also updates the database)
-//
-// index is 0-based (the API uses 1-based IDs; the HTTP handler converts).
-// originalText: the current addition text at the index is compared against this
-// value before applying the mutation.  If they differ, Desync is returned
-// and no modification is made.
+// Build the memories block for a character's prompt (thread-safe).
+// Returns a multi-line string (one memory per line) to be substituted
+// into {memories} in the user prompt template. Memories are selected
+// by importance DESC (most important first) until the token budget
+// (g_PBC_MaxMemoriesCtx) is exceeded. The selected memories are then
+// output in chronological order (by DB id ASC) so the narrative flows
+// naturally — a lower-importance early event appears before a later
+// high-importance one.
 // ---------------------------------------------------------------------------
-PBC_HistoryResult PBC_UpdateCardAddition(uint64_t botGuid, size_t index,
-                                          const std::string& newText,
-                                          const std::string& originalText);
-PBC_HistoryResult PBC_DeleteCardAddition(uint64_t botGuid, size_t index,
-                                          const std::string& originalText);
+std::string PBC_GetMemoriesBlock(uint64_t botGuid);
 
 // ---------------------------------------------------------------------------
 // Relationship mutation (thread-safe, also updates the database)

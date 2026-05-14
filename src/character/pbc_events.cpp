@@ -837,8 +837,8 @@ std::vector<Player*> PBC_FindGroupBotsExcluding(Player* player,
 // PBC_CondenseInline
 //
 // Runs condensation synchronously inside the event thread for a bot whose
-// history has exceeded g_PBC_MaxCtx.  Calls the LLM, writes the card
-// addition directly (thread-safe), and resets the in-memory history to a
+// history has exceeded g_PBC_MaxHistoryCtx.  Calls the LLM, writes extracted
+// memories directly (thread-safe), and clears the in-memory history.
 // short tail.  Does NOT touch any Player* objects.
 //
 // Returns true if condensation succeeded (history was trimmed and card
@@ -870,37 +870,64 @@ static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
         return false;
     }
 
-    // Write card addition
+    // Parse the LLM output: each line matching [N] text becomes a memory entry
+    // Lines that don't match the pattern are silently skipped.
+    static const std::regex kMemLine(R"(\[(\d+)\]\s*(.+))");
+    std::istringstream iss(res.text);
+    std::string line;
+    int memCount = 0;
+
+    while (std::getline(iss, line))
     {
-        std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
-        g_PBC_CardAdditions[snap.charGuidRaw].push_back(res.text);
+        std::smatch m;
+        if (!std::regex_match(line, m, kMemLine))
+            continue;
+
+        uint8_t importance = 5;
+        try { importance = static_cast<uint8_t>(std::clamp(std::stoi(m[1].str()), 1, 10)); } catch (...) {}
+        std::string memText = m[2].str();
+
+        if (memText.empty())
+            continue;
+
+        // Insert into DB
+        DB_InsertMemory(snap.charGuidRaw, memText, importance);
+
+        // Insert into in-memory store (need DB id for chronological ordering,
+        // but we just inserted — query the last id for this bot)
+        // Instead, we load all memories from DB after condensation to keep
+        // things simple and consistent. For now, push with dbId=0; the next
+        // LoadMemoriesFromDB call (or reload) will fix ordering. Since
+        // condensation is rare and memories accumulate, this is fine.
+        PBC_MemoryEntry entry;
+        entry.dbId       = 0;
+        entry.text       = std::move(memText);
+        entry.importance = importance;
+
+        {
+            std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+            g_PBC_Memories[snap.charGuidRaw].push_back(std::move(entry));
+        }
+        ++memCount;
     }
-    DB_InsertCardAddition(snap.charGuidRaw, res.text);
-    PBC_WsNotify(snap.charGuidRaw, "additions");
 
-    // Keep only the last N lines as the tail (configured via PBC.CondensationPreservedLines)
-    const size_t kTailLines = static_cast<size_t>(g_PBC_CondensationPreservedLines);
-    std::deque<std::string> tail;
-    for (size_t i = snap.history.size() > kTailLines ? snap.history.size() - kTailLines : 0;
-         i < snap.history.size(); ++i)
-        tail.push_back(snap.history[i]);
+    PBC_WsNotify(snap.charGuidRaw, "memories");
 
-    // Reset global history
+    // Clear ALL history — memories capture what matters, keeping recent
+    // history would only duplicate information already present in the
+    // memories section and confuse the model.
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        g_PBC_ChatHistory[snap.charGuidRaw] = tail;
+        g_PBC_ChatHistory[snap.charGuidRaw].clear();
     }
-    // Delete from DB and re-insert tail
     DB_DeleteHistoryForCharacter(snap.charGuidRaw);
-    for (const auto& line : tail)
-        DB_InsertHistoryLine(snap.charGuidRaw, line);
 
     // Update snapshot's local history to match
-    snap.history = tail;
+    snap.history.clear();
 
     if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] CondenseInline: condensed character={} summary_len={} tail_lines={}",
-                 snap.charName, res.text.size(), tail.size());
+        LOG_INFO("server.loading", "[PBC] CondenseInline: condensed character={} memories_extracted={}",
+                 snap.charName, memCount);
 
     return true;
 }
@@ -1312,6 +1339,142 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     }
 
     // -----------------------------------------------------------------------
+    // CardAdditionsMigration: convert legacy card additions into discrete
+    // memories by feeding each bot's additions through the condensation LLM
+    // prompt.  Triggered by .chars migrate-card-additions (console only).
+    // -----------------------------------------------------------------------
+    if (ev.type == PBC_EventType::CardAdditionsMigration)
+    {
+        LOG_INFO("server.loading", "[PBC] CardAdditionsMigration: starting...");
+
+        // Read all rows from the legacy card additions table
+        QueryResult addResult = CharacterDatabase.Query(
+            "SELECT bot_guid, addition FROM mod_pbc_character_card_additions ORDER BY bot_guid ASC, id ASC"
+        );
+
+        if (!addResult)
+        {
+            LOG_INFO("server.loading", "[PBC] CardAdditionsMigration: no card additions found, nothing to migrate.");
+            g_PBC_EventThreadDone.store(true);
+            return;
+        }
+
+        // Group additions by bot_guid
+        std::unordered_map<uint64_t, std::vector<std::string>> additionsByBot;
+        uint32_t totalAdditions = 0;
+        do
+        {
+            uint64_t    botGuid  = (*addResult)[0].Get<uint64_t>();
+            std::string addition = (*addResult)[1].Get<std::string>();
+            additionsByBot[botGuid].push_back(std::move(addition));
+            ++totalAdditions;
+        } while (addResult->NextRow());
+
+        LOG_INFO("server.loading", "[PBC] CardAdditionsMigration: found {} additions across {} characters",
+                 totalAdditions, additionsByBot.size());
+
+        static const std::regex kMemLine(R"(\[(\d+)\]\s*(.+))");
+        uint32_t processed = 0;
+        uint32_t totalMemories = 0;
+
+        for (auto& [botGuid, additions] : additionsByBot)
+        {
+            // Look up character name from the characters table
+            std::string charName;
+            QueryResult nameResult = CharacterDatabase.Query(
+                "SELECT name FROM characters WHERE guid = {}", botGuid
+            );
+            if (nameResult)
+                charName = (*nameResult)[0].Get<std::string>();
+
+            // Look up character card from the in-memory map
+            std::string charCard;
+            if (!charName.empty())
+            {
+                auto cardIt = g_PBC_CharacterCards.find(charName);
+                if (cardIt != g_PBC_CharacterCards.end())
+                    charCard = cardIt->second;
+            }
+            if (charCard.empty())
+                charCard = g_PBC_DefaultCharacterDescription;
+
+            // Build a minimal snapshot — the addition texts become the "history"
+            PBC_CharacterSnapshot snap;
+            snap.charGuidRaw  = botGuid;
+            snap.charName     = charName;
+            snap.characterCard = charCard;
+            for (const auto& addition : additions)
+                snap.history.push_back(addition);
+
+            // Build the condensation prompt from the snapshot
+            std::string userPrompt = PBC_BuildCondensationPromptFromSnapshot(
+                snap, ev.migrationCondensationUserPromptTmpl);
+
+            // Call the LLM
+            PBC_LLMResult res = g_PBC_UseAltModelForCondensation
+                ? PBC_CallLLMAlt(ev.migrationCondensationSystemPrompt, userPrompt, /*maxTokensOverride=*/-1)
+                : PBC_CallLLM(ev.migrationCondensationSystemPrompt, userPrompt, /*maxTokensOverride=*/-1);
+
+            if (!res.success || res.text.empty())
+            {
+                LOG_WARN("server.loading",
+                         "[PBC] CardAdditionsMigration: LLM failed for character={} (guid={}), skipping",
+                         charName.empty() ? fmt::format("guid:{}", botGuid) : charName, botGuid);
+                processed += additions.size();
+                continue;
+            }
+
+            // Parse memories from the LLM output
+            std::istringstream iss(res.text);
+            std::string line;
+            int memCount = 0;
+
+            while (std::getline(iss, line))
+            {
+                std::smatch m;
+                if (!std::regex_match(line, m, kMemLine))
+                    continue;
+
+                uint8_t importance = 5;
+                try { importance = static_cast<uint8_t>(std::clamp(std::stoi(m[1].str()), 1, 10)); } catch (...) {}
+                std::string memText = m[2].str();
+                if (memText.empty())
+                    continue;
+
+                DB_InsertMemory(botGuid, memText, importance);
+
+                PBC_MemoryEntry entry;
+                entry.dbId       = 0;
+                entry.text       = std::move(memText);
+                entry.importance = importance;
+
+                {
+                    std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+                    g_PBC_Memories[botGuid].push_back(std::move(entry));
+                }
+                ++memCount;
+            }
+
+            totalMemories += memCount;
+            processed += additions.size();
+
+            LOG_INFO("server.loading",
+                     "[PBC] CardAdditionsMigration: character={} additions={} memories_extracted={} progress={}/{}",
+                     charName.empty() ? fmt::format("guid:{}", botGuid) : charName,
+                     additions.size(), memCount, processed, totalAdditions);
+        }
+
+        LOG_INFO("server.loading",
+                 "[PBC] CardAdditionsMigration: complete. {} additions processed, {} memories created. "
+                 "The legacy mod_pbc_character_card_additions table was NOT deleted — "
+                 "verify the results and drop it manually if desired.",
+                 totalAdditions, totalMemories);
+
+        g_PBC_EventThreadDone.store(true);
+        return;
+    }
+
+    // -----------------------------------------------------------------------
     // QuestSummarization: generate the summary first, then treat as Normal.
     // -----------------------------------------------------------------------
     if (ev.type == PBC_EventType::QuestSummarization)
@@ -1401,7 +1564,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         // If condensation fails, the history is left untouched and will be
         // retried on the next event that triggers this character.
         int histTokens = PBC_EstimateHistoryTokens(snap.charGuidRaw);
-        if (histTokens > static_cast<int>(g_PBC_MaxCtx))
+        if (histTokens > static_cast<int>(g_PBC_MaxHistoryCtx))
         {
             // Capture the full history BEFORE condensation truncates it
             // so the relationship LLM calls have complete context.

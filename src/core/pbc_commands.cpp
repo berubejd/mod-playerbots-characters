@@ -45,7 +45,7 @@ static bool HandleCharsReload(ChatHandler* handler, Optional<std::string_view>)
     PBC_LoadConfig();
     PBC_LoadPrompts();
     PBC_LoadCharacterCards();
-    PBC_LoadCardAdditionsFromDB();
+    PBC_LoadMemoriesFromDB();
     PBC_LoadCharacterDataFromDB();
 
     // Reload history (and relationships) from DB safely by posting a
@@ -56,7 +56,7 @@ static bool HandleCharsReload(ChatHandler* handler, Optional<std::string_view>)
     ev.type = PBC_EventType::HistoryReload;
     PBC_PushEvent(std::move(ev));
 
-    handler->PSendSysMessage("[PBC] Config, prompts, character cards, card additions and character data reloaded. History/relationship reload queued (runs after pending events).");
+    handler->PSendSysMessage("[PBC] Config, prompts, character cards, memories and character data reloaded. History/relationship reload queued (runs after pending events).");
     return true;
 }
 
@@ -109,12 +109,12 @@ static bool HandleCharsInfo(ChatHandler* handler, Optional<std::string_view> nam
     uint64_t botGuid = target->GetGUID().GetCounter();
     std::string card = PBC_GetCharacterCard(target);
 
-    int addCount = 0;
+    int memCount = 0;
     {
-        std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
-        auto it = g_PBC_CardAdditions.find(botGuid);
-        if (it != g_PBC_CardAdditions.end())
-            addCount = static_cast<int>(it->second.size());
+        std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+        auto it = g_PBC_Memories.find(botGuid);
+        if (it != g_PBC_Memories.end())
+            memCount = static_cast<int>(it->second.size());
     }
 
     int histCount = 0;
@@ -135,8 +135,8 @@ static bool HandleCharsInfo(ChatHandler* handler, Optional<std::string_view> nam
     }
 
     handler->PSendSysMessage("[PBC] === {} ===", target->GetName());
-    handler->PSendSysMessage("[PBC] Card additions: {}  |  History lines: {}  |  Est. tokens: {}/{}  |  Roll modifier: {:+d}",
-        addCount, histCount, estimatedTokens, g_PBC_MaxCtx, rollMod);
+    handler->PSendSysMessage("[PBC] Memories: {}  |  History lines: {}  |  Est. tokens: {}/{}  |  Roll modifier: {:+d}",
+        memCount, histCount, estimatedTokens, g_PBC_MaxHistoryCtx, rollMod);
     handler->PSendSysMessage("[PBC] Card:\n{}", card);
     return true;
 }
@@ -157,7 +157,7 @@ static bool HandleCharsReset(ChatHandler* handler, Optional<std::string_view> na
     if (nameArg && *nameArg == "@ALL")
     {
         DB_DeleteAllHistory();
-        DB_DeleteAllCardAdditions();
+        DB_DeleteAllMemories();
         DB_DeleteAllRelationships();
 
         {
@@ -165,15 +165,15 @@ static bool HandleCharsReset(ChatHandler* handler, Optional<std::string_view> na
             g_PBC_ChatHistory.clear();
         }
         {
-            std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
-            g_PBC_CardAdditions.clear();
+            std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+            g_PBC_Memories.clear();
         }
         {
             std::lock_guard<std::mutex> lock(g_PBC_RelationshipsMutex);
             g_PBC_Relationships.clear();
         }
 
-        handler->PSendSysMessage("[PBC] History, card additions and relationships cleared for ALL characters.");
+        handler->PSendSysMessage("[PBC] History, memories and relationships cleared for ALL characters.");
         return true;
     }
 
@@ -187,7 +187,7 @@ static bool HandleCharsReset(ChatHandler* handler, Optional<std::string_view> na
     uint64_t botGuid = target->GetGUID().GetCounter();
 
     DB_DeleteHistoryForCharacter(botGuid);
-    DB_DeleteCardAdditionsForCharacter(botGuid);
+    DB_DeleteMemoriesForCharacter(botGuid);
     DB_DeleteRelationshipsForCharacter(botGuid);
 
     {
@@ -195,15 +195,15 @@ static bool HandleCharsReset(ChatHandler* handler, Optional<std::string_view> na
         g_PBC_ChatHistory.erase(botGuid);
     }
     {
-        std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
-        g_PBC_CardAdditions.erase(botGuid);
+        std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+        g_PBC_Memories.erase(botGuid);
     }
     {
         std::lock_guard<std::mutex> lock(g_PBC_RelationshipsMutex);
         g_PBC_Relationships.erase(botGuid);
     }
 
-    handler->PSendSysMessage("[PBC] History, card additions and relationships cleared for '{}'.", target->GetName());
+    handler->PSendSysMessage("[PBC] History, memories and relationships cleared for '{}'.", target->GetName());
     return true;
 }
 
@@ -690,6 +690,33 @@ static bool HandleCharsNarrateParty(ChatHandler* handler, Tail messageArg)
 }
 
 // ---------------------------------------------------------------------------
+// .chars migrate-card-additions
+// Console-only command that queues a CardAdditionsMigration event.
+// The event thread reads all rows from the legacy mod_pbc_character_card_additions
+// table, feeds each bot's additions through the condensation LLM prompt, and
+// inserts the resulting discrete memories into mod_pbc_memories.
+// ---------------------------------------------------------------------------
+static bool HandleCharsMigrateCardAdditions(ChatHandler* handler, Optional<std::string_view>)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+
+    if (handler->GetSession())
+    {
+        handler->PSendSysMessage("[PBC] This command is only available from the server console.");
+        return false;
+    }
+
+    PBC_EventItem ev;
+    ev.type = PBC_EventType::CardAdditionsMigration;
+    ev.migrationCondensationSystemPrompt  = g_PBC_CondensationSystemPrompt;
+    ev.migrationCondensationUserPromptTmpl = g_PBC_CondensationUserPrompt;
+    PBC_PushEvent(std::move(ev));
+
+    handler->PSendSysMessage("[PBC] Card additions migration queued. Watch the server console for progress.");
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -699,21 +726,22 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
 {
     static ChatCommandTable charsSubCommands =
     {
-        { "reload",              HandleCharsReload,             SEC_GAMEMASTER, Console::Yes },
-        { "condense",            HandleCharsCondense,           SEC_GAMEMASTER, Console::Yes },
-        { "info",                HandleCharsInfo,               SEC_GAMEMASTER, Console::Yes },
-        { "reset",               HandleCharsReset,              SEC_GAMEMASTER, Console::Yes },
-        { "history",             HandleCharsHistory,            SEC_GAMEMASTER, Console::Yes },
-        { "relationship",        HandleCharsRelationship,       SEC_GAMEMASTER, Console::Yes },
-        { "relationship-update", HandleCharsRelationshipUpdate, SEC_GAMEMASTER, Console::Yes },
-        { "roll-modifier",       HandleCharsRollModifier,       SEC_GAMEMASTER, Console::Yes },
-        { "context",             HandleCharsContext,            SEC_GAMEMASTER, Console::Yes },
-        { "api-test",         HandleCharsApiTest,         SEC_GAMEMASTER, Console::Yes },
-        { "alt-api-test",     HandleCharsAltApiTest,      SEC_GAMEMASTER, Console::Yes },
-        { "web",                 HandleCharsWeb,                SEC_PLAYER,    Console::No  },
-        { "narrate",             HandleCharsNarrate,            SEC_GAMEMASTER, Console::No  },
-        { "narrate-party",       HandleCharsNarrateParty,       SEC_GAMEMASTER, Console::No  },
-        { "trigger",             HandleCharsTrigger,            SEC_GAMEMASTER, Console::Yes },
+        { "reload",                   HandleCharsReload,                  SEC_GAMEMASTER, Console::Yes },
+        { "condense",                 HandleCharsCondense,                SEC_GAMEMASTER, Console::Yes },
+        { "info",                     HandleCharsInfo,                    SEC_GAMEMASTER, Console::Yes },
+        { "reset",                    HandleCharsReset,                   SEC_GAMEMASTER, Console::Yes },
+        { "history",                  HandleCharsHistory,                 SEC_GAMEMASTER, Console::Yes },
+        { "relationship",             HandleCharsRelationship,            SEC_GAMEMASTER, Console::Yes },
+        { "relationship-update",      HandleCharsRelationshipUpdate,      SEC_GAMEMASTER, Console::Yes },
+        { "roll-modifier",            HandleCharsRollModifier,            SEC_GAMEMASTER, Console::Yes },
+        { "context",                  HandleCharsContext,                 SEC_GAMEMASTER, Console::Yes },
+        { "api-test",                 HandleCharsApiTest,                 SEC_GAMEMASTER, Console::Yes },
+        { "alt-api-test",             HandleCharsAltApiTest,              SEC_GAMEMASTER, Console::Yes },
+        { "web",                      HandleCharsWeb,                     SEC_PLAYER,    Console::No  },
+        { "narrate",                  HandleCharsNarrate,                 SEC_GAMEMASTER, Console::No  },
+        { "narrate-party",            HandleCharsNarrateParty,            SEC_GAMEMASTER, Console::No  },
+        { "trigger",                  HandleCharsTrigger,                 SEC_GAMEMASTER, Console::Yes },
+        { "migrate-card-additions",   HandleCharsMigrateCardAdditions,    SEC_GAMEMASTER, Console::No  },
     };
 
     static ChatCommandTable rootTable =

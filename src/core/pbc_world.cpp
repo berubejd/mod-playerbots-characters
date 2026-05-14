@@ -31,7 +31,7 @@ void PBC_WorldScript::OnStartup()
 
     PBC_LoadWMOAreaNames();
     PBC_LoadCharacterCards();
-    PBC_LoadCardAdditionsFromDB();
+    PBC_LoadMemoriesFromDB();
     PBC_LoadHistoryFromDB();
     PBC_LoadRelationshipsFromDB();
     PBC_LoadCharacterDataFromDB();

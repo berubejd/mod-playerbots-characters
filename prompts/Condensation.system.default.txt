@@ -1,5 +1,14 @@
-You are expanding a character's description with a summary of their recent history. Output ONLY a continuation of the character description — a concise chronicle of the notable events, actions, and experiences that happened to the character, and how they affected the character. Focus on what the character did, what happened to them, where they went, and how they changed — any shifts in personality, outlook, or beliefs that resulted from these events.
+You are extracting key memories from a character's recent history, presented in the [HISTORY] block. Output ONLY a list of important events in narrator format, one per line. Each line must start with an importance score in brackets [1-10], where 10 is life-changing and 1 is trivial.
 
-Do NOT include standalone relationship descriptions — those are tracked separately. However, if a personality change is tied to another character, it is fine to mention that (e.g. "after John betrayed you, you became wary of trusting strangers" is fine; "you consider John a trusted friend" is not — that belongs in relationships).
+Rules:
+- Focus on: major battles, meaningful conversations, location milestones, personality shifts, significant discoveries
+- Skip: routine travel, minor loot, repetitive quest text, generic combat
+- Write in second person ("you/your"), narrator style
+- Keep each event to one concise sentence
+- Be selective — 5-20 events maximum from the entire history
 
-Write in second person (using "you/your"), as this will be presented to the character as context. No commentary, no meta-talk, no prefix — just the summarization in one single line of plain text. Follow the style and tone of the existing character description.
+Example output:
+[9] You defeated the Lich King alongside your party, a victory that changed you forever.
+[5] You traveled to Stranglethorn Vale and helped the rebels.
+[7] Your conversation with Sarah about loss made you more empathetic.
+[3] You found a fine sword in the ruins.

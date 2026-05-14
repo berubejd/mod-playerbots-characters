@@ -58,15 +58,18 @@ DEALLOCATE PREPARE stmt;
 -- Schema: all tables
 -- ============================================================
 
--- Stores condensed history appended to a character's card (in the DB, not on disk).
-CREATE TABLE IF NOT EXISTS `mod_pbc_character_card_additions` (
+-- Discrete narrator-style event memories for a character, each with an importance score.
+-- Populated by condensation; queried at prompt-build time ordered by importance DESC then created_at DESC.
+CREATE TABLE IF NOT EXISTS `mod_pbc_memories` (
     `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `bot_guid`      BIGINT UNSIGNED NOT NULL COMMENT 'GUID of the playerbot character',
-    `addition`      MEDIUMTEXT NOT NULL         COMMENT 'Condensed text appended to the base character card',
-    `created_at`    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX `idx_bot_guid_created` (`bot_guid`, `created_at`)
+    `memory_text`   TEXT NOT NULL                COMMENT 'Narrator-style memory sentence (second person)',
+    `importance`    TINYINT UNSIGNED NOT NULL DEFAULT 5 COMMENT 'Importance score 1-10, where 10 is life-changing',
+    `created_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_bot_guid` (`bot_guid`),
+    INDEX `idx_bot_importance` (`bot_guid`, `importance` DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  COMMENT='LLM-condensed additions to bot character cards';
+  COMMENT='Discrete narrator-style event memories per bot character';
 
 -- Per-bot chat and event history lines for LLM context.
 -- Each row is one pre-formatted single-line string, e.g.:

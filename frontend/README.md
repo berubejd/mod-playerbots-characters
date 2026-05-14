@@ -2,7 +2,7 @@
 
 The web interface is a single-page application built with [Preact](https://preactjs.com/) and [Bootstrap 5](https://getbootstrap.com/) (dark theme), bundled by [Vite](https://vite.dev/).
 
-It provides an interface for managing characters — viewing and editing chat history, card additions, and relationships. The app authenticates via a one-time password obtained in-game (`.chars web`), then connects to the server via REST API and WebSocket for real-time updates.
+It provides an interface for managing characters — viewing and editing chat history and relationships. The app authenticates via a one-time password obtained in-game (`.chars web`), then connects to the server via REST API and WebSocket for real-time updates.
 
 Make sure that you have node.js version 24 or higher before trying to build the frontend.
 

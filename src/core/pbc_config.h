@@ -51,8 +51,8 @@ extern int         g_PBC_AltModelRequestTimeoutSec;
 // ---------------------------------------------------------------------------
 // Context / condensation
 // ---------------------------------------------------------------------------
-extern uint32_t    g_PBC_MaxCtx;                    // token budget before condensation triggers
-extern uint32_t    g_PBC_CondensationPreservedLines; // history lines kept after condensation
+extern uint32_t    g_PBC_MaxHistoryCtx;              // token budget for chat history before condensation triggers
+extern uint32_t    g_PBC_MaxMemoriesCtx;              // token budget for the memories section in the prompt
 
 // ---------------------------------------------------------------------------
 // Prompt templates
@@ -188,9 +188,9 @@ enum class PBC_EventType : uint8_t
     // then processes each responding character against that summary.
     QuestSummarization,
 
-    // Condensation: summarize one character's history into a card addition and
-    // replace history with a short tail.  Used by .chars condense command
-    // and by the event thread itself when it detects history overflow.
+    // Condensation: extract discrete narrator-style memories from one character's
+    // history and clear all history.  Used by .chars condense command and by the
+    // event thread itself when it detects history overflow.
     Condensation,
 
     // HistoryReload: reload all character histories from the database, replacing
@@ -203,6 +203,11 @@ enum class PBC_EventType : uint8_t
     // number of new "about target" mentions in the character's history reaches
     // g_PBC_RelationshipUpdateThreshold since the last update.
     RelationshipUpdate,
+
+    // CardAdditionsMigration: convert legacy card additions into discrete
+    // memories by feeding each addition through the condensation LLM prompt.
+    // Triggered by .chars migrate-card-additions (console only).
+    CardAdditionsMigration,
 };
 
 // ---------------------------------------------------------------------------
@@ -288,6 +293,12 @@ struct PBC_EventItem
     // Prompts for the relationship update LLM call.
     std::string     relationshipSystemPrompt;
     std::string     relationshipUserPromptTmpl;
+
+    // --- CardAdditionsMigration fields ---
+    // Prompts for the condensation LLM call used to extract memories from
+    // each legacy card addition (copied from config at push time).
+    std::string     migrationCondensationSystemPrompt;
+    std::string     migrationCondensationUserPromptTmpl;
 };
 
 // ---------------------------------------------------------------------------
@@ -427,10 +438,17 @@ extern std::mutex g_PBC_HistoryMutex;
 extern std::unordered_map<uint64_t, time_t> g_PBC_LastHistoryTime;
 
 // ---------------------------------------------------------------------------
-// In-memory character card additions: bot_guid -> list of condensed texts
+// In-memory character memories: bot_guid -> list of memory entries
 // ---------------------------------------------------------------------------
-extern std::unordered_map<uint64_t, std::vector<std::string>> g_PBC_CardAdditions;
-extern std::mutex g_PBC_CardMutex;
+struct PBC_MemoryEntry
+{
+    uint64_t    dbId = 0;        // DB row id for chronological ordering
+    std::string text;
+    uint8_t     importance = 5;
+};
+
+extern std::unordered_map<uint64_t, std::vector<PBC_MemoryEntry>> g_PBC_Memories;
+extern std::mutex g_PBC_MemoriesMutex;
 
 // ---------------------------------------------------------------------------
 // One relationship entry: the LLM-generated text and the total mention count
@@ -489,8 +507,7 @@ void PBC_LoadConfig(bool isStartup = false);
 bool PBC_LoadPrompts();
 void PBC_LoadCharacterCards();
 void PBC_LoadHistoryFromDB();
-void PBC_LoadCardAdditionsFromDB();
-void PBC_SaveCardAdditionsToDB();
+void PBC_LoadMemoriesFromDB();
 void PBC_LoadCharacterDataFromDB();
 void PBC_LoadRelationshipsFromDB();
 

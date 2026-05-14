@@ -28,8 +28,8 @@ Your custom file will not be overwritten by module updates. To revert to the def
 |------|-------------|
 | `Main.system` | System prompt for the main character reply. Defines the character's behavior and response format. |
 | `Main.user` | User prompt for the main character reply. Structures the character card, history, relationships, context, and event. |
-| `Condensation.system` | System prompt for the condensation LLM call. Instructs the model to summarize history into a card addition — a concise chronicle of events that happened to the character and how they changed as a result. |
-| `Condensation.user` | User prompt for the condensation LLM call. Provides the character card and history for summarization. |
+| `Condensation.system` | System prompt for the condensation LLM call. Instructs the model to extract discrete narrator-style memories with importance scores from the character's history. |
+| `Condensation.user` | User prompt for the condensation LLM call. Provides the character card and history for memory extraction. |
 | `DefaultCharacterDescription` | Default character description used when no character card file exists. Supports basic template variables. |
 | `CharacterContext` | Current context description appended to every prompt. Contains dynamic variables like location, combat status, etc. |
 | `QuestCompleted.system` | System prompt for the quest completion summary LLM call. |
@@ -65,7 +65,8 @@ These variables can be used in most prompts and character cards. It's recommende
 
 These variables can only be used in the `Main.system` and `Main.user` prompts.
 
-- `{character_card}` — current character card or generic description from `DefaultCharacterDescription` with an addition of previously condensed description
+- `{character_card}` — current character card or generic description from `DefaultCharacterDescription`
+- `{memories}` — discrete narrator-style memories extracted from previous condensations, selected by importance within the token budget (`PBC.MaxMemoriesCtx`). Output chronologically.
 - `{chat_history}` — current chat history, including events
 - `{relationships}` — the character's current relationship descriptions with other party members. When the character is not in a group with a real player (e.g. a whisper interaction), falls back to "You don't know much about <player_name>.". When in a group, lists one entry per member, e.g. "You know John is brave and kind." or "You don't know much about John." for members with no data yet. Updated automatically every `PBC.RelationshipUpdateThreshold` new mentions of a character name in history.
 - `{context}` — current context for the character, defined in `CharacterContext`

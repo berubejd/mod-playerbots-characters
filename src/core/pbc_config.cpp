@@ -50,8 +50,8 @@ double      g_PBC_AltModelTemperature              = 1.0;
 std::string g_PBC_AltModelModelExtraParameters;
 int         g_PBC_AltModelRequestTimeoutSec         = 30;
 
-uint32_t    g_PBC_MaxCtx                    = 0;
-uint32_t    g_PBC_CondensationPreservedLines = 10;
+uint32_t    g_PBC_MaxHistoryCtx              = 0;
+uint32_t    g_PBC_MaxMemoriesCtx             = 8192;
 
 std::string g_PBC_SystemPrompt;
 std::string g_PBC_UserPrompt;
@@ -115,8 +115,8 @@ std::atomic<bool>          g_PBC_EventThreadDone{ true };
 std::unordered_map<uint64_t, std::deque<std::string>> g_PBC_ChatHistory;
 std::mutex g_PBC_HistoryMutex;
 
-std::unordered_map<uint64_t, std::vector<std::string>> g_PBC_CardAdditions;
-std::mutex g_PBC_CardMutex;
+std::unordered_map<uint64_t, std::vector<PBC_MemoryEntry>> g_PBC_Memories;
+std::mutex g_PBC_MemoriesMutex;
 
 std::unordered_map<std::string, std::string> g_PBC_CharacterCards;
 
@@ -189,8 +189,8 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_AltModelModelExtraParameters    = sConfigMgr->GetOption<std::string>("PBC.AltModelModelExtraParameters", "");
     g_PBC_AltModelRequestTimeoutSec       = sConfigMgr->GetOption<int>("PBC.AltModelRequestTimeoutSec", 30);
 
-    g_PBC_MaxCtx                     = sConfigMgr->GetOption<uint32_t>("PBC.MaxCtx", 0);
-    g_PBC_CondensationPreservedLines = sConfigMgr->GetOption<uint32_t>("PBC.CondensationPreservedLines", 10);
+    g_PBC_MaxHistoryCtx              = sConfigMgr->GetOption<uint32_t>("PBC.MaxHistoryCtx", 0);
+    g_PBC_MaxMemoriesCtx             = sConfigMgr->GetOption<uint32_t>("PBC.MaxMemoriesCtx", 8192);
 
     g_PBC_PromptsPath = sConfigMgr->GetOption<std::string>("PBC.PromptsPath",
                                     "../../../modules/mod-playerbots-characters/prompts");
@@ -252,9 +252,9 @@ void PBC_LoadConfig(bool /*isStartup*/)
             }
         }
 
-        if (g_PBC_MaxCtx == 0)
+        if (g_PBC_MaxHistoryCtx == 0)
         {
-            LOG_ERROR("server.loading", "[PBC] PBC.MaxCtx is not set (or is 0). This is a required setting when the module is enabled.");
+            LOG_ERROR("server.loading", "[PBC] PBC.MaxHistoryCtx is not set (or is 0). This is a required setting when the module is enabled.");
             configValid = false;
         }
 
@@ -283,10 +283,10 @@ void PBC_LoadConfig(bool /*isStartup*/)
     }
 
     LOG_INFO("server.loading",
-        "[PBC] Config: Enable={} APIType='{}' Model='{}' Url='{}' MaxCtx={} Timeout={}s "
+        "[PBC] Config: Enable={} APIType='{}' Model='{}' Url='{}' MaxHistoryCtx={} MaxMemoriesCtx={} Timeout={}s "
         "Chances: Whisper={}% Mention={}% Message={}% RollPenalty={}% "
         "Item={}% Duel={}% LevelUp={}% BossKill={}% QuestCompleted={}% QuestTaken={}%",
-        g_PBC_Enable, g_PBC_APIType, g_PBC_Model, g_PBC_BaseUrl, g_PBC_MaxCtx,
+        g_PBC_Enable, g_PBC_APIType, g_PBC_Model, g_PBC_BaseUrl, g_PBC_MaxHistoryCtx, g_PBC_MaxMemoriesCtx,
         g_PBC_RequestTimeoutSec,
         g_PBC_ReplyChanceWhisper, g_PBC_ReplyChanceMention,
         g_PBC_ReplyChanceMessage, g_PBC_RollPenaltyOnAnswer,
@@ -491,30 +491,33 @@ void PBC_LoadHistoryFromDB()
              g_PBC_LastHistoryTime.size());
 }
 
-void PBC_LoadCardAdditionsFromDB()
+void PBC_LoadMemoriesFromDB()
 {
     QueryResult result = CharacterDatabase.Query(
-        "SELECT bot_guid, addition FROM mod_pbc_character_card_additions ORDER BY bot_guid ASC, created_at ASC"
+        "SELECT id, bot_guid, memory_text, importance FROM mod_pbc_memories ORDER BY bot_guid ASC, id ASC"
     );
 
-    std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
-    g_PBC_CardAdditions.clear();
+    std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+    g_PBC_Memories.clear();
 
     if (!result) return;
 
+    size_t count = 0;
     do {
-        uint64_t    botGuid  = (*result)[0].Get<uint64_t>();
-        std::string addition = (*result)[1].Get<std::string>();
-        g_PBC_CardAdditions[botGuid].push_back(std::move(addition));
+        uint64_t    dbId       = (*result)[0].Get<uint64_t>();
+        uint64_t    botGuid    = (*result)[1].Get<uint64_t>();
+        std::string memText    = (*result)[2].Get<std::string>();
+        uint8_t     importance = static_cast<uint8_t>((*result)[3].Get<uint32_t>());
+
+        PBC_MemoryEntry entry;
+        entry.dbId       = dbId;
+        entry.text       = std::move(memText);
+        entry.importance = importance;
+        g_PBC_Memories[botGuid].push_back(std::move(entry));
+        ++count;
     } while (result->NextRow());
 
-    LOG_INFO("server.loading", "[PBC] Character card additions loaded from DB.");
-}
-
-void PBC_SaveCardAdditionsToDB()
-{
-    // Card additions are written individually during condensation.
-    // This stub exists for API completeness.
+    LOG_INFO("server.loading", "[PBC] Character memories loaded from DB ({} entries).", count);
 }
 
 void PBC_LoadCharacterDataFromDB()

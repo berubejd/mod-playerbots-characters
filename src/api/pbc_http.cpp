@@ -1283,9 +1283,8 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // -------------------------------------------------------------------
         // GET /api/char/:guid/card
         //
-        // Returns the immutable character card (base card with variable
-        // substitution, without additions).  The character must be online.
-        // Requires auth.
+        // Returns the character card (base card with variable substitution).
+        // The character must be online.  Requires auth.
         // -------------------------------------------------------------------
         svr->Get("/api/char/:guid/card", [](const httplib::Request& req, httplib::Response& res) {
             if (g_PBC_DebugEnabled)
@@ -1299,7 +1298,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
             json response;
 
-            // Build base character card (with variable substitution, without additions)
+            // Build character card (with variable substitution)
             const std::string& name = bot->GetName();
             auto cardIt = g_PBC_CharacterCards.find(name);
             if (cardIt != g_PBC_CharacterCards.end())
@@ -1308,188 +1307,6 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 response["card"] = PBC_SubstituteVars(g_PBC_DefaultCharacterDescription, bot, "", false);
 
             res.set_content(response.dump(), "application/json");
-        });
-
-        // -------------------------------------------------------------------
-        // GET /api/char/:guid/card/additions
-        //
-        // Returns the dynamic card additions for a character, each with its
-        // index as an "id" field.  The character must be online.  Requires
-        // auth.
-        // -------------------------------------------------------------------
-        svr->Get("/api/char/:guid/card/additions", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-
-            PBC_ApiContext ctx;
-            if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
-                return;
-
-            // Card additions with 1-based IDs (consistent with history API)
-            json additions = json::array();
-            {
-                std::lock_guard<std::mutex> lock(g_PBC_CardMutex);
-                auto addIt = g_PBC_CardAdditions.find(ctx.charGuid);
-                if (addIt != g_PBC_CardAdditions.end())
-                    for (size_t i = 0; i < addIt->second.size(); ++i)
-                        additions.push_back({{"id", i + 1}, {"text", addIt->second[i]}});
-            }
-
-            json response;
-            response["additions"] = additions;
-
-            res.set_content(response.dump(), "application/json");
-        });
-
-        // -------------------------------------------------------------------
-        // POST /api/char/:guid/card/additions?id=
-        //
-        // Edit a single card addition for a character.  The addition is
-        // identified by its 1-based id (the "id" field returned by
-        // GET /api/char/:guid/card/additions).  Both the in-memory
-        // addition and the database row are updated.
-        //
-        // Request body: JSON with "text" (new text) and "original"
-        // (current text for desync detection).  If "original" does not
-        // match the server's copy, 409 Conflict is returned.
-        //
-        // Requires auth.  The character must be online.
-        // -------------------------------------------------------------------
-        svr->Post("/api/char/:guid/card/additions", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-
-            PBC_ApiContext ctx;
-            if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
-                return;
-
-            // Parse id parameter (1-based, matching the "id" field from GET)
-            std::string idStr = req.get_param_value("id");
-            if (idStr.empty())
-            {
-                res.status = 400;
-                res.set_content("{\"error\":\"Missing id parameter\"}", "application/json");
-                return;
-            }
-
-            size_t id = 0;
-            try { id = std::stoull(idStr); } catch (...) {}
-            if (id == 0)
-            {
-                res.status = 400;
-                res.set_content("{\"error\":\"Invalid id parameter (must be >= 1)\"}", "application/json");
-                return;
-            }
-            size_t index = id - 1; // Convert to 0-based index
-
-            // Parse JSON body
-            json body;
-            try { body = json::parse(req.body); } catch (...) {}
-            std::string newText = body.value("text", "");
-            if (newText.empty())
-            {
-                res.status = 400;
-                res.set_content("{\"error\":\"Missing or empty 'text' field in request body\"}", "application/json");
-                return;
-            }
-            std::string originalText = body.value("original", "");
-            if (originalText.empty())
-            {
-                res.status = 400;
-                res.set_content("{\"error\":\"Missing or empty 'original' field in request body\"}", "application/json");
-                return;
-            }
-
-            PBC_HistoryResult result = PBC_UpdateCardAddition(ctx.charGuid, index, newText, originalText);
-            if (result == PBC_HistoryResult::NotFound)
-            {
-                res.status = 404;
-                res.set_content("{\"error\":\"Addition id out of range\"}", "application/json");
-                return;
-            }
-            if (result == PBC_HistoryResult::Desync)
-            {
-                res.status = 409;
-                res.set_content("{\"error\":\"desync\"}", "application/json");
-                return;
-            }
-
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API card addition edit: character GUID={} index={}", ctx.charGuid, index);
-
-            res.set_content("{\"status\":\"updated\"}", "application/json");
-        });
-
-        // -------------------------------------------------------------------
-        // DELETE /api/char/:guid/card/additions?id=
-        //
-        // Delete a single card addition for a character.  The addition is
-        // identified by its 1-based id (the "id" field returned by
-        // GET /api/char/:guid/card/additions).  Both the in-memory
-        // addition and the database row are deleted.
-        //
-        // Request body: JSON with "original" (current text for desync
-        // detection).  If "original" does not match the server's copy,
-        // 409 Conflict is returned.
-        //
-        // Requires auth.  The character must be online.
-        // -------------------------------------------------------------------
-        svr->Delete("/api/char/:guid/card/additions", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-
-            PBC_ApiContext ctx;
-            if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
-                return;
-
-            // Parse id parameter (1-based, matching the "id" field from GET)
-            std::string idStr = req.get_param_value("id");
-            if (idStr.empty())
-            {
-                res.status = 400;
-                res.set_content("{\"error\":\"Missing id parameter\"}", "application/json");
-                return;
-            }
-
-            size_t id = 0;
-            try { id = std::stoull(idStr); } catch (...) {}
-            if (id == 0)
-            {
-                res.status = 400;
-                res.set_content("{\"error\":\"Invalid id parameter (must be >= 1)\"}", "application/json");
-                return;
-            }
-            size_t index = id - 1; // Convert to 0-based index
-
-            // Parse JSON body for desync detection
-            json body;
-            try { body = json::parse(req.body); } catch (...) {}
-            std::string originalText = body.value("original", "");
-            if (originalText.empty())
-            {
-                res.status = 400;
-                res.set_content("{\"error\":\"Missing or empty 'original' field in request body\"}", "application/json");
-                return;
-            }
-
-            PBC_HistoryResult result = PBC_DeleteCardAddition(ctx.charGuid, index, originalText);
-            if (result == PBC_HistoryResult::NotFound)
-            {
-                res.status = 404;
-                res.set_content("{\"error\":\"Addition id out of range\"}", "application/json");
-                return;
-            }
-            if (result == PBC_HistoryResult::Desync)
-            {
-                res.status = 409;
-                res.set_content("{\"error\":\"desync\"}", "application/json");
-                return;
-            }
-
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API card addition delete: character GUID={} index={}", ctx.charGuid, index);
-
-            res.set_content("{\"status\":\"deleted\"}", "application/json");
         });
 
         // -------------------------------------------------------------------

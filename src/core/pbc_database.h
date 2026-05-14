@@ -82,69 +82,35 @@ inline void DB_DeleteHistoryLineByIndex(uint64_t botGuid, size_t index)
 }
 
 // ---------------------------------------------------------------------------
-// Character card additions
+// Character memories
 // ---------------------------------------------------------------------------
 
-// Insert a condensed addition for a character.
-inline void DB_InsertCardAddition(uint64_t botGuid, const std::string& addition)
+// Insert a single memory for a character.
+inline void DB_InsertMemory(uint64_t botGuid, const std::string& memoryText, uint8_t importance)
 {
-    std::string escaped = addition;
+    std::string escaped = memoryText;
     CharacterDatabase.EscapeString(escaped);
     CharacterDatabase.Execute(
-        "INSERT INTO mod_pbc_character_card_additions (bot_guid, addition) VALUES ({}, '{}')",
+        "INSERT INTO mod_pbc_memories (bot_guid, memory_text, importance) VALUES ({}, '{}', {})",
         botGuid,
-        escaped
+        escaped,
+        importance
     );
 }
 
-// Delete all card additions for a character (used by .chars reset).
-inline void DB_DeleteCardAdditionsForCharacter(uint64_t botGuid)
+// Delete all memories for a character (used by .chars reset).
+inline void DB_DeleteMemoriesForCharacter(uint64_t botGuid)
 {
     CharacterDatabase.Execute(
-        "DELETE FROM mod_pbc_character_card_additions WHERE bot_guid = {}",
+        "DELETE FROM mod_pbc_memories WHERE bot_guid = {}",
         botGuid
     );
 }
 
-// Delete all card additions for every character (used by .chars reset @ALL).
-inline void DB_DeleteAllCardAdditions()
+// Delete all memories for every character (used by .chars reset @ALL).
+inline void DB_DeleteAllMemories()
 {
-    CharacterDatabase.Execute("DELETE FROM mod_pbc_character_card_additions");
-}
-
-// Update a single card addition by bot GUID and 0-based index (position
-// in the ordered list for that bot).  Uses a subquery to resolve the index
-// to the actual DB row id, so no in-memory ID tracking is needed.
-inline void DB_UpdateCardAdditionByIndex(uint64_t botGuid, size_t index, const std::string& newAddition)
-{
-    std::string escaped = newAddition;
-    CharacterDatabase.EscapeString(escaped);
-    CharacterDatabase.Execute(
-        "UPDATE mod_pbc_character_card_additions SET addition = '{}' "
-        "WHERE id = ("
-        "  SELECT id FROM ("
-        "    SELECT id FROM mod_pbc_character_card_additions WHERE bot_guid = {} ORDER BY id ASC LIMIT 1 OFFSET {}"
-        "  ) AS t"
-        ")",
-        escaped,
-        botGuid,
-        index
-    );
-}
-
-// Delete a single card addition by bot GUID and 0-based index.
-inline void DB_DeleteCardAdditionByIndex(uint64_t botGuid, size_t index)
-{
-    CharacterDatabase.Execute(
-        "DELETE FROM mod_pbc_character_card_additions "
-        "WHERE id = ("
-        "  SELECT id FROM ("
-        "    SELECT id FROM mod_pbc_character_card_additions WHERE bot_guid = {} ORDER BY id ASC LIMIT 1 OFFSET {}"
-        "  ) AS t"
-        ")",
-        botGuid,
-        index
-    );
+    CharacterDatabase.Execute("DELETE FROM mod_pbc_memories");
 }
 
 // ---------------------------------------------------------------------------
