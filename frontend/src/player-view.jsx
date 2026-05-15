@@ -54,6 +54,10 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
         toast(wsEvent.data.message || 'WebSocket error', 'error');
         break;
       case 'history':
+        // Forward to ChatView for processing and refresh context
+        setChatEvent(wsEvent);
+        setInfoReloadKey((k) => k + 1);
+        break;
       case 'thinks':
         // Forward to ChatView for processing
         setChatEvent(wsEvent);
