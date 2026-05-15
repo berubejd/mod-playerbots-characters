@@ -223,6 +223,44 @@ Updates character parameters. Accepts the same format as the GET response. Curre
 ```
 
 
+### Debug
+
+#### `GET /api/char/:guid/debug/request?event=`
+
+Returns the generated user prompt for a character as if an event triggered it. Goes through the **exact same logic** normal events use: takes a snapshot, builds the user prompt from the snapshot, and returns both the system prompt and the fully-substituted user prompt. No LLM call is made and no data is modified.
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `event` | No | `*you feel the urge to say something*` | Event line text to use as `{event}` in the prompt |
+
+The character must be online. Requires auth.
+
+```json
+{
+  "system_prompt": "You are a character in...",
+  "user_prompt": "You are currently on foot in...",
+  "event": "*you feel the urge to say something*",
+  "condensation_needed": false,
+  "history_tokens": 234,
+  "history_token_limit": 8192,
+  "memory_tokens": 56,
+  "memory_token_limit": 2048,
+  "snapshot": {
+    "character_card": "...",
+    "context": "...",
+    "scene": "...",
+    "combat_status": "...",
+    "equipment": "...",
+    "char_group": "...",
+    "char_los": "...",
+    "memories": "...",
+    "relationships": "...",
+    "chat_history": "..."
+  }
+}
+```
+
+
 ### Actions
 
 #### `POST /api/char/:guid/whisper`

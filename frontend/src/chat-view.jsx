@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
-import { fetchHistory, editMessage, deleteMessage, sendWhisper, sendNarrate, sendPartyMessage, sendPartyNarrate, sendTrigger, formatApiError } from './api.js';
+import { fetchHistory, editMessage, deleteMessage, sendWhisper, sendNarrate, sendPartyMessage, sendPartyNarrate, sendTrigger, fetchDebugRequest, formatApiError } from './api.js';
 import { parseMessage, formatMessageParts } from './chat-utils.js';
 import { useToast } from './toast-provider.jsx';
 import { useMediaQuery } from './use-media-query.js';
@@ -290,6 +290,145 @@ function BatchDeleteModal({ show, count, onConfirm, onCancel }) {
   );
 }
 
+function DebugRequestModal({ show, data, loading, error, onClose }) {
+  // Accordion state: which section is open (null = all closed)
+  const [openSection, setOpenSection] = useState('general');
+
+  // Reset to general section when modal opens
+  useEffect(() => {
+    if (show) setOpenSection('general');
+  }, [show]);
+
+  if (!show) return null;
+
+  // Threshold for using textarea instead of static text (in characters)
+  const LONG_THRESHOLD = 200;
+
+  const renderField = (label, value) => {
+    if (value == null) return null;
+    const str = String(value);
+    const isLong = str.length > LONG_THRESHOLD;
+    return (
+      <div class="mb-3">
+        <label class="form-label fw-semibold small text-uppercase text-body-secondary mb-1">{label}</label>
+        {isLong ? (
+          <textarea
+            class="form-control form-control-sm font-monospace"
+            rows="8"
+            value={str}
+            readOnly
+            style="resize: vertical; font-size: 0.8rem;"
+          />
+        ) : (
+          <div class="form-control-plaintext font-monospace" style="font-size: 0.85rem;">{str}</div>
+        )}
+      </div>
+    );
+  };
+
+  const renderTokenStat = (label, used, limit) => {
+    if (used == null || limit == null) return null;
+    const pct = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
+    const color = pct < 40 ? '#198754' : pct < 80 ? '#ffc107' : '#dc3545';
+    return (
+      <div class="mb-2">
+        <div class="d-flex justify-content-between small">
+          <span class="text-body-secondary">{label}</span>
+          <span class="font-monospace">{used.toLocaleString()} / {limit.toLocaleString()}</span>
+        </div>
+        <div style="height: 4px; background: var(--bs-tertiary-bg, #2c2c2c); border-radius: 2px;">
+          <div style={`height: 100%; width: ${pct}%; background: ${color}; border-radius: 2px; transition: width 0.3s ease;`}></div>
+        </div>
+      </div>
+    );
+  };
+
+  const toggleSection = (section) => {
+    setOpenSection((prev) => prev === section ? null : section);
+  };
+
+  const renderSection = (id, title, content) => (
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button
+          class={`accordion-button${openSection === id ? '' : ' collapsed'}`}
+          type="button"
+          onClick={() => toggleSection(id)}
+        >
+          {title}
+        </button>
+      </h2>
+      <div class={`accordion-collapse collapse${openSection === id ? ' show' : ''}`}>
+        <div class="accordion-body">
+          {content}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5)" onClick={onClose}>
+      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" onClick={(e) => e.stopPropagation()}>
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title"><i class="bi bi-eyeglasses me-2"></i>Character Debug</h5>
+            <button type="button" class="btn-close" onClick={onClose}></button>
+          </div>
+          <div class="modal-body">
+            {loading && (
+              <div class="d-flex justify-content-center align-items-center py-4">
+                <div class="spinner-border text-primary me-2" role="status"></div>
+                <span class="text-body-secondary">Building request…</span>
+              </div>
+            )}
+            {error && (
+              <div class="alert alert-danger" role="alert">{error}</div>
+            )}
+            {data && !loading && (
+              <div class="accordion">
+                {renderSection('general', 'General Info', (
+                  <>
+                    {renderTokenStat('History Tokens', data.history_tokens, data.history_token_limit)}
+                    {renderTokenStat('Memory Tokens', data.memory_tokens, data.memory_token_limit)}
+                    <div class="mt-2 small">
+                      <span class="text-body-secondary">Condensation: <span class={data.condensation_needed ? 'text-warning' : 'text-success'}>{data.condensation_needed ? 'Needed' : 'Not needed'}</span></span>
+                    </div>
+                  </>
+                ))}
+
+                {renderSection('prompts', 'Prompts', (
+                  <>
+                    {renderField('System Prompt', data.system_prompt)}
+                    {renderField('User Prompt', data.user_prompt)}
+                  </>
+                ))}
+
+                {data.snapshot && renderSection('snapshot', 'Snapshot', (
+                  <>
+                    {renderField('Character Card', data.snapshot.character_card)}
+                    {renderField('Context', data.snapshot.context)}
+                    {renderField('Scene', data.snapshot.scene)}
+                    {renderField('Combat Status', data.snapshot.combat_status)}
+                    {renderField('Equipment', data.snapshot.equipment)}
+                    {renderField('Group', data.snapshot.char_group)}
+                    {renderField('Line of Sight', data.snapshot.char_los)}
+                    {renderField('Memories', data.snapshot.memories)}
+                    {renderField('Relationships', data.snapshot.relationships)}
+                    {renderField('Chat History', data.snapshot.chat_history)}
+                  </>
+                ))}
+              </div>
+            )}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const MODE_OPTIONS = [
   { value: 'whisper', label: 'Whisper (/w)', shortcut: '/w', placeholder: 'Send a whisper…' },
   { value: 'narrate', label: 'Narrate (/n)', shortcut: '/n', placeholder: 'Send a narration…' },
@@ -461,6 +600,9 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [batchDeleteModal, setBatchDeleteModal] = useState({ show: false, count: 0 });
+
+  // Debug request modal state
+  const [debugModal, setDebugModal] = useState({ show: false, data: null, loading: false, error: null });
 
   // Track newly arrived message IDs for highlight animation
   const [newMessageIds, setNewMessageIds] = useState(new Set());
@@ -890,6 +1032,25 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     setBatchDeleteModal({ show: false, count: 0 });
   }, []);
 
+  // Debug request handler
+  const handleDebugRequest = useCallback(async () => {
+    setDebugModal({ show: true, data: null, loading: true, error: null });
+    try {
+      const data = await fetchDebugRequest(token, selectedGuid);
+      setDebugModal({ show: true, data, loading: false, error: null });
+    } catch (err) {
+      if (err.message === 'player_offline') {
+        onDesync(err.message);
+        return;
+      }
+      setDebugModal({ show: true, data: null, loading: false, error: formatApiError(err) });
+    }
+  }, [token, selectedGuid, onDesync]);
+
+  const handleDebugClose = useCallback(() => {
+    setDebugModal({ show: false, data: null, loading: false, error: null });
+  }, []);
+
   const handleBatchDeleteConfirm = useCallback(async (propagate) => {
     // Capture selected messages before clearing state
     const toDelete = messages
@@ -1049,7 +1210,14 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
           ))}
         </div>
         {isDesktop && messages && messages.length > 0 && (
-          <div class="chat-toolbar position-absolute top-0 start-0 m-2" style="z-index: 5;">
+          <div class="chat-toolbar position-absolute top-0 start-0 m-2 d-flex gap-1" style="z-index: 5;">
+            <button
+              class="btn btn-sm p-0 px-1"
+              onClick={handleDebugRequest}
+              title="Character Debug"
+            >
+              <i class="bi bi-eyeglasses"></i>
+            </button>
             <button
               class="btn btn-sm p-0 px-1"
               style={selectionMode ? 'color: var(--bs-primary) !important;' : undefined}
@@ -1110,6 +1278,13 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
         count={batchDeleteModal.count}
         onConfirm={handleBatchDeleteConfirm}
         onCancel={handleBatchDeleteCancel}
+      />
+      <DebugRequestModal
+        show={debugModal.show}
+        data={debugModal.data}
+        loading={debugModal.loading}
+        error={debugModal.error}
+        onClose={handleDebugClose}
       />
     </div>
   );

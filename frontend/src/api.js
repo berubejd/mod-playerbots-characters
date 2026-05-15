@@ -265,6 +265,16 @@ export async function deleteRelationship(token, guid, name, original) {
   return res.json();
 }
 
+export async function fetchDebugRequest(token, guid, event = '') {
+  const params = new URLSearchParams();
+  if (event) params.set('event', event);
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/debug/request?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  throwForStatus(res, CHAR_STATUS);
+  return res.json();
+}
+
 export function formatApiError(err) {
   switch (err.message) {
     case 'unauthorized': return 'Session expired';

@@ -1533,6 +1533,82 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         });
 
         // -------------------------------------------------------------------
+        // GET /api/char/:guid/debug/request?event=
+        //
+        // Returns the generated user prompt for this character as if an event
+        // triggered it.  Goes through the SAME EXACT logic normal events go:
+        // takes a snapshot, builds the user prompt from the snapshot, and
+        // returns both the system prompt and the fully-substituted user prompt.
+        // No LLM call is made and no data is modified.
+        //
+        // Query parameters:
+        //   event — event line text (default: "*you feel the urge to say something*")
+        //
+        // Requires auth.  The target character must be online.
+        // -------------------------------------------------------------------
+        svr->Get("/api/char/:guid/debug/request", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
+                return;
+
+            // Parse optional event parameter
+            std::string eventLine = req.get_param_value("event");
+            if (eventLine.empty())
+                eventLine = PBC_MakeEventLine("you feel the urge to say something");
+
+            // Take a snapshot — same as PBC_DispatchTriggerEvent / PBC_DispatchWhisperEvent
+            PBC_CharacterSnapshot snap = PBC_SnapshotCharacter(ctx.bot);
+
+            // Build the user prompt — same function used by PBC_ProcessEventItem
+            std::string userPrompt = PBC_BuildUserPromptFromSnapshot(snap, eventLine);
+
+            // Check if condensation would be triggered for this character
+            int histTokens = PBC_EstimateHistoryTokens(snap.charGuidRaw);
+            bool condensationNeeded = histTokens > static_cast<int>(g_PBC_MaxHistoryCtx);
+
+            json response;
+            response["system_prompt"] = g_PBC_SystemPrompt;
+            response["user_prompt"]   = userPrompt;
+            response["event"]         = eventLine;
+            response["condensation_needed"] = condensationNeeded;
+            response["history_tokens"]      = histTokens;
+            response["history_token_limit"] = g_PBC_MaxHistoryCtx;
+
+            // Memory token estimation (same ~4 chars/token as PBC_EstimateHistoryTokens)
+            std::string memoriesBlock = PBC_GetMemoriesBlock(snap.charGuidRaw);
+            int memTokens = static_cast<int>(memoriesBlock.size()) / 4 + (memoriesBlock.empty() ? 0 : 1);
+            response["memory_tokens"]      = memTokens;
+            response["memory_token_limit"] = g_PBC_MaxMemoriesCtx;
+
+            // Include snapshot components for debugging
+            json snapshotJson;
+            snapshotJson["character_card"] = snap.characterCard;
+            snapshotJson["context"]        = snap.context;
+            snapshotJson["scene"]          = snap.scene;
+            snapshotJson["combat_status"]  = snap.combatStatus;
+            snapshotJson["equipment"]      = snap.equipment;
+            snapshotJson["char_group"]     = snap.charGroup;
+            snapshotJson["char_los"]       = snap.charLos;
+            snapshotJson["memories"]       = memoriesBlock;
+            snapshotJson["relationships"]  = PBC_GetRelationshipsBlock(snap);
+
+            // Chat history from snapshot
+            {
+                std::ostringstream histOss;
+                for (const auto& line : snap.history)
+                    histOss << line << "\n";
+                snapshotJson["chat_history"] = histOss.str();
+            }
+
+            response["snapshot"] = snapshotJson;
+
+            res.set_content(response.dump(), "application/json");
+        });
+
+        // -------------------------------------------------------------------
         // GET /api/char/:guid/history?page=&limit=
         //
         // Returns character chat history from the in-memory cache as a JSON
