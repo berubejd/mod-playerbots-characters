@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import { fetchHistory, editMessage, deleteMessage, sendWhisper, sendNarrate, sendPartyMessage, sendPartyNarrate, sendTrigger, formatApiError } from './api.js';
 import { parseMessage, formatMessageParts } from './chat-utils.js';
 import { useToast } from './toast-provider.jsx';
@@ -9,6 +9,8 @@ import ActionMenu from './action-menu.jsx';
 const SCROLL_BOTTOM_THRESHOLD = 30;
 // Threshold in px to auto-scroll on new messages (more lenient than "at bottom")
 const AUTO_SCROLL_THRESHOLD = 100;
+// Characters per estimated token for context usage bar
+const CHARS_PER_TOKEN = 4;
 
 function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selected, onToggleSelect, isNew }) {
   const text = typeof msg === 'string' ? msg : msg.text;
@@ -440,7 +442,7 @@ function SendMessageInput({ token, selectedGuid, onDesync, onMessageSent, messag
   );
 }
 
-export default function ChatView({ token, selectedGuid, nameColorMap, charName, playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync, characters, messageMode, onMessageModeChange }) {
+export default function ChatView({ token, selectedGuid, nameColorMap, charName, playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync, characters, messageMode, onMessageModeChange, maxHistoryCtx }) {
   const [messages, setMessages] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -983,6 +985,28 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
     );
   }
 
+  // Estimate token usage from current messages
+  const estimatedTokens = useMemo(() => {
+    if (!messages) return 0;
+    let totalChars = 0;
+    for (const msg of messages) {
+      totalChars += (typeof msg === 'string' ? msg : msg.text).length;
+    }
+    return Math.ceil(totalChars / CHARS_PER_TOKEN);
+  }, [messages]);
+
+  // Context fill percentage (0–100), clamped
+  const contextPercent = maxHistoryCtx > 0
+    ? Math.min((estimatedTokens / maxHistoryCtx) * 100, 100)
+    : 0;
+
+  // Progress bar color based on fill level
+  const contextBarColor = contextPercent < 40
+    ? '#198754'   // green
+    : contextPercent < 80
+      ? '#ffc107' // yellow
+      : '#dc3545'; // red
+
   // Render: empty history
   if (messages && messages.length === 0) {
     return (
@@ -995,6 +1019,11 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
             </div>
           )}
         </div>
+        {maxHistoryCtx > 0 && (
+          <div style="height: 3px; background: var(--bs-tertiary-bg, #2c2c2c);">
+            <div style={`height: 100%; width: ${contextPercent}%; background: ${contextBarColor}; transition: width 0.3s ease, background-color 0.3s ease;`}></div>
+          </div>
+        )}
         <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} characters={characters} />
       </div>
     );
@@ -1058,6 +1087,11 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
         )}
       </div>
       <div ref={inputWrapperRef} class="position-absolute bottom-0 start-0 end-0" style="z-index: 10;">
+        {maxHistoryCtx > 0 && (
+          <div style="height: 3px; background: var(--bs-tertiary-bg, #2c2c2c);">
+            <div style={`height: 100%; width: ${contextPercent}%; background: ${contextBarColor}; transition: width 0.3s ease, background-color 0.3s ease;`}></div>
+          </div>
+        )}
         <SendMessageInput token={token} selectedGuid={selectedGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} characters={characters} />
       </div>
       <EditModal

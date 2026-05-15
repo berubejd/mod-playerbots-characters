@@ -136,6 +136,14 @@ export async function fetchParty(token) {
   return res.json();
 }
 
+export async function fetchConfig(token) {
+  const res = await fetch('/api/config', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  throwForStatus(res, AUTH_STATUS);
+  return res.json();
+}
+
 export async function fetchHistory(token, guid) {
   const res = await fetch(`/api/char/${encodeURIComponent(guid)}/history`, {
     headers: { Authorization: `Bearer ${token}` },

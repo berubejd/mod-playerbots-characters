@@ -9,7 +9,7 @@ import { useVisualViewport } from './use-visual-viewport.js';
 
 const TAB = { CHARACTERS: 'characters', CHAT: 'chat', INFO: 'info' };
 
-export default function PlayerView({ player, party, token, faction, wsEvent, onSubscriptionChange, initialSelectedGuid, onDesync, onOpenAccountManager }) {
+export default function PlayerView({ player, party, token, faction, wsEvent, onSubscriptionChange, initialSelectedGuid, onDesync, onOpenAccountManager, maxHistoryCtx }) {
   const characters = (party?.party || []).filter((m) => m.character);
   const [messageMode, setMessageMode] = useState('whisper');
 
@@ -173,6 +173,7 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
       characters={characters}
       messageMode={messageMode}
       onMessageModeChange={setMessageMode}
+      maxHistoryCtx={maxHistoryCtx}
     />
   ) : (
     <div class="d-flex justify-content-center align-items-center h-100">

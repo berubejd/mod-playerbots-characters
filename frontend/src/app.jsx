@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { exchangeOtp, fetchPlayer, fetchParty } from './api.js';
+import { exchangeOtp, fetchPlayer, fetchParty, fetchConfig } from './api.js';
 import { getToken, setToken as storeToken, removeToken, saveAccount, removeAccount, hasAccounts, getAccounts } from './account-store.js';
 import { getFaction } from './wow-colors.js';
 import { ToastProvider } from './toast-provider.jsx';
@@ -44,6 +44,7 @@ export default function App() {
   const [view, setView] = useState(null);
   const [player, setPlayer] = useState(null);
   const [party, setParty] = useState(null);
+  const [config, setConfig] = useState(null);
   const [faction, setFaction] = useState(null);
   const [otpError, setOtpError] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -86,6 +87,7 @@ export default function App() {
 
     setPlayer(null);
     setParty(null);
+    setConfig(null);
     setLoadSteps(INITIAL_STEPS.map(s => ({ ...s })));
     setLoadError('');
     setWsEvent(null);
@@ -169,16 +171,27 @@ export default function App() {
         saveAccount(token, data);
         setLoadSteps(prev => prev.map(s => s.key === 'player' ? { ...s, status: 'done' } : s));
 
-        // Step 2b: Fetch party info (non-fatal — proceed even if it fails)
-        return fetchParty(token)
-          .then((partyData) => {
-            if (cancelled) return;
-            setParty(partyData);
-          })
-          .catch(() => {
-            if (cancelled) return;
-            setParty({ party: [] });
-          });
+        // Step 2b: Fetch party and config in parallel (both non-fatal)
+        return Promise.all([
+          fetchParty(token)
+            .then((partyData) => {
+              if (cancelled) return;
+              setParty(partyData);
+            })
+            .catch(() => {
+              if (cancelled) return;
+              setParty({ party: [] });
+            }),
+          fetchConfig(token)
+            .then((configData) => {
+              if (cancelled) return;
+              setConfig(configData);
+            })
+            .catch(() => {
+              if (cancelled) return;
+              // Config fetch failure is non-fatal
+            }),
+        ]);
       })
       .then(() => {
         if (cancelled) return;
@@ -279,6 +292,7 @@ export default function App() {
     setAuthToken(token);
     setPlayer(null);
     setParty(null);
+    setConfig(null);
     clearFactionTheme();
     setLoadSteps(INITIAL_STEPS.map(s => ({ ...s })));
     setLoadError('');
@@ -327,6 +341,7 @@ export default function App() {
             initialSelectedGuid={lastSelectedGuid}
             onDesync={handleDesync}
             onOpenAccountManager={handleOpenAccountManager}
+            maxHistoryCtx={config ? (config.config.find(c => c.key === 'MaxHistoryCtx')?.value ?? 0) : 0}
           />
         )}
         {view === VIEW.ACCOUNT_MANAGER && (
