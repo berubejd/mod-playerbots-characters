@@ -1040,6 +1040,41 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         });
 
         // -------------------------------------------------------------------
+        // GET /api/config
+        //
+        // Returns current module configuration parameters.
+        // Requires a valid Authorization: Bearer <token> header.
+        // -------------------------------------------------------------------
+        svr->Get("/api/config", [](const httplib::Request& req, httplib::Response& res) {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+
+            PBC_ApiContext ctx;
+            if (!PBC_ValidateApiRequest(req, res, false, false, ctx, /*requireOnlinePlayer=*/false))
+                return;
+
+            json config = json::array();
+            config.push_back({{"key", "MaxResponseLength"},        {"value", g_PBC_MaxResponseTokens}});
+            config.push_back({{"key", "MaxHistoryCtx"},            {"value", g_PBC_MaxHistoryCtx}});
+            config.push_back({{"key", "MaxMemoriesCtx"},           {"value", g_PBC_MaxMemoriesCtx}});
+            config.push_back({{"key", "ReplyChanceWhisper"},       {"value", g_PBC_ReplyChanceWhisper}});
+            config.push_back({{"key", "ReplyChanceMention"},       {"value", g_PBC_ReplyChanceMention}});
+            config.push_back({{"key", "ReplyChanceMessage"},       {"value", g_PBC_ReplyChanceMessage}});
+            config.push_back({{"key", "RollPenaltyOnAnswer"},      {"value", g_PBC_RollPenaltyOnAnswer}});
+            config.push_back({{"key", "ReplyChanceItem"},          {"value", g_PBC_ReplyChanceItem}});
+            config.push_back({{"key", "ReplyChanceDuel"},          {"value", g_PBC_ReplyChanceDuel}});
+            config.push_back({{"key", "ReplyChanceLevelUp"},       {"value", g_PBC_ReplyChanceLevelUp}});
+            config.push_back({{"key", "ReplyChanceBossKill"},      {"value", g_PBC_ReplyChanceBossKill}});
+            config.push_back({{"key", "ReplyChanceQuestTaken"},    {"value", g_PBC_ReplyChanceQuestTaken}});
+            config.push_back({{"key", "ReplyChanceQuestCompleted"},{"value", g_PBC_ReplyChanceQuestCompleted}});
+            config.push_back({{"key", "ReplyChanceLocationChanged"},{"value", g_PBC_ReplyChanceLocationChanged}});
+
+            json response;
+            response["config"] = config;
+            res.set_content(response.dump(), "application/json");
+        });
+
+        // -------------------------------------------------------------------
         // GET /api/party
         //
         // Returns online party members for the authenticated player.

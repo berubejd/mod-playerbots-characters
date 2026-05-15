@@ -90,6 +90,31 @@ Returns online party members for the authenticated player. Requires the player t
 
 The `party` array contains all online group members (excluding the authenticated player). Each member has a `character` flag — `true` for characters (bots managed by the module), `false` for real players. Characters also include their `guid`.
 
+#### `GET /api/config`
+
+Returns current module configuration parameters. Does not require the player to be online.
+
+```json
+{
+  "config": [
+    {"key": "MaxResponseLength", "value": 120},
+    {"key": "MaxHistoryCtx", "value": 0},
+    {"key": "MaxMemoriesCtx", "value": 8192},
+    {"key": "ReplyChanceWhisper", "value": 100},
+    {"key": "ReplyChanceMention", "value": 100},
+    {"key": "ReplyChanceMessage", "value": 100},
+    {"key": "RollPenaltyOnAnswer", "value": 45},
+    {"key": "ReplyChanceItem", "value": 5},
+    {"key": "ReplyChanceDuel", "value": 5},
+    {"key": "ReplyChanceLevelUp", "value": 5},
+    {"key": "ReplyChanceBossKill", "value": 35},
+    {"key": "ReplyChanceQuestTaken", "value": 10},
+    {"key": "ReplyChanceQuestCompleted", "value": 20},
+    {"key": "ReplyChanceLocationChanged", "value": 15}
+  ]
+}
+```
+
 
 ### Character Info
 
