@@ -136,7 +136,8 @@ function EditModal({ show, text, onSave, onCancel }) {
   useEffect(() => {
     if (show) {
       setValue(text);
-      setPropagate(false);
+      const { isWhisper } = parseMessage(text);
+      setPropagate(!isWhisper);
       // Focus input after modal opens
       requestAnimationFrame(() => {
         if (inputRef.current) inputRef.current.focus();
@@ -203,14 +204,15 @@ function EditModal({ show, text, onSave, onCancel }) {
   );
 }
 
-function DeleteModal({ show, onConfirm, onCancel }) {
+function DeleteModal({ show, text, onConfirm, onCancel }) {
   const [propagate, setPropagate] = useState(false);
 
   useEffect(() => {
     if (show) {
-      setPropagate(false);
+      const { isWhisper } = parseMessage(text);
+      setPropagate(!isWhisper);
     }
-  }, [show]);
+  }, [show, text]);
 
   if (!show) return null;
 
@@ -247,14 +249,14 @@ function DeleteModal({ show, onConfirm, onCancel }) {
   );
 }
 
-function BatchDeleteModal({ show, count, onConfirm, onCancel }) {
+function BatchDeleteModal({ show, count, hasNonWhisper, onConfirm, onCancel }) {
   const [propagate, setPropagate] = useState(false);
 
   useEffect(() => {
     if (show) {
-      setPropagate(false);
+      setPropagate(hasNonWhisper);
     }
-  }, [show]);
+  }, [show, hasNonWhisper]);
 
   if (!show) return null;
 
@@ -1094,12 +1096,14 @@ export default function ChatView({ token, selectedGuid, nameColorMap, charName, 
       />
       <DeleteModal
         show={deleteModal.show}
+        text={deleteModal.text}
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
       />
       <BatchDeleteModal
         show={batchDeleteModal.show}
         count={batchDeleteModal.count}
+        hasNonWhisper={messages.filter((msg) => selectedIds.has(msg.id) && msg.id != null && !msg.pending).some((msg) => !parseMessage(msg.text).isWhisper)}
         onConfirm={handleBatchDeleteConfirm}
         onCancel={handleBatchDeleteCancel}
       />

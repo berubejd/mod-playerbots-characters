@@ -27,7 +27,9 @@ public:
                             std::string& msg, Group* group) override;
 
     // World events bots may react to
-    void OnPlayerStoreNewItem(Player* player, Item* item, uint32 count) override;
+    void OnPlayerLootItem(Player* player, Item* item, uint32 count, ObjectGuid lootguid) override;
+    void OnPlayerQuestRewardItem(Player* player, Item* item, uint32 count) override;
+    void OnPlayerGroupRollRewardItem(Player* player, Item* item, uint32 count, RollVote voteType, Roll* roll) override;
     void OnPlayerDuelEnd(Player* winner, Player* loser, DuelCompleteType type) override;
     void OnPlayerLevelChanged(Player* player, uint8 oldLevel) override;
     void OnPlayerCreatureKill(Player* killer, Creature* killed) override;

@@ -215,7 +215,9 @@ PBC_PlayerEvents::PBC_PlayerEvents() : PlayerScript("PBC_PlayerEvents",
     PLAYERHOOK_CAN_PLAYER_USE_CHAT,
     PLAYERHOOK_CAN_PLAYER_USE_PRIVATE_CHAT,
     PLAYERHOOK_CAN_PLAYER_USE_GROUP_CHAT,
-    PLAYERHOOK_ON_STORE_NEW_ITEM,
+    PLAYERHOOK_ON_LOOT_ITEM,
+    PLAYERHOOK_ON_QUEST_REWARD_ITEM,
+    PLAYERHOOK_ON_GROUP_ROLL_REWARD_ITEM,
     PLAYERHOOK_ON_DUEL_END,
     PLAYERHOOK_ON_LEVEL_CHANGED,
     PLAYERHOOK_ON_CREATURE_KILL,
@@ -251,7 +253,56 @@ bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*
 // ---------------------------------------------------------------------------
 #define PBC_LOOT_EVENT_ITEM_CLASSES  ((1u << ITEM_CLASS_WEAPON) | (1u << ITEM_CLASS_ARMOR))
 
-void PBC_PlayerEvents::OnPlayerStoreNewItem(Player* player, Item* item, uint32 /*count*/)
+// ---------------------------------------------------------------------------
+// Fires when a player loots an item directly (not via roll, not quest reward).
+// Tracked for every player — each party member loots their own items.
+// ---------------------------------------------------------------------------
+void PBC_PlayerEvents::OnPlayerLootItem(Player* player, Item* item, uint32 /*count*/, ObjectGuid /*lootguid*/)
+{
+    if (!g_PBC_Enable) return;
+    if (!PBC_PTR_VALID(player) || !PBC_PTR_VALID(item)) return;
+
+    ItemTemplate const* tmpl = item->GetTemplate();
+    if (!tmpl || tmpl->Quality < ITEM_QUALITY_RARE) return;
+    if (!(PBC_LOOT_EVENT_ITEM_CLASSES & (1u << tmpl->Class))) return;
+
+    std::string itemName = tmpl->Name1;
+    std::string phrase   = PBC_BuildItemPhrase(tmpl);
+
+    PBC_DispatchGroupEvent(player,
+        PBC_MakeEventLine("The party has found " + phrase + " named " + itemName),
+        PBC_MakeHistLine("The party acquired " + phrase + " named " + itemName),
+        g_PBC_ReplyChanceItem);
+}
+
+// ---------------------------------------------------------------------------
+// Fires when a player receives an item as a quest reward.
+// Only the party leader's rewards trigger the event — the whole party
+// receives the same quest rewards, so this avoids duplicate notifications.
+// ---------------------------------------------------------------------------
+void PBC_PlayerEvents::OnPlayerQuestRewardItem(Player* player, Item* item, uint32 /*count*/)
+{
+    if (!PBC_QuestEventGuard(player) || !PBC_PTR_VALID(item)) return;
+
+    ItemTemplate const* tmpl = item->GetTemplate();
+    if (!tmpl || tmpl->Quality < ITEM_QUALITY_RARE) return;
+    if (!(PBC_LOOT_EVENT_ITEM_CLASSES & (1u << tmpl->Class))) return;
+
+    std::string itemName = tmpl->Name1;
+    std::string phrase   = PBC_BuildItemPhrase(tmpl);
+
+    PBC_DispatchGroupEvent(player,
+        PBC_MakeEventLine("The party has been rewarded with " + phrase + " named " + itemName),
+        PBC_MakeHistLine("The party was rewarded with " + phrase + " named " + itemName),
+        g_PBC_ReplyChanceItem);
+}
+
+// ---------------------------------------------------------------------------
+// Fires when a player wins an item via group roll (need/greed).
+// Uses the same event text as loot — it's the same "party found item" event,
+// just triggered through a different acquisition path.
+// ---------------------------------------------------------------------------
+void PBC_PlayerEvents::OnPlayerGroupRollRewardItem(Player* player, Item* item, uint32 /*count*/, RollVote /*voteType*/, Roll* /*roll*/)
 {
     if (!g_PBC_Enable) return;
     if (!PBC_PTR_VALID(player) || !PBC_PTR_VALID(item)) return;
