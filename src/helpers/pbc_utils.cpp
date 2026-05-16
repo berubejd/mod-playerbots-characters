@@ -3,6 +3,7 @@
 #include "Player.h"
 #include "Group.h"
 #include "WorldSession.h"
+#include "SharedDefines.h"
 
 #include <chrono>
 #include <thread>
@@ -231,4 +232,49 @@ bool PBC_RollChance(uint32_t chance)
     if (chance == 0) return false;
     std::uniform_int_distribution<uint32_t> dist(0, 99);
     return dist(PBC_GetRNG()) < chance;
+}
+
+// ---------------------------------------------------------------------------
+// Enum-to-string helpers
+// ---------------------------------------------------------------------------
+
+std::string PBC_ClassStr(uint8_t cls)
+{
+    switch (cls)
+    {
+        case CLASS_WARRIOR:      return "Warrior";
+        case CLASS_PALADIN:      return "Paladin";
+        case CLASS_HUNTER:       return "Hunter";
+        case CLASS_ROGUE:        return "Rogue";
+        case CLASS_PRIEST:       return "Priest";
+        case CLASS_DEATH_KNIGHT: return "Death Knight";
+        case CLASS_SHAMAN:       return "Shaman";
+        case CLASS_MAGE:         return "Mage";
+        case CLASS_WARLOCK:      return "Warlock";
+        case CLASS_DRUID:        return "Druid";
+        default:                 return "Adventurer";
+    }
+}
+
+std::string PBC_RaceStr(uint8_t race)
+{
+    switch (race)
+    {
+        case RACE_HUMAN:          return "Human";
+        case RACE_ORC:            return "Orc";
+        case RACE_DWARF:          return "Dwarf";
+        case RACE_NIGHTELF:       return "Night Elf";
+        case RACE_UNDEAD_PLAYER:  return "Forsaken";
+        case RACE_TAUREN:         return "Tauren";
+        case RACE_GNOME:          return "Gnome";
+        case RACE_TROLL:          return "Troll";
+        case RACE_BLOODELF:       return "Blood Elf";
+        case RACE_DRAENEI:        return "Draenei";
+        default:                  return "Unknown";
+    }
+}
+
+std::string PBC_GenderStr(uint8_t gender)
+{
+    return gender == GENDER_FEMALE ? "female" : "male";
 }

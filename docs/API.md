@@ -107,7 +107,7 @@ Returns current module configuration parameters. Does not require the player to 
     {"key": "ReplyChanceItem", "value": 5},
     {"key": "ReplyChanceDuel", "value": 5},
     {"key": "ReplyChanceLevelUp", "value": 5},
-    {"key": "ReplyChanceBossKill", "value": 35},
+    {"key": "ReplyChanceHardCombat", "value": 25},
     {"key": "ReplyChanceQuestTaken", "value": 10},
     {"key": "ReplyChanceQuestCompleted", "value": 20},
     {"key": "ReplyChanceLocationChanged", "value": 15}

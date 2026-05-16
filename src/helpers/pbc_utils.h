@@ -78,6 +78,19 @@ std::string PBC_NaturalList(const std::vector<std::string>& items);
 std::string PBC_DefaultRelationshipText(const std::string& name);
 
 // ---------------------------------------------------------------------------
+// Enum-to-string helpers (require SharedDefines.h in implementation)
+// ---------------------------------------------------------------------------
+
+// Convert class ID to human-readable name (e.g. CLASS_WARRIOR → "Warrior").
+std::string PBC_ClassStr(uint8_t cls);
+
+// Convert race ID to human-readable name (e.g. RACE_HUMAN → "Human").
+std::string PBC_RaceStr(uint8_t race);
+
+// Convert gender ID to human-readable name (GENDER_FEMALE → "female", else "male").
+std::string PBC_GenderStr(uint8_t gender);
+
+// ---------------------------------------------------------------------------
 // Mention counting
 // ---------------------------------------------------------------------------
 

@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <deque>
@@ -90,7 +91,7 @@ extern uint32_t g_PBC_RollPenaltyOnAnswer;
 extern uint32_t g_PBC_ReplyChanceItem;
 extern uint32_t g_PBC_ReplyChanceDuel;
 extern uint32_t g_PBC_ReplyChanceLevelUp;
-extern uint32_t g_PBC_ReplyChanceBossKill;
+extern uint32_t g_PBC_ReplyChanceHardCombat;
 extern uint32_t g_PBC_ReplyChanceQuestCompleted;
 extern uint32_t g_PBC_ReplyChanceQuestTaken;
 extern uint32_t g_PBC_ReplyChanceLocationChanged;
@@ -102,6 +103,12 @@ extern std::string g_PBC_QuestCompletedSystemPrompt;
 extern std::string g_PBC_QuestCompletedUserPrompt;
 extern std::string g_PBC_QuestTakenSystemPrompt;
 extern std::string g_PBC_QuestTakenUserPrompt;
+
+// ---------------------------------------------------------------------------
+// Combat LLM prompts
+// ---------------------------------------------------------------------------
+extern std::string g_PBC_CombatEndedSystemPrompt;
+extern std::string g_PBC_CombatEndedUserPrompt;
 
 // ---------------------------------------------------------------------------
 // HTTP server
@@ -191,6 +198,12 @@ enum class PBC_EventType : uint8_t
     // then processes each responding character against that summary.
     QuestSummarization,
 
+    // Combat-summarization: the worker first calls the LLM with
+    // combatSystemPrompt/combatUserPrompt to generate a narrative summary
+    // of a significant combat session, then processes each responding
+    // character against that summary.
+    CombatSummarization,
+
     // Condensation: extract discrete narrator-style memories from one character's
     // history and clear all history.  Used by .chars condense command and by the
     // event thread itself when it detects history overflow.
@@ -264,6 +277,12 @@ struct PBC_EventItem
     // and uses the result as both eventLine and histLine for the bots.
     std::string questSystemPrompt;
     std::string questUserPrompt;
+
+    // --- CombatSummarization extra fields ---
+    // The worker calls PBC_CallLLM(combatSystemPrompt, combatUserPrompt) first
+    // and uses the result as both eventLine and histLine for the bots.
+    std::string combatSystemPrompt;
+    std::string combatUserPrompt;
 
     // ObjectGuid of the player who triggered the quest event (party leader).
     // Used to send the narrator summary message to the correct group after
@@ -487,6 +506,38 @@ struct PBC_PartyState
 };
 extern std::unordered_map<uint32_t, PBC_PartyState> g_PBC_PartyStates;
 extern std::mutex g_PBC_PartyStateMutex;
+
+// ---------------------------------------------------------------------------
+// Per-group combat session tracking.
+// Key: group GUID (low part).  Only groups with at least one real player
+// and one bot are tracked.
+// ---------------------------------------------------------------------------
+struct PBC_GroupCombatTracker
+{
+    bool wasInCombat = false;
+    bool wiped = false;
+
+    // Combat start timestamp (from GameTime::GetGameTime())
+    time_t combatStartTime = 0;
+
+    // Accumulated during combat
+    uint32_t killCount = 0;
+    std::unordered_map<uint64_t, float> memberMinHpPct; // guid → lowest HP% reached
+
+    // Ordinary (non-notable) enemies killed: creature name → count.
+    // Used to build the "enemies slain" list with counts, e.g. "Defias Bandit x5, Scarab x3".
+    // Notable kills are NOT included here — they go into notableEnemyNames instead.
+    std::map<std::string, uint32_t> killedEnemies;
+
+    // Notable enemies killed (bosses, rare elites with subtitles) — used for
+    // the significance check (criterion 1) and the "significant enemies" list.
+    // No counts needed since notable enemies are always unique.
+    std::vector<std::string> notableEnemyNames;
+
+    // Whether any member's HP reached 0 during combat
+    bool seriouslyWounded = false;
+};
+extern std::unordered_map<uint32_t, PBC_GroupCombatTracker> g_PBC_GroupCombatTrackers;
 
 
 // ---------------------------------------------------------------------------

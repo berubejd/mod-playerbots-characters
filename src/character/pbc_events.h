@@ -7,6 +7,8 @@
 #include "AllItemScript.h"
 #include "QuestDef.h"
 #include "pbc_config.h"
+#include "pbc_group_helpers.h"
+#include "pbc_combat_helpers.h"
 #include <string>
 
 // Listens to player / world events and feeds them to the character system.
@@ -30,6 +32,7 @@ public:
     void OnPlayerLevelChanged(Player* player, uint8 oldLevel) override;
     void OnPlayerCreatureKill(Player* killer, Creature* killed) override;
     void OnPlayerCompleteQuest(Player* player, Quest const* quest) override;
+    void OnPlayerJustDied(Player* player) override;
 };
 
 // Captures quest-accept events from all creatures.
@@ -79,12 +82,6 @@ void PBC_NotifyRealPlayersInGroup(Player* anchor, const std::string& eventLine);
 void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
                              const std::string& histLine, uint32_t chance,
                              bool notifyRealPlayers = true);
-
-// ---------------------------------------------------------------------------
-// Find all bot players in the same group as 'player' (excluding 'player'
-// itself).  Returns empty vector if the player is not in a group.
-// ---------------------------------------------------------------------------
-std::vector<Player*> PBC_FindGroupBots(Player* player);
 
 // ---------------------------------------------------------------------------
 // Roll bots with decaying penalty.  Does NOT shuffle — caller should shuffle
@@ -143,14 +140,6 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
                                     const std::string& senderNameOverride = "",
                                     uint32_t chatType = 0,
                                     bool canCreateEvents = true);
-
-// ---------------------------------------------------------------------------
-// Find all bot players in the same group as 'player', excluding 'player'
-// itself AND any GUIDs in the excluded set.  Returns empty vector if the
-// player is not in a group.
-// ---------------------------------------------------------------------------
-std::vector<Player*> PBC_FindGroupBotsExcluding(Player* player,
-    const std::unordered_set<uint64_t>& excludedGuids);
 
 // ---------------------------------------------------------------------------
 // Poll party flight/location state (called from OnUpdate every 5 seconds).

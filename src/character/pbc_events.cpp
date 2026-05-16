@@ -7,6 +7,9 @@
 #include "pbc_utils.h"
 #include "pbc_item_helpers.h"
 #include "pbc_quest_helpers.h"
+#include "pbc_scene_helpers.h"
+#include "pbc_group_helpers.h"
+#include "pbc_combat_helpers.h"
 #include "Log.h"
 #include "Player.h"
 #include "Creature.h"
@@ -15,14 +18,12 @@
 #include "Item.h"
 #include "Group.h"
 #include "ObjectAccessor.h"
-#include "GridNotifiers.h"
-#include "CellImpl.h"
 #include "SharedDefines.h"
 #include "ObjectMgr.h"
 #include "QuestDef.h"
 #include "Chat.h"
-#include "DBCStores.h"
 #include "WorldSessionMgr.h"
+#include "GameTime.h"
 
 #include <algorithm>
 #include <regex>
@@ -82,45 +83,6 @@ static bool IsBlacklisted(const std::string& msg)
     return false;
 }
 
-
-static std::vector<Player*> FindNearbyBots(WorldObject* source, float range = 60.0f)
-{
-    std::vector<Player*> bots;
-    if (!PBC_PTR_VALID(source) || !source->GetMap()) return bots;
-
-    auto doWork = [&](Player* p)
-    {
-        if (!PBC_PTR_VALID(p) || p == source) return;
-        if (!p->IsInWorld()) return;
-        if (!p->GetSession() || !p->GetSession()->IsBot()) return;
-        if (p->IsWithinDist(source, range))
-            bots.push_back(p);
-    };
-    Acore::PlayerDistWorker<decltype(doWork)> worker(source, range, doWork);
-    Cell::VisitObjects(source, worker, range);
-    return bots;
-}
-
-std::vector<Player*> PBC_FindGroupBots(Player* player)
-{
-    std::vector<Player*> bots;
-    if (!PBC_PTR_VALID(player)) return bots;
-
-    Group* grp = player->GetGroup();
-    if (!grp) return bots;
-
-    for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!PBC_PTR_VALID(member) || member == player) continue;
-        if (!member->IsInWorld()) continue;
-        WorldSession* sess = member->GetSession();
-        if (!PBC_PTR_VALID(sess)) continue;
-        if (!sess->IsBot()) continue;
-        bots.push_back(member);
-    }
-    return bots;
-}
 
 // ---------------------------------------------------------------------------
 // PBC_DispatchGroupEvent
@@ -258,6 +220,7 @@ PBC_PlayerEvents::PBC_PlayerEvents() : PlayerScript("PBC_PlayerEvents",
     PLAYERHOOK_ON_LEVEL_CHANGED,
     PLAYERHOOK_ON_CREATURE_KILL,
     PLAYERHOOK_ON_PLAYER_COMPLETE_QUEST,
+    PLAYERHOOK_ON_PLAYER_JUST_DIED,
 }) {}
 
 bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
@@ -346,77 +309,36 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 oldLevel)
     PBC_DispatchGroupEvent(player, eventLine, histLine, g_PBC_ReplyChanceLevelUp);
 }
 
-// ---------------------------------------------------------------------------
-// IsSignificantKill
-//
-// Returns true for dungeon/raid bosses, world bosses, and rare-elite or
-// higher-ranked creatures (unique named rares such as King Mosh).
-// Plain ELITE rank (rank 1) is intentionally excluded — there are many
-// open-world elite creatures (e.g. Plated Stegodon, Devilsaurs) that spawn
-// in packs and are not meaningful story events.
-// ---------------------------------------------------------------------------
-static bool IsSignificantKill(const Creature* killed)
-{
-    if (!PBC_PTR_VALID(killed)) return false;
-    if (killed->IsDungeonBoss() || killed->isWorldBoss()) return true;
-    uint32 rank = killed->GetCreatureTemplate()->rank;
-    return rank >= CREATURE_ELITE_RAREELITE;
-}
-
-// ---------------------------------------------------------------------------
-// BuildBossLabel
-//
-// Produces a display string for the killed creature, including its subtitle
-// if it has one: "Kel'Thuzad (The Lich's Champion)" or just "Murloc Raider".
-// ---------------------------------------------------------------------------
-static std::string BuildBossLabel(const Creature* killed)
-{
-    std::string label = killed->GetName();
-    const std::string& sub = killed->GetCreatureTemplate()->SubName;
-    if (!sub.empty())
-        label += " (" + sub + ")";
-    return label;
-}
-
 void PBC_PlayerEvents::OnPlayerCreatureKill(Player* killer, Creature* killed)
 {
     if (!g_PBC_Enable) return;
     if (!PBC_PTR_VALID(killer) || !PBC_PTR_VALID(killed)) return;
-    if (!IsSignificantKill(killed)) return;
 
-    // Only fire when the killer is in a group that contains at least one real player.
-    Group* grp = killer->GetGroup();
+    // Track ALL kills into the combat session tracker (before significance filter).
+    PBC_TrackGroupKill(killer, killed);
+}
+
+// ---------------------------------------------------------------------------
+// OnPlayerJustDied
+// ---------------------------------------------------------------------------
+void PBC_PlayerEvents::OnPlayerJustDied(Player* player)
+{
+    if (!g_PBC_Enable) return;
+    if (!PBC_PTR_VALID(player)) return;
+
+    Group* grp = player->GetGroup();
     if (!grp) return;
 
-    if (!PBC_BotIsGroupedWithRealPlayer(killer))
+    uint32_t grpGuid = grp->GetGUID().GetCounter();
+
+    // Mark the group's combat tracker as seriously wounded.
+    // The poll will handle full-wipe detection.
     {
-        // Also allow real players as the killer themselves.
-        WorldSession* killerSess = killer->GetSession();
-        if (!PBC_PTR_VALID(killerSess) || killerSess->IsBot()) return;
+        std::lock_guard<std::mutex> lock(g_PBC_PartyStateMutex);
+        auto it = g_PBC_GroupCombatTrackers.find(grpGuid);
+        if (it != g_PBC_GroupCombatTrackers.end())
+            it->second.seriouslyWounded = true;
     }
-
-    std::string bossLabel = BuildBossLabel(killed);
-
-    // Location: use party leader's zone/area for a specific location string,
-    // matching the same approach used for character location in pbc_character.cpp.
-    std::string location;
-    {
-        Player* locAnchor = killer;
-        if (Player* leader = ObjectAccessor::FindPlayer(grp->GetLeaderGUID()))
-            if (leader->IsInWorld())
-                locAnchor = leader;
-
-        location = PBC_BuildPlaceName(locAnchor);
-    }
-
-    std::string eventSuffix = bossLabel;
-    if (!location.empty())
-        eventSuffix += " in " + location;
-
-    std::string eventLine = PBC_MakeEventLine("The party has slain " + eventSuffix);
-    std::string histLine  = PBC_MakeHistLine("The party fought and slain " + eventSuffix);
-
-    PBC_DispatchGroupEvent(killer, eventLine, histLine, g_PBC_ReplyChanceBossKill);
 }
 
 // ---------------------------------------------------------------------------
@@ -777,7 +699,7 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
                         chatType == CHAT_MSG_RAID  || chatType == CHAT_MSG_RAID_LEADER  ||
                         chatType == CHAT_MSG_RAID_WARNING);
 
-    std::vector<Player*> bots = isGroupChat ? PBC_FindGroupBots(sender) : FindNearbyBots(sender);
+    std::vector<Player*> bots = isGroupChat ? PBC_FindGroupBots(sender) : PBC_FindNearbyBots(sender);
     if (bots.empty())
     {
         if (g_PBC_DebugEnabled)
@@ -804,33 +726,6 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
                  senderName, chatType, ev.respondingChars.size(), bots.size());
 
     PBC_PushEvent(std::move(ev));
-}
-
-// ---------------------------------------------------------------------------
-// PBC_FindGroupBotsExcluding
-// ---------------------------------------------------------------------------
-
-std::vector<Player*> PBC_FindGroupBotsExcluding(Player* player,
-    const std::unordered_set<uint64_t>& excludedGuids)
-{
-    std::vector<Player*> bots;
-    if (!PBC_PTR_VALID(player)) return bots;
-
-    Group* grp = player->GetGroup();
-    if (!grp) return bots;
-
-    for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!PBC_PTR_VALID(member) || member == player) continue;
-        if (!member->IsInWorld()) continue;
-        WorldSession* sess = member->GetSession();
-        if (!PBC_PTR_VALID(sess)) continue;
-        if (!sess->IsBot()) continue;
-        if (excludedGuids.count(member->GetGUID().GetCounter())) continue;
-        bots.push_back(member);
-    }
-    return bots;
 }
 
 // ---------------------------------------------------------------------------
@@ -1016,7 +911,6 @@ static void QueueRelationshipUpdatesAfterCondensation(
 void PBC_PollPartyState()
 {
     if (!g_PBC_Enable) return;
-    if (g_PBC_ReplyChanceLocationChanged == 0) return;
 
     // Collect all groups that have at least one real player and one bot.
     struct GroupInfo
@@ -1026,6 +920,9 @@ void PBC_PollPartyState()
         std::vector<Player*> bots;
         bool allInFlight;
         std::string sharedZone;  // zone-level location (empty if mismatch)
+        // Combat state
+        bool anyAliveInCombat;
+        bool allDead;
     };
 
     std::vector<GroupInfo> groups;
@@ -1069,6 +966,8 @@ void PBC_PollPartyState()
         info.grp = grp;
         info.allInFlight = true;
         info.sharedZone.clear();
+        info.anyAliveInCombat = false;
+        info.allDead = true;
 
         bool firstMember = true;
         bool zoneMismatch = false;
@@ -1097,6 +996,14 @@ void PBC_PollPartyState()
             {
                 zoneMismatch = true;
             }
+
+            // Combat state
+            if (member->IsAlive())
+            {
+                info.allDead = false;
+                if (member->IsInCombat())
+                    info.anyAliveInCombat = true;
+            }
         }
 
         if (zoneMismatch)
@@ -1122,52 +1029,265 @@ void PBC_PollPartyState()
     {
         uint32_t grpGuid = gi.grp->GetGUID().GetCounter();
         PBC_PartyState& state = g_PBC_PartyStates[grpGuid];
+        PBC_GroupCombatTracker& tracker = g_PBC_GroupCombatTrackers[grpGuid];
 
         // --- Flight event ---
-        if (gi.allInFlight && !state.inFlight)
+        if (g_PBC_ReplyChanceLocationChanged > 0)
         {
-            // All members just entered flight — dispatch event.
-            std::string dest = PBC_BuildFlightDestination(gi.anchor);
-            if (dest.empty())
-                dest = "an unknown destination";
-
-            std::string eventLine = PBC_MakeEventLine("The party has started a flight to " + dest);
-            std::string histLine  = PBC_MakeHistLine("The party started a flight to " + dest);
-
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] PollPartyState: flight started — group={} dest={} bots={} chance={}%",
-                         grpGuid, dest, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
-
-            PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
-                                   g_PBC_ReplyChanceLocationChanged);
-        }
-        state.inFlight = gi.allInFlight;
-
-        // --- Location event ---
-        // Skip location checks while the party is in flight.  The event
-        // will fire naturally after landing when the zone settles.
-        if (!gi.allInFlight && !gi.sharedZone.empty())
-        {
-            if (state.location.empty())
+            if (gi.allInFlight && !state.inFlight)
             {
-                // First poll after boot — just record, don't produce event.
-                state.location = gi.sharedZone;
-            }
-            else if (gi.sharedZone != state.location)
-            {
-                // Zone changed — dispatch event.
-                std::string eventLine = PBC_MakeEventLine("Party has arrived in " + gi.sharedZone);
-                std::string histLine  = PBC_MakeHistLine("Party moved to " + gi.sharedZone);
+                // All members just entered flight — dispatch event.
+                std::string dest = PBC_BuildFlightDestination(gi.anchor);
+                if (dest.empty())
+                    dest = "an unknown destination";
+
+                std::string eventLine = PBC_MakeEventLine("The party has started a flight to " + dest);
+                std::string histLine  = PBC_MakeHistLine("The party started a flight to " + dest);
 
                 if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] PollPartyState: location changed — group={} from='{}' to='{}' bots={} chance={}%",
-                             grpGuid, state.location, gi.sharedZone, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
-
-                state.location = gi.sharedZone;
+                    LOG_INFO("server.loading", "[PBC] PollPartyState: flight started — group={} dest={} bots={} chance={}%",
+                             grpGuid, dest, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
 
                 PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
                                        g_PBC_ReplyChanceLocationChanged);
             }
+        }
+        state.inFlight = gi.allInFlight;
+
+        // --- Location event ---
+        if (g_PBC_ReplyChanceLocationChanged > 0)
+        {
+            // Skip location checks while the party is in flight.  The event
+            // will fire naturally after landing when the zone settles.
+            if (!gi.allInFlight && !gi.sharedZone.empty())
+            {
+                if (state.location.empty())
+                {
+                    // First poll after boot — just record, don't produce event.
+                    state.location = gi.sharedZone;
+                }
+                else if (gi.sharedZone != state.location)
+                {
+                    // Zone changed — dispatch event.
+                    std::string eventLine = PBC_MakeEventLine("Party has arrived in " + gi.sharedZone);
+                    std::string histLine  = PBC_MakeHistLine("Party moved to " + gi.sharedZone);
+
+                    if (g_PBC_DebugEnabled)
+                        LOG_INFO("server.loading", "[PBC] PollPartyState: location changed — group={} from='{}' to='{}' bots={} chance={}%",
+                                 grpGuid, state.location, gi.sharedZone, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
+
+                    state.location = gi.sharedZone;
+
+                    PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
+                                           g_PBC_ReplyChanceLocationChanged);
+                }
+            }
+        }
+
+        // --- Combat state tracking ---
+        // Combat started: any alive member in combat and we weren't already tracking
+        if (gi.anyAliveInCombat && !tracker.wasInCombat)
+        {
+            tracker.wasInCombat = true;
+            tracker.combatStartTime = GameTime::GetGameTime().count();
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] PollPartyState: combat started — group={}", grpGuid);
+        }
+
+        // Combat ongoing: sample HP for alive members
+        if (gi.anyAliveInCombat)
+        {
+            for (GroupReference* ref = gi.grp->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* member = ref->GetSource();
+                if (!member || !member->IsInWorld() || !member->IsAlive()) continue;
+                float hpPct = member->GetHealthPct();
+                uint64_t memberGuid = member->GetGUID().GetCounter();
+                auto it = tracker.memberMinHpPct.find(memberGuid);
+                if (it == tracker.memberMinHpPct.end())
+                    tracker.memberMinHpPct[memberGuid] = hpPct;
+                else if (hpPct < it->second)
+                    it->second = hpPct;
+            }
+        }
+
+        // Full wipe: all members dead while was in combat
+        if (gi.allDead && tracker.wasInCombat)
+        {
+            tracker.wiped = true;
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] PollPartyState: party wiped — group={}", grpGuid);
+        }
+
+        // Combat ended: no alive members in combat, not all dead, and was in combat
+        if (!gi.anyAliveInCombat && !gi.allDead && tracker.wasInCombat)
+        {
+            // Skip event dispatch if chance is 0 (still reset tracker below)
+            if (g_PBC_ReplyChanceHardCombat == 0)
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] PollPartyState: combat ended but ReplyChanceHardCombat=0, skipping — group={}", grpGuid);
+                tracker = PBC_GroupCombatTracker();
+                continue;
+            }
+
+            // Evaluate significance
+            bool significant = false;
+
+            // Criterion 1: Notable enemy killed
+            if (!tracker.notableEnemyNames.empty())
+                significant = true;
+
+            // Criterion 2: Seriously wounded
+            if (tracker.seriouslyWounded)
+                significant = true;
+
+            // Criterion 3: Close call — average lowest HP% < 25%
+            if (!tracker.memberMinHpPct.empty())
+            {
+                float sum = 0.0f;
+                for (auto const& [guid, minHp] : tracker.memberMinHpPct)
+                    sum += minHp;
+                float avg = sum / static_cast<float>(tracker.memberMinHpPct.size());
+                if (avg < 25.0f)
+                    significant = true;
+            }
+
+            // Criterion 4: Swarm — kill count >= 10
+            if (tracker.killCount >= 10)
+                significant = true;
+
+            if (significant && !tracker.wiped)
+            {
+                // Build combat user prompt
+                std::string location;
+                {
+                    Player* locAnchor = gi.anchor;
+                    if (Player* leader = ObjectAccessor::FindPlayer(gi.grp->GetLeaderGUID()))
+                        if (leader->IsInWorld())
+                            locAnchor = leader;
+                    location = PBC_BuildPlaceName(locAnchor);
+                }
+
+                // Party composition
+                std::string partyComp;
+                {
+                    std::ostringstream oss;
+                    bool first = true;
+                    for (GroupReference* ref = gi.grp->GetFirstMember(); ref; ref = ref->next())
+                    {
+                        Player* m = ref->GetSource();
+                        if (!m || !m->IsInWorld()) continue;
+                        if (!first) oss << ", ";
+                        first = false;
+                        oss << m->GetName() << " (" << PBC_ClassStr(m->getClass()) << ")";
+                    }
+                    partyComp = oss.str();
+                }
+
+                // Build enemies section dynamically:
+                //   - Always starts with "Regular enemies defeated: ..."
+                //   - If no regular enemies: "Regular enemies defeated: none"
+                //   - If significant enemies exist, appends "\nSignificant enemies defeated: ..."
+                std::string enemiesSection;
+                {
+                    std::ostringstream oss;
+                    oss << "Regular enemies defeated: ";
+                    if (!tracker.killedEnemies.empty())
+                    {
+                        bool first = true;
+                        for (auto const& [name, count] : tracker.killedEnemies)
+                        {
+                            if (!first) oss << ", ";
+                            first = false;
+                            oss << name << " x" << count;
+                        }
+                    }
+                    else
+                    {
+                        oss << "none";
+                    }
+
+                    if (!tracker.notableEnemyNames.empty())
+                    {
+                        oss << "\nSignificant enemies defeated: ";
+                        for (size_t i = 0; i < tracker.notableEnemyNames.size(); ++i)
+                        {
+                            if (i > 0) oss << ", ";
+                            oss << tracker.notableEnemyNames[i];
+                        }
+                    }
+
+                    enemiesSection = oss.str();
+                }
+
+                // Close call
+                bool closeCall = false;
+                if (!tracker.memberMinHpPct.empty())
+                {
+                    float sum = 0.0f;
+                    for (auto const& [guid, minHp] : tracker.memberMinHpPct)
+                        sum += minHp;
+                    float avg = sum / static_cast<float>(tracker.memberMinHpPct.size());
+                    closeCall = (avg < 25.0f);
+                }
+
+                // Duration
+                time_t combatDuration = GameTime::GetGameTime().count() - tracker.combatStartTime;
+                std::string durationStr;
+                {
+                    int minutes = static_cast<int>(combatDuration) / 60;
+                    int seconds = static_cast<int>(combatDuration) % 60;
+                    if (minutes > 0)
+                        durationStr = std::to_string(minutes) + " minute" + (minutes != 1 ? "s" : "");
+                    else
+                        durationStr = std::to_string(seconds) + " second" + (seconds != 1 ? "s" : "");
+                }
+
+                // Build user prompt from template
+                std::string userPrompt = g_PBC_CombatEndedUserPrompt;
+                PBC_ExpandNewlineEscapes(userPrompt);
+                PBC_ReplaceToken(userPrompt, "location", location);
+                PBC_ReplaceToken(userPrompt, "party_composition", partyComp);
+                PBC_ReplaceToken(userPrompt, "enemies_section", enemiesSection);
+                PBC_ReplaceToken(userPrompt, "seriously_wounded", tracker.seriouslyWounded ? "yes" : "no");
+                PBC_ReplaceToken(userPrompt, "close_call", closeCall ? "yes" : "no");
+                PBC_ReplaceToken(userPrompt, "combat_duration", durationStr);
+                PBC_CleanUnknownTokens(userPrompt);
+
+                // Dispatch CombatSummarization event
+                PBC_EventItem ev;
+                ev.type               = PBC_EventType::CombatSummarization;
+                ev.chatType           = CHAT_MSG_PARTY;
+                ev.canCreateEvents    = true;
+                ev.combatSystemPrompt = g_PBC_CombatEndedSystemPrompt;
+                ev.combatUserPrompt   = userPrompt;
+                ev.anchorObjGuid      = gi.anchor->GetGUID();
+
+                if (!PBC_RollGroupBotsIntoEvent(ev, gi.anchor, g_PBC_ReplyChanceHardCombat, "hard-combat"))
+                {
+                    // No bots rolled — still dispatch so silent chars get histLine later
+                }
+
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading",
+                             "[PBC] PollPartyState: combat ended (significant) — group={} kills={} notable={} wounded={} closeCall={} duration={}s bots={}",
+                             grpGuid, tracker.killCount, tracker.notableEnemyNames.size(),
+                             tracker.seriouslyWounded, closeCall, static_cast<int>(combatDuration),
+                             ev.respondingChars.size());
+
+                PBC_PushEvent(std::move(ev));
+            }
+            else
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading",
+                             "[PBC] PollPartyState: combat ended (not significant or wiped) — group={} kills={} wiped={}",
+                             grpGuid, tracker.killCount, tracker.wiped);
+            }
+
+            // Reset tracker regardless of significance
+            tracker = PBC_GroupCombatTracker();
         }
     }
 
@@ -1182,6 +1302,14 @@ void PBC_PollPartyState()
     {
         if (!activeGroups.count(it->first))
             it = g_PBC_PartyStates.erase(it);
+        else
+            ++it;
+    }
+
+    for (auto it = g_PBC_GroupCombatTrackers.begin(); it != g_PBC_GroupCombatTrackers.end(); )
+    {
+        if (!activeGroups.count(it->first))
+            it = g_PBC_GroupCombatTrackers.erase(it);
         else
             ++it;
     }
@@ -1477,6 +1605,46 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
 
         g_PBC_EventThreadDone.store(true);
         return;
+    }
+
+    // -----------------------------------------------------------------------
+    // CombatSummarization: generate the summary first, then treat as Normal.
+    // -----------------------------------------------------------------------
+    if (ev.type == PBC_EventType::CombatSummarization)
+    {
+        if (ev.combatSystemPrompt.empty() || ev.combatUserPrompt.empty())
+        {
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] ProcessEvent: CombatSummarization prompts empty, skipping");
+            g_PBC_EventThreadDone.store(true);
+            return;
+        }
+
+        PBC_LLMResult summary = PBC_CallLLM(ev.combatSystemPrompt, ev.combatUserPrompt);
+        if (!summary.success || summary.text.empty())
+        {
+            LOG_WARN("server.loading", "[PBC] ProcessEvent: CombatSummarization LLM failed");
+            g_PBC_EventThreadDone.store(true);
+            return;
+        }
+
+        ev.eventLine = PBC_MakeEventLine(summary.text);
+        ev.histLine  = PBC_MakeHistLine(summary.text);
+
+        // Send the narrator summary to all real players in the anchor's group,
+        // using the same PBC_PendingAction mechanism as "thinks..." messages.
+        if (g_PBC_DisplayNarratorEvents && !ev.anchorObjGuid.IsEmpty())
+        {
+            PBC_PendingAction narrAction;
+            narrAction.charGuid          = ev.anchorObjGuid;
+            narrAction.text              = ev.eventLine;
+            narrAction.isNarratorMessage = true;
+
+            std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
+            g_PBC_PendingActions.push(std::move(narrAction));
+        }
+
+        // Fall through to Normal processing
     }
 
     // -----------------------------------------------------------------------

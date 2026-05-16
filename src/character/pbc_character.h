@@ -4,6 +4,8 @@
 #include <string>
 #include "Player.h"
 #include "pbc_config.h"
+#include "pbc_scene_helpers.h"
+#include "pbc_equipment_helpers.h"
 
 // ---------------------------------------------------------------------------
 // Snapshot builder (main-thread only)
@@ -139,34 +141,5 @@ std::string PBC_GetRelationshipsBlock(const PBC_CharacterSnapshot& snap);
 // Falls back to just the uppercased name if the player cannot be found.
 // ---------------------------------------------------------------------------
 std::string PBC_BuildTargetInfo(const std::string& name);
-
-// ---------------------------------------------------------------------------
-// Shared game-object-dependent helpers (main-thread only)
-// ---------------------------------------------------------------------------
-
-// Returns the place name for a player's current ground location,
-// e.g. "Lion's Pride Inn (Goldshire, Elwynn Forest)" or "Goldshire (Elwynn Forest)" or just "Elwynn Forest".
-std::string PBC_BuildPlaceName(Player* player);
-
-// Returns the top-level zone name for a player's current location,
-// e.g. "Elwynn Forest" or "Mulgore".  Sub-areas (Goldshire, Crossroads, etc.)
-// are not included — only the root zone in the area hierarchy.
-std::string PBC_BuildZoneName(Player* player);
-
-// Returns the taxi destination name for a flying player, or empty string.
-std::string PBC_BuildFlightDestination(Player* bot);
-
-// Returns combat status string, e.g. "You are not currently in combat."
-// or "You are currently fighting Onyxia."
-std::string PBC_BuildCombatStatusStr(Player* bot);
-
-// Returns the LOS entity list string, e.g. "You see John and Defias Bandit nearby."
-std::string PBC_BuildLosStr(Player* bot);
-
-// Returns equipment description string, e.g.
-// "You have fine equipment made of leather, and wield two rare daggers, called Death's Sting and Deathstriker."
-// When bags are ≥40% full, a bag-space summary is appended, e.g.
-// "You have fine equipment made of leather, and wield two rare daggers, called Death's Sting and Deathstriker. Your bags are almost full."
-std::string PBC_BuildEquipmentStr(Player* bot);
 
 #endif // MOD_PBC_CHARACTER_H

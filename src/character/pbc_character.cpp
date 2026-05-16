@@ -3,26 +3,13 @@
 #include "pbc_database.h"
 #include "pbc_http.h"
 #include "pbc_utils.h"
-#include "pbc_item_helpers.h"
-#include "pbc_wmo_areas.h"
+#include "pbc_scene_helpers.h"
+#include "pbc_equipment_helpers.h"
 #include "Log.h"
 #include "DatabaseEnv.h"
 #include "Player.h"
-#include "Item.h"
-#include "ItemTemplate.h"
-#include "Bag.h"
 #include "ObjectAccessor.h"
-#include "Creature.h"
 #include "Map.h"
-#include "GameTime.h"
-#include "DBCStores.h"
-#include "SpellInfo.h"
-#include "SpellAuraDefines.h"
-#include "SpellAuraEffects.h"
-
-#ifdef MOD_WEATHER_VIBE
-#include "mod_wv_core.h"
-#endif
 
 #include <fmt/core.h>
 #include <sstream>
@@ -53,673 +40,6 @@ void PBC_TriggerCondensation(Player* bot)
 }
 
 // ---------------------------------------------------------------------------
-// Race / class / gender helpers
-// ---------------------------------------------------------------------------
-
-static std::string RaceStr(uint8_t race)
-{
-    switch (race)
-    {
-        case RACE_HUMAN:         return "Human";
-        case RACE_ORC:           return "Orc";
-        case RACE_DWARF:         return "Dwarf";
-        case RACE_NIGHTELF:      return "Night Elf";
-        case RACE_UNDEAD_PLAYER: return "Forsaken";
-        case RACE_TAUREN:        return "Tauren";
-        case RACE_GNOME:         return "Gnome";
-        case RACE_TROLL:         return "Troll";
-        case RACE_BLOODELF:      return "Blood Elf";
-        case RACE_DRAENEI:       return "Draenei";
-        default:                 return "Unknown";
-    }
-}
-
-static std::string ClassStr(uint8_t cls)
-{
-    switch (cls)
-    {
-        case CLASS_WARRIOR:      return "Warrior";
-        case CLASS_PALADIN:      return "Paladin";
-        case CLASS_HUNTER:       return "Hunter";
-        case CLASS_ROGUE:        return "Rogue";
-        case CLASS_PRIEST:       return "Priest";
-        case CLASS_DEATH_KNIGHT: return "Death Knight";
-        case CLASS_SHAMAN:       return "Shaman";
-        case CLASS_MAGE:         return "Mage";
-        case CLASS_WARLOCK:      return "Warlock";
-        case CLASS_DRUID:        return "Druid";
-        default:                 return "Adventurer";
-    }
-}
-
-static std::string GenderStr(uint8_t gender)
-{
-    return gender == GENDER_FEMALE ? "female" : "male";
-}
-
-// ---------------------------------------------------------------------------
-// Game-object-dependent location helpers (main-thread only)
-// ---------------------------------------------------------------------------
-
-std::string PBC_BuildPlaceName(Player* player)
-{
-    uint32_t areaId = player->GetAreaId();
-
-    // Collect the full area hierarchy by walking up the parent chain via zone field.
-    // e.g. "Goldshire" -> "Elwynn Forest"
-    std::vector<std::string> names;
-    uint32_t currentId = areaId;
-    int maxDepth = 10; // safety guard against unexpected cycles
-
-    while (currentId != 0 && maxDepth-- > 0)
-    {
-        AreaTableEntry const* entry = sAreaTableStore.LookupEntry(currentId);
-        if (!entry)
-            break;
-
-        std::string name = entry->area_name[0];
-        if (!name.empty())
-            names.push_back(name);
-
-        currentId = entry->zone;
-    }
-
-    // Try to get a more specific WMO area name when indoors.
-    // The server's WMOAreaTableEntry doesn't load name fields, so we parse
-    // the DBC ourselves (pbc_wmo_areas) to get names like "Lion's Pride Inn".
-    std::string wmoName;
-    if (!g_PBC_WmoAreaNames.empty())
-    {
-        uint32_t mogpFlags;
-        int32_t adtId, rootId, groupId;
-        if (player->GetMap()->GetAreaInfo(
-                player->GetPhaseMask(),
-                player->GetPositionX(),
-                player->GetPositionY(),
-                player->GetPositionZ(),
-                mogpFlags, adtId, rootId, groupId))
-        {
-            wmoName = PBC_GetWmoAreaName(rootId, adtId, groupId);
-        }
-    }
-
-    // If we got a WMO name that differs from the first area name, prepend it.
-    // e.g. names = ["Goldshire", "Elwynn Forest"], wmoName = "Lion's Pride Inn"
-    //      -> "Lion's Pride Inn (Goldshire, Elwynn Forest)"
-    if (!wmoName.empty() && (names.empty() || wmoName != names[0]))
-    {
-        names.insert(names.begin(), wmoName);
-    }
-
-    if (names.empty())
-        return "Unknown";
-
-    if (names.size() == 1)
-        return names[0];
-
-    // Format: "SubZone (Parent, GrandParent, ...)"
-    // e.g. "Lion's Pride Inn (Goldshire, Elwynn Forest)"
-    std::string result = names[0] + " (";
-    for (size_t i = 1; i < names.size(); ++i)
-    {
-        if (i > 1)
-            result += ", ";
-        result += names[i];
-    }
-    result += ")";
-    return result;
-}
-
-std::string PBC_BuildZoneName(Player* player)
-{
-    // Walk up the area hierarchy and return the root zone name
-    // (the topmost entry whose zone field is 0, or the last name found).
-    uint32_t currentId = player->GetAreaId();
-    std::string rootName;
-    int maxDepth = 10;
-
-    while (currentId != 0 && maxDepth-- > 0)
-    {
-        AreaTableEntry const* entry = sAreaTableStore.LookupEntry(currentId);
-        if (!entry)
-            break;
-
-        std::string name = entry->area_name[0];
-        if (!name.empty())
-            rootName = name;
-
-        currentId = entry->zone;
-    }
-
-    return rootName.empty() ? "Unknown" : rootName;
-}
-
-std::string PBC_BuildFlightDestination(Player* bot)
-{
-    const std::deque<uint32>& path = bot->m_taxi.GetPath();
-    if (!path.empty())
-    {
-        uint32 finalNodeId = path.back();
-        if (TaxiNodesEntry const* node = sTaxiNodesStore.LookupEntry(finalNodeId))
-        {
-            if (node->name[0] && node->name[0][0] != '\0')
-                return node->name[0];
-        }
-    }
-    return {};
-}
-
-
-std::string PBC_BuildCombatStatusStr(Player* bot)
-{
-    if (!bot->IsInCombat())
-        return "You are not currently in combat.";
-    if (Unit* victim = bot->GetVictim())
-        return "You are currently fighting " + std::string(victim->GetName()) + ".";
-    return "You are currently in combat.";
-}
-
-std::string PBC_BuildLosStr(Player* bot)
-{
-    constexpr float kLosRadius = 30.0f;
-    std::vector<std::string> entries;
-
-    for (auto const& pair : ObjectAccessor::GetPlayers())
-    {
-        Player* p = pair.second;
-        if (!p || p == bot) continue;
-        if (!p->IsInWorld() || p->IsGameMaster()) continue;
-        if (p->GetMap() != bot->GetMap()) continue;
-        if (!bot->IsWithinDistInMap(p, kLosRadius)) continue;
-        if (!bot->IsWithinLOS(p->GetPositionX(), p->GetPositionY(), p->GetPositionZ())) continue;
-        entries.push_back(std::string(p->GetName()));
-    }
-
-    Map* map = bot->GetMap();
-    if (map)
-    {
-        for (auto const& pair : map->GetCreatureBySpawnIdStore())
-        {
-            Creature* c = pair.second;
-            if (!c) continue;
-            if (c->GetGUID() == bot->GetGUID()) continue;
-            if (!bot->IsWithinDistInMap(c, kLosRadius)) continue;
-            if (!bot->IsWithinLOS(c->GetPositionX(), c->GetPositionY(), c->GetPositionZ())) continue;
-            if (c->IsPet() || c->IsTotem()) continue;
-            entries.push_back(std::string(c->GetName()));
-        }
-    }
-
-    return PBC_NaturalList(entries);
-}
-
-// ---------------------------------------------------------------------------
-// Equipment helpers (main-thread only)
-// ---------------------------------------------------------------------------
-
-static std::string EquipQualityStr(uint32 quality)
-{
-    switch (quality)
-    {
-        case ITEM_QUALITY_UNCOMMON: return "uncommon";
-        case ITEM_QUALITY_RARE:     return "rare";
-        case ITEM_QUALITY_EPIC:     return "epic";
-        case ITEM_QUALITY_LEGENDARY:return "legendary";
-        case ITEM_QUALITY_ARTIFACT: return "artifact";
-        case ITEM_QUALITY_HEIRLOOM: return "heirloom";
-        default:                    return "common";
-    }
-}
-
-// Returns a human-readable off-hand type string (shield, relic, holdable, etc.)
-static std::string EquipOffhandTypeStr(ItemTemplate const* tmpl)
-{
-    if (!tmpl) return "off-hand item";
-    if (tmpl->Class == ITEM_CLASS_WEAPON)
-        return PBC_WeaponTypeStr(tmpl->SubClass);
-    if (tmpl->Class == ITEM_CLASS_ARMOR)
-    {
-        switch (tmpl->SubClass)
-        {
-            case ITEM_SUBCLASS_ARMOR_SHIELD:  return "shield";
-            case ITEM_SUBCLASS_ARMOR_BUCKLER: return "buckler";
-            case ITEM_SUBCLASS_ARMOR_LIBRAM:  return "libram";
-            case ITEM_SUBCLASS_ARMOR_IDOL:    return "idol";
-            case ITEM_SUBCLASS_ARMOR_TOTEM:   return "totem";
-            case ITEM_SUBCLASS_ARMOR_SIGIL:   return "sigil";
-            default: break;
-        }
-        if (tmpl->InventoryType == INVTYPE_HOLDABLE)
-            return "off-hand focus";
-    }
-    return "off-hand item";
-}
-
-// Builds a phrase like "a rare dagger" or "an epic staff called Devastation".
-// For rare+ items the name is included.
-static std::string DescribeWeapon(ItemTemplate const* tmpl)
-{
-    if (!tmpl) return "";
-    std::string type = PBC_WeaponTypeStr(tmpl->SubClass);
-    if (tmpl->Quality >= ITEM_QUALITY_RARE)
-    {
-        std::string qual = EquipQualityStr(tmpl->Quality);
-        return std::string(PBC_ArticleFor(qual)) + " " + qual + " " + type + " called " + tmpl->Name1;
-    }
-    return std::string(PBC_ArticleFor(type)) + " " + type;
-}
-
-// Builds a phrase for an off-hand item (shield, relic, holdable, or weapon).
-static std::string DescribeOffhand(ItemTemplate const* tmpl)
-{
-    if (!tmpl) return "";
-    if (tmpl->Class == ITEM_CLASS_WEAPON)
-        return DescribeWeapon(tmpl);
-    std::string type = EquipOffhandTypeStr(tmpl);
-    if (tmpl->Quality >= ITEM_QUALITY_RARE)
-    {
-        std::string qual = EquipQualityStr(tmpl->Quality);
-        return std::string(PBC_ArticleFor(qual)) + " " + qual + " " + type + " called " + tmpl->Name1;
-    }
-    return std::string(PBC_ArticleFor(type)) + " " + type;
-}
-
-// Returns a bag-space summary string for roleplaying purposes.
-// Returns empty string when bags are less than ~40% full (nothing noteworthy).
-// Gradations: about half full → getting full → almost full → nearly full → completely full.
-static std::string BuildBagSpaceStr(Player* bot)
-{
-    // Backpack: INVENTORY_SLOT_BAG_0, slots INVENTORY_SLOT_ITEM_START..INVENTORY_SLOT_ITEM_END-1
-    uint32 backpackTotal = INVENTORY_SLOT_ITEM_END - INVENTORY_SLOT_ITEM_START;
-    uint32 backpackUsed  = 0;
-    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
-    {
-        if (bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
-            backpackUsed++;
-    }
-
-    uint32 totalSlots = backpackTotal;
-    uint32 usedSlots  = backpackUsed;
-
-    // Equipped bags (slots 19-22)
-    for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
-    {
-        Bag* bag = bot->GetBagByPos(bagSlot);
-        if (!bag)
-            continue;
-        uint32 bagSize = bag->GetBagSize();
-        uint32 bagFree = bag->GetFreeSlots();
-        totalSlots += bagSize;
-        usedSlots  += (bagSize - bagFree);
-    }
-
-    float fillPct = (totalSlots > 0) ? (float(usedSlots) / float(totalSlots) * 100.0f) : 0.0f;
-
-    if (fillPct < 40.0f)
-        return "";
-    if (fillPct <= 60.0f)
-        return "Your bags are about half full.";
-    if (fillPct <= 80.0f)
-        return "Your bags are getting full.";
-    if (fillPct <= 95.0f)
-        return "Your bags are almost full.";
-    if (fillPct < 100.0f)
-        return "Your bags are nearly full.";
-    return "Your bags are completely full.";
-}
-
-std::string PBC_BuildEquipmentStr(Player* bot)
-{
-    // --- Armor assessment ---
-    // Slots to consider for armor quality (exclude weapon slots)
-    static const uint8 armorSlots[] = {
-        EQUIPMENT_SLOT_HEAD, EQUIPMENT_SLOT_NECK, EQUIPMENT_SLOT_SHOULDERS,
-        EQUIPMENT_SLOT_BODY, EQUIPMENT_SLOT_CHEST, EQUIPMENT_SLOT_WAIST,
-        EQUIPMENT_SLOT_LEGS, EQUIPMENT_SLOT_FEET, EQUIPMENT_SLOT_WRISTS,
-        EQUIPMENT_SLOT_HANDS, EQUIPMENT_SLOT_FINGER1, EQUIPMENT_SLOT_FINGER2,
-        EQUIPMENT_SLOT_TRINKET1, EQUIPMENT_SLOT_TRINKET2,
-        EQUIPMENT_SLOT_BACK, EQUIPMENT_SLOT_TABARD
-    };
-
-    int poorCount = 0, uncommonCount = 0, rareCount = 0, epicCount = 0, legendaryCount = 0;
-    int clothCount = 0, leatherCount = 0, mailCount = 0, plateCount = 0;
-    int totalArmor = 0;
-
-    for (uint8 slot : armorSlots)
-    {
-        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
-        if (!item) continue;
-        ItemTemplate const* tmpl = item->GetTemplate();
-        if (!tmpl) continue;
-        totalArmor++;
-
-        switch (tmpl->Quality)
-        {
-            case ITEM_QUALITY_POOR:
-            case ITEM_QUALITY_NORMAL:   poorCount++;      break;
-            case ITEM_QUALITY_UNCOMMON: uncommonCount++;   break;
-            case ITEM_QUALITY_RARE:     rareCount++;       break;
-            case ITEM_QUALITY_EPIC:     epicCount++;       break;
-            case ITEM_QUALITY_LEGENDARY:
-            case ITEM_QUALITY_ARTIFACT:
-            case ITEM_QUALITY_HEIRLOOM: legendaryCount++;  break;
-        }
-
-        if (tmpl->Class == ITEM_CLASS_ARMOR)
-        {
-            switch (tmpl->SubClass)
-            {
-                case ITEM_SUBCLASS_ARMOR_CLOTH:   clothCount++;   break;
-                case ITEM_SUBCLASS_ARMOR_LEATHER: leatherCount++;  break;
-                case ITEM_SUBCLASS_ARMOR_MAIL:    mailCount++;     break;
-                case ITEM_SUBCLASS_ARMOR_PLATE:   plateCount++;    break;
-            }
-        }
-    }
-
-    // Build armor quality description
-    std::string armorDesc;
-
-    if (totalArmor == 0)
-    {
-        armorDesc = "You have no armor";
-    }
-    else
-    {
-        // Find dominant quality tier; on ties the highest quality wins
-        struct Tier { int count; const char* adj; };
-        Tier tiers[] = {
-            { poorCount,       "simple" },
-            { uncommonCount,   "modest" },
-            { rareCount,       "fine" },
-            { epicCount,       "excellent" },
-            { legendaryCount,  "exceptional" }
-        };
-
-        int maxCount = 0;
-        const char* qualityAdj = "simple";
-        for (const auto& t : tiers)
-        {
-            if (t.count >= maxCount && t.count > 0)
-            {
-                maxCount = t.count;
-                qualityAdj = t.adj;
-            }
-        }
-
-        // Find dominant armor material (cloth/leather/mail/plate)
-        const char* material = nullptr;
-        int matMax = 0;
-        struct Mat { int count; const char* name; };
-        Mat mats[] = { {clothCount, "cloth"}, {leatherCount, "leather"}, {mailCount, "mail"}, {plateCount, "plate"} };
-        for (const auto& m : mats)
-        {
-            if (m.count > matMax)
-            {
-                matMax = m.count;
-                material = m.name;
-            }
-        }
-
-        armorDesc = "You have " + std::string(qualityAdj) + " equipment";
-        if (material && matMax >= 2)
-            armorDesc += " made of " + std::string(material);
-    }
-
-    // --- Weapon assessment ---
-    Item* mainItem  = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
-    Item* offItem   = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
-    Item* rangeItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
-
-    ItemTemplate const* mhT = mainItem  ? mainItem->GetTemplate()  : nullptr;
-    ItemTemplate const* ohT = offItem   ? offItem->GetTemplate()   : nullptr;
-    ItemTemplate const* rgT = rangeItem ? rangeItem->GetTemplate() : nullptr;
-
-    bool is2H       = mhT && mhT->InventoryType == INVTYPE_2HWEAPON;
-    bool mhIsWeapon = mhT && mhT->Class == ITEM_CLASS_WEAPON;
-    bool ohIsWeapon = ohT && ohT->Class == ITEM_CLASS_WEAPON;
-    bool rgIsWeapon = rgT && rgT->Class == ITEM_CLASS_WEAPON;
-
-    std::string weaponDesc;
-
-    if (!mhT && !ohT && !rgT)
-    {
-        weaponDesc = "you are unarmed";
-    }
-    else if (is2H)
-    {
-        weaponDesc = "you wield " + DescribeWeapon(mhT);
-        if (rgIsWeapon)
-            weaponDesc += " and carry " + DescribeWeapon(rgT);
-    }
-    else if (mhT && ohT)
-    {
-        // Dual wield of same weapon type, both rare+: special phrasing
-        if (ohIsWeapon && mhIsWeapon && mhT->SubClass == ohT->SubClass &&
-            mhT->Quality >= ITEM_QUALITY_RARE && ohT->Quality >= ITEM_QUALITY_RARE)
-        {
-            std::string qual = EquipQualityStr(mhT->Quality);
-            std::string type = PBC_WeaponTypeStr(mhT->SubClass);
-            weaponDesc = "you wield two " + qual + " " + type + "s, called " + mhT->Name1 + " and " + ohT->Name1;
-        }
-        else
-        {
-            std::string mhDesc = mhIsWeapon ? DescribeWeapon(mhT) : DescribeOffhand(mhT);
-            std::string ohDesc = ohIsWeapon ? DescribeWeapon(ohT) : DescribeOffhand(ohT);
-            weaponDesc = "you wield " + mhDesc + " and " + ohDesc;
-        }
-        if (rgIsWeapon)
-            weaponDesc += ", and carry " + DescribeWeapon(rgT);
-    }
-    else if (mhT)
-    {
-        weaponDesc = "you wield " + (mhIsWeapon ? DescribeWeapon(mhT) : DescribeOffhand(mhT));
-        if (rgIsWeapon)
-            weaponDesc += " and carry " + DescribeWeapon(rgT);
-    }
-    else if (ohT)
-    {
-        weaponDesc = "you carry " + DescribeOffhand(ohT);
-    }
-    else
-    {
-        // Only ranged
-        weaponDesc = "you carry " + DescribeWeapon(rgT);
-    }
-
-    std::string result = armorDesc + ", and " + weaponDesc + ".";
-
-    // Append bag space summary when noteworthy (≥40% full)
-    std::string bagSpace = BuildBagSpaceStr(bot);
-    if (!bagSpace.empty())
-        result += " " + bagSpace;
-
-    return result;
-}
-
-// ---------------------------------------------------------------------------
-// Scene helpers
-// ---------------------------------------------------------------------------
-
-static std::string TimeOfDayLabel()
-{
-    // Derive time-of-day from the real server clock (UTC).
-    time_t rawTime = static_cast<time_t>(GameTime::GetGameTime().count());
-    struct tm* t = gmtime(&rawTime);
-    int hour = t ? t->tm_hour : 12;
-
-    if (hour >= 0  && hour < 2)  return "early night";
-    if (hour >= 2  && hour < 4)  return "night";
-    if (hour >= 4  && hour < 6)  return "late night";
-    if (hour >= 6  && hour < 8)  return "early morning";
-    if (hour >= 8  && hour < 10) return "morning";
-    if (hour >= 10 && hour < 12) return "late morning";
-    if (hour >= 12 && hour < 14) return "noon";
-    if (hour >= 14 && hour < 16) return "afternoon";
-    if (hour >= 16 && hour < 18) return "late afternoon";
-    if (hour >= 18 && hour < 20) return "early evening";
-    if (hour >= 20 && hour < 22) return "late evening";
-    return "early night";
-}
-
-#ifdef MOD_WEATHER_VIBE
-// Returns the weather clause to append after the time-of-day, e.g.
-// "it's foggy", "it's raining lightly", "there is a heavy sandstorm".
-// For WEATHER_STATE_FINE (clear sky) returns "the weather is fine" to
-// provide reliable context instead of silence.
-static char const* WeatherClause(WeatherState s)
-{
-    switch (s)
-    {
-        case WEATHER_STATE_FINE:             return "the weather is fine";
-        case WEATHER_STATE_FOG:              return "it's foggy";
-        case WEATHER_STATE_LIGHT_RAIN:       return "it's raining lightly";
-        case WEATHER_STATE_MEDIUM_RAIN:      return "it's raining";
-        case WEATHER_STATE_HEAVY_RAIN:       return "it's raining heavily";
-        case WEATHER_STATE_LIGHT_SNOW:       return "it's snowing lightly";
-        case WEATHER_STATE_MEDIUM_SNOW:      return "it's snowing";
-        case WEATHER_STATE_HEAVY_SNOW:       return "it's snowing heavily";
-        case WEATHER_STATE_LIGHT_SANDSTORM:  return "there is a light sandstorm";
-        case WEATHER_STATE_MEDIUM_SANDSTORM: return "there is a sandstorm";
-        case WEATHER_STATE_HEAVY_SANDSTORM:  return "there is a heavy sandstorm";
-        case WEATHER_STATE_THUNDERS:         return "there is a thunderstorm";
-        default:                             return nullptr;
-    }
-}
-#endif
-
-static std::string BuildSceneStr(Player* bot)
-{
-    std::string timeLabel = TimeOfDayLabel();
-
-    // Build the time/weather suffix (lowercase, no trailing period — it will be
-    // appended after a comma inside a larger sentence).
-    std::string timeWeather;
-
-#ifdef MOD_WEATHER_VIBE
-    if (bot && sWeatherVibeCore.IsEnabled())
-    {
-        uint32 zoneId = bot->GetZoneId();
-        auto const& lastApplied = sWeatherVibeCore.GetLastApplied();
-        auto it = lastApplied.find(zoneId);
-        if (it != lastApplied.end() && it->second.hasValue)
-        {
-            char const* clause = WeatherClause(it->second.state);
-            if (clause)
-            {
-                timeWeather = "it's " + timeLabel + " and " + std::string(clause);
-                // When indoors and weather is not fine, note that the character is sheltered
-                if (!bot->IsOutdoors() && it->second.state != WEATHER_STATE_FINE)
-                    timeWeather += ", but you are inside and sheltered from the weather";
-            }
-        }
-    }
-#endif
-
-    if (timeWeather.empty())
-        timeWeather = "it's " + timeLabel;
-
-    // --- Taxi flight ---
-    if (bot && bot->IsInFlight())
-    {
-        std::string dest = PBC_BuildFlightDestination(bot);
-        if (!dest.empty())
-            return "You are currently flying to " + dest + ", " + timeWeather + ".";
-        return "You are currently flying, " + timeWeather + ".";
-    }
-
-    // --- Mounted ---
-    if (bot && bot->IsMounted())
-    {
-        std::string place = PBC_BuildPlaceName(bot);
-        auto auraEffects = bot->GetAuraEffectsByType(SPELL_AURA_MOUNTED);
-        if (!auraEffects.empty())
-        {
-            SpellInfo const* spellInfo = auraEffects.front()->GetSpellInfo();
-            std::string mountName = spellInfo->SpellName[0];
-            bool isFlyingMount = (spellInfo->Effects[1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
-                                  spellInfo->Effects[2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED);
-            if (isFlyingMount)
-                return "You are currently flying " + mountName + " in " + place + ", " + timeWeather + ".";
-            else
-                return "You are currently riding " + mountName + " in " + place + ", " + timeWeather + ".";
-        }
-        // Fallback if aura not found
-        return "You are currently riding a mount in " + place + ", " + timeWeather + ".";
-    }
-
-    // --- On foot ---
-    std::string place = PBC_BuildPlaceName(bot);
-    return "You are currently on foot in " + place + ", " + timeWeather + ".";
-}
-
-static std::string RoleStr(Player* bot)
-{
-    switch (bot->getClass())
-    {
-        case CLASS_WARRIOR:      return bot->GetSpec() == 2 ? "tank" : "melee DPS";
-        case CLASS_PALADIN:      return "paladin";
-        case CLASS_HUNTER:       return "ranged DPS";
-        case CLASS_ROGUE:        return "melee DPS";
-        case CLASS_PRIEST:       return "healer";
-        case CLASS_DEATH_KNIGHT: return "death knight";
-        case CLASS_SHAMAN:       return "shaman";
-        case CLASS_MAGE:         return "ranged DPS";
-        case CLASS_WARLOCK:      return "ranged DPS";
-        case CLASS_DRUID:        return "druid";
-        default:                 return "adventurer";
-    }
-}
-
-// ---------------------------------------------------------------------------
-// BuildGroupStatusStr  (main-thread only)
-//
-// Returns the {char_group} string for the given bot, reflecting the party
-// leader first (as "Commander") followed by the remaining members.
-// ---------------------------------------------------------------------------
-
-static std::string BuildGroupStatusStr(Player* bot)
-{
-    if (!bot) return "You are not currently in a group.";
-
-    Group* grp = bot->GetGroup();
-    if (!grp) return "You are not currently in a group.";
-
-    ObjectGuid leaderGuid = grp->GetLeaderGUID();
-
-    auto memberInfo = [](Player* member) -> std::string {
-        return member->GetName()
-             + " (" + GenderStr(member->getGender())
-             + " " + RaceStr(member->getRace())
-             + " " + ClassStr(member->getClass()) + ")";
-    };
-
-    std::string leaderStr;
-    std::string members;
-    for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!member || member == bot || !member->IsInWorld()) continue;
-        if (member->GetGUID() == leaderGuid)
-            leaderStr = memberInfo(member);
-        else
-        {
-            if (!members.empty()) members += ", ";
-            members += memberInfo(member);
-        }
-    }
-
-    if (leaderStr.empty() && members.empty())
-        return "You are currently in a group.";
-    if (leaderStr.empty())
-        return "You are currently in a group with the following members: " + members + ".";
-    if (members.empty())
-        return "You are currently in a group led by " + leaderStr + ".";
-    return "You are currently in a group led by " + leaderStr
-         + " with the following members: " + members + ".";
-}
-
-// ---------------------------------------------------------------------------
 // PBC_SubstituteVars  (main-thread only)
 // ---------------------------------------------------------------------------
 
@@ -738,15 +58,15 @@ std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot, const std::
     if (bot)
     {
         replace("char_name",   bot->GetName());
-        replace("char_gender", GenderStr(bot->getGender()));
-        replace("char_race",   RaceStr(bot->getRace()));
-        replace("char_class",  ClassStr(bot->getClass()));
-        replace("char_role",   RoleStr(bot));
+        replace("char_gender", PBC_GenderStr(bot->getGender()));
+        replace("char_race",   PBC_RaceStr(bot->getRace()));
+        replace("char_class",  PBC_ClassStr(bot->getClass()));
+        replace("char_role",   PBC_RoleStr(bot));
         replace("char_level",  std::to_string(bot->GetLevel()));
         { uint32 m = bot->GetMoney(); replace("char_gold", std::to_string(m / 10000) + "g " + std::to_string((m % 10000) / 100) + "s"); }
 
         // Scene (location + travel state + time of day + optional weather)
-        replace("scene", BuildSceneStr(bot));
+        replace("scene", PBC_BuildSceneStr(bot));
 
         // Combat status
         replace("combat_status", PBC_BuildCombatStatusStr(bot));
@@ -755,7 +75,7 @@ std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot, const std::
         replace("equipment", PBC_BuildEquipmentStr(bot));
 
         // Group status
-        replace("char_group", BuildGroupStatusStr(bot));
+        replace("char_group", PBC_BuildGroupStatusStr(bot));
 
         // Line-of-sight
         replace("char_los", PBC_BuildLosStr(bot));
@@ -1214,15 +534,15 @@ PBC_CharacterSnapshot PBC_SnapshotCharacter(Player* bot)
     snap.context       = PBC_GetCharacterContext(bot);
 
     // Capture raw template variables
-    snap.charGender   = GenderStr(bot->getGender());
-    snap.charRace     = RaceStr(bot->getRace());
-    snap.charClass    = ClassStr(bot->getClass());
-    snap.charRole     = RoleStr(bot);
+    snap.charGender   = PBC_GenderStr(bot->getGender());
+    snap.charRace     = PBC_RaceStr(bot->getRace());
+    snap.charClass    = PBC_ClassStr(bot->getClass());
+    snap.charRole     = PBC_RoleStr(bot);
     snap.charLevel    = std::to_string(bot->GetLevel());
     { uint32 m = bot->GetMoney(); snap.charGold = std::to_string(m / 10000) + "g " + std::to_string((m % 10000) / 100) + "s"; }
 
     // Scene (location + travel state + time of day + optional weather)
-    snap.scene = BuildSceneStr(bot);
+    snap.scene = PBC_BuildSceneStr(bot);
 
     // Combat status
     snap.combatStatus = PBC_BuildCombatStatusStr(bot);
@@ -1231,7 +551,7 @@ PBC_CharacterSnapshot PBC_SnapshotCharacter(Player* bot)
     snap.equipment = PBC_BuildEquipmentStr(bot);
 
     // Group status
-    snap.charGroup = BuildGroupStatusStr(bot);
+    snap.charGroup = PBC_BuildGroupStatusStr(bot);
 
     // Line-of-sight
     snap.charLos = PBC_BuildLosStr(bot);
@@ -1290,9 +610,9 @@ std::string PBC_BuildTargetInfo(const std::string& name)
         return upper;
 
     std::string gender = p->getGender() == GENDER_FEMALE ? "FEMALE" : "MALE";
-    std::string race   = RaceStr(p->getRace());
+    std::string race   = PBC_RaceStr(p->getRace());
     std::transform(race.begin(), race.end(), race.begin(), ::toupper);
-    std::string cls    = ClassStr(p->getClass());
+    std::string cls    = PBC_ClassStr(p->getClass());
     std::transform(cls.begin(), cls.end(), cls.begin(), ::toupper);
 
     return upper + ", " + gender + " " + race + " " + cls;

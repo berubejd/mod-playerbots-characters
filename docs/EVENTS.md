@@ -9,7 +9,7 @@ Events are in-game occurrences that characters may react to. When an event fires
 | **Party found item** | A party member picks up a rare (blue) or higher weapon or armor. | `*The party has found a legendary two-handed mace named Bane of the Damned*` |
 | **Character won duel** | A party member wins a duel. | `*John just won the duel against Joe*` |
 | **Character leveled up** | A party member reaches every 5th level (5, 10, 15 …). Other level-ups are ignored. | `*John can feel their abilities growing stronger*` |
-| **Boss slain** | A party member lands the killing blow on a dungeon/raid boss, world boss, or named elite. | `*The party has slain Kel'Thuzad (The Lich's Champion) in Naxxramas*` |
+| **Significant combat ended** | A significant combat encounter ends (polled every 5s). A combat is significant if any notable enemy was killed, a party member died, the party had a close call (HP dropped very low), or 10+ enemies were slain. A preliminary LLM call generates a one-line narrative summary. | `*After a grueling fight against VanCleef and his lieutenants in the Deadmines, the party stood victorious — though just barely, with several members heavily wounded.*` |
 | **Quest taken** | The party leader accepts a quest from an NPC, game object, or item. A preliminary LLM call generates a one-line narrative summary. | `*The party has agreed to help Farmer Fung with his troubles*` |
 | **Quest completed** | The party leader completes a quest. A preliminary LLM call generates a one-line narrative summary. | `*The party has delivered the supplies to Crossroads*` |
 | **Party flight started** | All party members are in flight at the same time (polled every 5 s). | `*The party has started a flight to Crossroads*` |

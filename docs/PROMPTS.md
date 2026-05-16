@@ -38,6 +38,8 @@ Your custom file will not be overwritten by module updates. To revert to the def
 | `QuestTaken.user` | User prompt for the quest taken summary. Supports quest-related template variables. |
 | `RelationshipUpdate.system` | System prompt for the relationship update LLM call. Produces a brief impression (1–2 short sentences) of how the character feels about another character. |
 | `RelationshipUpdate.user` | User prompt for the relationship update. Supports relationship-related template variables. |
+| `CombatEnded.system` | System prompt for the combat ended summary LLM call. Produces a one-line narrative summary of the fight. |
+| `CombatEnded.user` | User prompt for the combat ended summary. Supports combat-related template variables. |
 
 
 ## Template Variables
@@ -85,3 +87,17 @@ These variables can be used in the `QuestCompleted.user` and `QuestTaken.user` p
 - `{quest_log_description}` — the objectives text shown in the quest log
 - `{quest_completion_log}` — the completion log text
 - `{quest_reward_text}` — the NPC's reward speech: what the quest-giver says when handing out the reward upon turn-in
+
+### Combat Prompt Variables
+
+These variables can be used in the `CombatEnded.user` prompt.
+
+- `{location}` — where the fight took place
+- `{party_composition}` — list of party members as `Name (Class)`, e.g. `John (Warrior), Jane (Priest)`
+- `{enemies_section}` — dynamically built enemy list. Examples:
+  - Regular enemies only: `Regular enemies defeated: Defias Bandit x5, Scarab x3`
+  - Significant enemies only: `Regular enemies defeated: none\nSignificant enemies defeated: VanCleef (Defias Kingpin)`
+  - Both: `Regular enemies defeated: Defias Bandit x5\nSignificant enemies defeated: VanCleef (Defias Kingpin)`
+- `{seriously_wounded}` — "yes" if a party member died during the fight, "no" otherwise
+- `{close_call}` — "yes" if the party's average lowest HP dropped below 25%, "no" otherwise
+- `{combat_duration}` — human-readable fight duration, e.g. "2 minutes" or "45 seconds"

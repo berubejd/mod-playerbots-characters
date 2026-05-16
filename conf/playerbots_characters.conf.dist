@@ -240,14 +240,19 @@ PBC.ReplyChanceDuel = 5
 #     Default:     5
 PBC.ReplyChanceLevelUp = 5
 
-# PBC.ReplyChanceBossKill
+# PBC.ReplyChanceHardCombat
 #     Description: The percent chance (0-100) that each character in the party would react
-#                  when the party slays a significant opponent: a dungeon or raid boss,
-#                  a world boss, or a named elite creature.
-#                  The event is always written to all character histories regardless of
-#                  whether anyone rolls to respond.
-#     Default:     35
-PBC.ReplyChanceBossKill = 35
+#                  when a significant combat encounter ends. A combat is considered significant
+#                  if any of the following are true:
+#                  - A notable enemy (boss, named elite) was killed during the fight
+#                  - A party member died (seriously wounded)
+#                  - The party had a close call (average lowest HP dropped below 25%)
+#                  - The party killed 10+ enemies (swarm fight)
+#                  The LLM first generates a short narrative summary of the combat, then each
+#                  character independently rolls this chance to either use the summary as their
+#                  current event (and reply) or write it directly into their history.
+#     Default:     25
+PBC.ReplyChanceHardCombat = 25
 
 # PBC.ReplyChanceQuestCompleted
 #     Description: The percent chance (0-100) that each character in the party would react

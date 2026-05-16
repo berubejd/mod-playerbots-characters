@@ -75,7 +75,7 @@ uint32_t g_PBC_RollPenaltyOnAnswer  = 45;
 uint32_t g_PBC_ReplyChanceItem     = 5;
 uint32_t g_PBC_ReplyChanceDuel     = 5;
 uint32_t g_PBC_ReplyChanceLevelUp  = 5;
-uint32_t g_PBC_ReplyChanceBossKill       = 35;
+uint32_t g_PBC_ReplyChanceHardCombat    = 25;
 uint32_t g_PBC_ReplyChanceQuestCompleted = 20;
 uint32_t g_PBC_ReplyChanceQuestTaken     = 10;
 uint32_t g_PBC_ReplyChanceLocationChanged = 15;
@@ -84,6 +84,9 @@ std::string g_PBC_QuestCompletedSystemPrompt;
 std::string g_PBC_QuestCompletedUserPrompt;
 std::string g_PBC_QuestTakenSystemPrompt;
 std::string g_PBC_QuestTakenUserPrompt;
+
+std::string g_PBC_CombatEndedSystemPrompt;
+std::string g_PBC_CombatEndedUserPrompt;
 
 std::vector<std::string> g_PBC_Blacklist;
 
@@ -131,6 +134,8 @@ std::unordered_map<uint64_t, time_t> g_PBC_LastHistoryTime;
 
 std::unordered_map<uint32_t, PBC_PartyState> g_PBC_PartyStates;
 std::mutex g_PBC_PartyStateMutex;
+
+std::unordered_map<uint32_t, PBC_GroupCombatTracker> g_PBC_GroupCombatTrackers;
 
 // ---------------------------------------------------------------------------
 // PBC_PushEvent
@@ -206,7 +211,7 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_ReplyChanceItem     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceItem", 5);
     g_PBC_ReplyChanceDuel     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceDuel", 5);
     g_PBC_ReplyChanceLevelUp  = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLevelUp", 5);
-    g_PBC_ReplyChanceBossKill       = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceBossKill", 35);
+    g_PBC_ReplyChanceHardCombat    = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceHardCombat", 25);
     g_PBC_ReplyChanceQuestCompleted = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestCompleted", 20);
     g_PBC_ReplyChanceQuestTaken     = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceQuestTaken", 10);
     g_PBC_ReplyChanceLocationChanged = sConfigMgr->GetOption<uint32_t>("PBC.ReplyChanceLocationChanged", 15);
@@ -287,14 +292,14 @@ void PBC_LoadConfig(bool /*isStartup*/)
     LOG_INFO("server.loading",
         "[PBC] Config: Enable={} APIType='{}' Model='{}' Url='{}' MaxHistoryCtx={} MaxMemoriesCtx={} Timeout={}s "
         "Chances: Whisper={}% Mention={}% Message={}% RollPenalty={}% "
-        "Item={}% Duel={}% LevelUp={}% BossKill={}% QuestCompleted={}% QuestTaken={}%",
+        "Item={}% Duel={}% LevelUp={}% HardCombat={}% QuestCompleted={}% QuestTaken={}%",
         g_PBC_Enable, g_PBC_APIType, g_PBC_Model, g_PBC_BaseUrl, g_PBC_MaxHistoryCtx, g_PBC_MaxMemoriesCtx,
         g_PBC_RequestTimeoutSec,
         g_PBC_ReplyChanceWhisper, g_PBC_ReplyChanceMention,
         g_PBC_ReplyChanceMessage, g_PBC_RollPenaltyOnAnswer,
         g_PBC_ReplyChanceItem,
         g_PBC_ReplyChanceDuel, g_PBC_ReplyChanceLevelUp,
-        g_PBC_ReplyChanceBossKill, g_PBC_ReplyChanceQuestCompleted, g_PBC_ReplyChanceQuestTaken);
+        g_PBC_ReplyChanceHardCombat, g_PBC_ReplyChanceQuestCompleted, g_PBC_ReplyChanceQuestTaken);
 
     LOG_INFO("server.loading",
         "[PBC] HTTP Server: Port={} Bind='{}' Timeout={}s BaseUrl='{}' PrivateKey={} FrontendPath='{}'",
@@ -389,6 +394,8 @@ bool PBC_LoadPrompts()
         { "QuestTaken.user",                  g_PBC_QuestTakenUserPrompt           },
         { "RelationshipUpdate.system",        g_PBC_RelationshipUpdateSystemPrompt },
         { "RelationshipUpdate.user",          g_PBC_RelationshipUpdateUserPrompt   },
+        { "CombatEnded.system",               g_PBC_CombatEndedSystemPrompt        },
+        { "CombatEnded.user",                 g_PBC_CombatEndedUserPrompt          },
     };
 
     bool allOk = true;

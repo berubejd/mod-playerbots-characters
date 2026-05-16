@@ -1064,7 +1064,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
             config.push_back({{"key", "ReplyChanceItem"},          {"value", g_PBC_ReplyChanceItem}});
             config.push_back({{"key", "ReplyChanceDuel"},          {"value", g_PBC_ReplyChanceDuel}});
             config.push_back({{"key", "ReplyChanceLevelUp"},       {"value", g_PBC_ReplyChanceLevelUp}});
-            config.push_back({{"key", "ReplyChanceBossKill"},      {"value", g_PBC_ReplyChanceBossKill}});
+            config.push_back({{"key", "ReplyChanceHardCombat"},    {"value", g_PBC_ReplyChanceHardCombat}});
             config.push_back({{"key", "ReplyChanceQuestTaken"},    {"value", g_PBC_ReplyChanceQuestTaken}});
             config.push_back({{"key", "ReplyChanceQuestCompleted"},{"value", g_PBC_ReplyChanceQuestCompleted}});
             config.push_back({{"key", "ReplyChanceLocationChanged"},{"value", g_PBC_ReplyChanceLocationChanged}});
