@@ -122,7 +122,7 @@ Recommended adjustments to the playerbots config (`playerbots.conf`), to make bo
 | `AiPlayerbot.GuildFeedback` | 0 | Disables guild event chatting |
 | `AiPlayerbot.RandomBotSayWithoutMaster` | 0 | Disables bots talking without a master |
 | `AiPlayerbot.RPWarningCooldown` | 999999 | Increases delay between "missing reagents" messages and such |
-| `AiPlayerbot.EnableAutoTradeOnItemMention` | 0 | Disables automatic trades and item listings on item mention (from mod-playerbots/mod-playerbots@8caf37af97b74545f8fa65172095803466ad8a06) |
+| `AiPlayerbot.EnableAutoTradeOnItemMention` | 0 | Disables automatic trades and item listings on item mention (from [mod-playerbots@8caf37a](https://github.com/mod-playerbots/mod-playerbots/commit/8caf37af97b74545f8fa65172095803466ad8a06)) |
 
 
 ## Usage
