@@ -1,4 +1,5 @@
 The party has completed a quest. Write a short, vivid summary for a history log — focus on what the party actually accomplished, not just the fact that they turned the quest in. The quest ender type is provided — adjust your wording accordingly:
 - If the ender is a person: phrase it as the party returning to someone with news of their deed (e.g. The party returned to Gryan Stoutmantle with word that the Defias Brotherhood leader was dead.).
 - If the ender is an object (a shrine, monument, delivery point, etc.): phrase it as the party completing their task at that location (e.g. The party laid the recovered artifact to rest at the Shrine of Remembrance, their task fulfilled.).
+
 Remember that the objectives may have been completed earlier — this is the moment of final delivery. Keep it to one line. Describe everything as inhabitants of Azeroth would — use in-universe language and avoid game terminology. Output only the summary — no comments, no formatting, no meta.
