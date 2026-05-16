@@ -4,6 +4,14 @@
 #include "pbc_utils.h"
 #include "Log.h"
 
+// Rename the httplib namespace to pbc_httplib to avoid ODR violations when
+// other modules (e.g. mod-ale) also bundle cpp-httplib under the default
+// namespace.  The preprocessor replaces every occurrence of the token
+// `httplib` with `pbc_httplib`, so all symbols compiled from this
+// translation unit live in a distinct namespace and won't clash at link
+// time.  The define must stay active for the whole file so that every
+// `httplib::` reference in the code below is also rewritten.
+#define httplib pbc_httplib
 #include <httplib.h>
 #include <algorithm>
 #include <regex>
