@@ -14,9 +14,9 @@
 PBC.Enable = 1
 
 # PBC.DebugEnabled
-#     Description: Enables extra logging for debugging purposes.
-#                  When set to 1 (true), detailed debug information will be logged by the module.
-#                  When set to 0 (false), only standard logging is used.
+#     Description: Enables DEBUG-level log messages.
+#                  When set to 1 (true), detailed event tracking, LLM request info, and
+#                  other debug messages are printed to the server console.
 #     Default:     0 (false)
 PBC.DebugEnabled = 0
 

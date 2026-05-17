@@ -1,5 +1,5 @@
 #include "pbc_utils.h"
-#include "Log.h"
+#include "pbc_log.h"
 #include "Player.h"
 #include "Group.h"
 #include "WorldSession.h"
@@ -80,7 +80,7 @@ void PBC_CleanUnknownTokens(std::string& s)
 
         // Log warning once per unique unknown token
         if (warned.insert(tokenName).second)
-            LOG_WARN("server.loading", "[PBC] Unknown template token '{{{}}}' — replaced with empty string", tokenName);
+            PBC_Log(PBC_LogLevel::WARNING, "Unknown template token '{{{}}}' — replaced with empty string", tokenName);
 
         // Skip the token (replace with "")
         lastPos = matchPos + match.length();

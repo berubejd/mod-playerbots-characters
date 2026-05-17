@@ -5,7 +5,7 @@
 #include "pbc_utils.h"
 #include "pbc_scene_helpers.h"
 #include "pbc_equipment_helpers.h"
-#include "Log.h"
+#include "pbc_log.h"
 #include "DatabaseEnv.h"
 #include "Player.h"
 #include "ObjectAccessor.h"
@@ -27,8 +27,7 @@ void PBC_TriggerCondensation(Player* bot)
 {
     if (!bot) return;
 
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] TriggerCondensation: queuing condensation for character={}", bot->GetName());
+    PBC_Log(PBC_LogLevel::DEBUG, "TriggerCondensation: queuing condensation for character={}", bot->GetName());
 
     PBC_EventItem ev;
     ev.type                      = PBC_EventType::Condensation;

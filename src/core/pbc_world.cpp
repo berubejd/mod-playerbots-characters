@@ -6,7 +6,7 @@
 #include "pbc_http.h"
 #include "pbc_utils.h"
 #include "pbc_wmo_areas.h"
-#include "Log.h"
+#include "pbc_log.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "Group.h"
@@ -27,7 +27,7 @@ void PBC_WorldScript::OnStartup()
 
     if (!g_PBC_Enable)
     {
-        LOG_INFO("server.loading", "[PBC] Module is disabled, skipping initialization.");
+        PBC_Log(PBC_LogLevel::DEFAULT, "Module is disabled, skipping initialization.");
         return;
     }
 
@@ -45,8 +45,7 @@ void PBC_WorldScript::OnStartup()
     {
         if (!PBC_HttpServerStart(g_PBC_HttpServerBind, g_PBC_HttpServerPort, g_PBC_HttpServerTimeout))
         {
-            LOG_ERROR("server.loading",
-                      "[PBC] HTTP server could not be started on {}:{} — treating as disabled. "
+            PBC_Log(PBC_LogLevel::ERROR, "HTTP server could not be started on {}:{} — treating as disabled. "
                       "The rest of the module continues normally.",
                       g_PBC_HttpServerBind, g_PBC_HttpServerPort);
             g_PBC_HttpServerPort = 0; // treat as disabled
@@ -54,17 +53,16 @@ void PBC_WorldScript::OnStartup()
     }
     else
     {
-        LOG_INFO("server.loading", "[PBC] HTTP server disabled (PBC.HttpServerPort = 0).");
+        PBC_Log(PBC_LogLevel::DEFAULT, "HTTP server disabled (PBC.HttpServerPort = 0).");
     }
 
-    LOG_INFO("server.loading", "[PBC] Module started.");
+    PBC_Log(PBC_LogLevel::DEFAULT, "Module started.");
 
     // Check if legacy card additions need migration to the new memories system.
     if (DB_MemoriesTableEmpty() && DB_CardAdditionsTableNotEmpty())
     {
         g_PBC_CardAdditionsMigrationNeeded = true;
-        LOG_WARN("server.loading",
-                 "[PBC] Legacy card additions detected but no memories found. "
+        PBC_Log(PBC_LogLevel::WARNING, "Legacy card additions detected but no memories found. "
                  "Run `.chars migrate-card-additions` from the server console to migrate. "
                  "This warning will repeat every 60 seconds until the migration is performed or the `mod_pbc_character_card_additions` table is deleted.");
     }
@@ -75,13 +73,13 @@ void PBC_WorldScript::OnShutdown()
     // Stop the HTTP/WS server if it is running.
     if (PBC_HttpServerIsRunning())
     {
-        LOG_INFO("server.loading", "[PBC] Stopping HTTP server...");
+        PBC_Log(PBC_LogLevel::DEFAULT, "Stopping HTTP server...");
         PBC_HttpServerStop();
     }
 
     // History is written through to DB on every PBC_AppendHistory call,
     // so no explicit flush is needed on shutdown.
-    LOG_INFO("server.loading", "[PBC] Module shutdown.");
+    PBC_Log(PBC_LogLevel::DEFAULT, "Module shutdown.");
 }
 
 
@@ -120,8 +118,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         if (s_lastMigrationWarn == 0 || (now - s_lastMigrationWarn) >= 60)
         {
             s_lastMigrationWarn = now;
-            LOG_WARN("server.loading",
-                     "[PBC] Legacy card additions detected but no memories found. "
+            PBC_Log(PBC_LogLevel::WARNING, "Legacy card additions detected but no memories found. "
                      "Run `.chars migrate-card-additions` from the server console to migrate.");
         }
     }
@@ -186,9 +183,8 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
                 PBC_RollBotsWithPenalty(newEv, targets, startingChance, "SecondaryEvent");
 
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading",
-                             "[PBC] OnUpdate: secondary event materialised — "
+                PBC_Log(PBC_LogLevel::DEBUG,
+                             "OnUpdate: secondary event materialised — "
                              "targets={} responding={} silent={} event=\"{}\"",
                              targets.size(),
                              newEv.respondingChars.size(),
@@ -221,8 +217,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
             if (!sender || !sender->IsInWorld() || !target || !target->IsInWorld())
             {
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] API whisper: sender or target not online, skipping");
+                PBC_Log(PBC_LogLevel::DEBUG, "API whisper: sender or target not online, skipping");
                 localWhispers.pop();
                 continue;
             }
@@ -230,8 +225,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             WorldSession* ts = target->GetSession();
             if (!ts || !ts->IsBot())
             {
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] API whisper: target is not a character, skipping");
+                PBC_Log(PBC_LogLevel::DEBUG, "API whisper: target is not a character, skipping");
                 localWhispers.pop();
                 continue;
             }
@@ -258,8 +252,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             Player* sender = ObjectAccessor::FindPlayer(ObjectGuid(pm.senderGuid));
             if (!sender || !sender->IsInWorld())
             {
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] API party message: sender GUID={} is not online, skipping", pm.senderGuid);
+                PBC_Log(PBC_LogLevel::DEBUG, "API party message: sender GUID={} is not online, skipping", pm.senderGuid);
                 localMsgs.pop();
                 continue;
             }
@@ -286,8 +279,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             Player* target = ObjectAccessor::FindPlayer(ObjectGuid(tr.targetGuid));
             if (!target || !target->IsInWorld())
             {
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] API trigger: target GUID={} is not online, skipping", tr.targetGuid);
+                PBC_Log(PBC_LogLevel::DEBUG, "API trigger: target GUID={} is not online, skipping", tr.targetGuid);
                 localTriggers.pop();
                 continue;
             }
@@ -295,8 +287,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             WorldSession* ts = target->GetSession();
             if (!ts || !ts->IsBot())
             {
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] API trigger: target GUID={} is not a character, skipping", tr.targetGuid);
+                PBC_Log(PBC_LogLevel::DEBUG, "API trigger: target GUID={} is not a character, skipping", tr.targetGuid);
                 localTriggers.pop();
                 continue;
             }
@@ -383,8 +374,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                         bot->Say(action.text, LANG_UNIVERSAL);
                     }
 
-                    if (g_PBC_DebugEnabled)
-                        LOG_INFO("server.loading", "[PBC] OnUpdate: sent chat for character={} type={}",
+                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: sent chat for character={} type={}",
                                  bot->GetName(), ct);
                 }
             }
@@ -415,27 +405,24 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         {
             g_PBC_EventThreadDone.store(false);
 
-            if (g_PBC_DebugEnabled)
+            switch (nextEvent.type)
             {
-                switch (nextEvent.type)
-                {
-                    case PBC_EventType::Normal:
-                    case PBC_EventType::QuestSummarization:
-                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type={} event=\"{}\"",
-                                 static_cast<int>(nextEvent.type), nextEvent.eventLine);
-                        break;
-                    case PBC_EventType::Condensation:
-                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type=Condensation character=\"{}\"",
-                                 nextEvent.condensationChar.charName);
-                        break;
-                    case PBC_EventType::HistoryReload:
-                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type=HistoryReload");
-                        break;
-                    case PBC_EventType::RelationshipUpdate:
-                        LOG_INFO("server.loading", "[PBC] OnUpdate: spawning event thread for type=RelationshipUpdate character=\"{}\" target=\"{}\"",
-                                 nextEvent.relationshipChar.charName, nextEvent.relationshipTargetName);
-                        break;
-                }
+                case PBC_EventType::Normal:
+                case PBC_EventType::QuestSummarization:
+                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: spawning event thread for type={} event=\"{}\"",
+                             static_cast<int>(nextEvent.type), nextEvent.eventLine);
+                    break;
+                case PBC_EventType::Condensation:
+                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: spawning event thread for type=Condensation character=\"{}\"",
+                             nextEvent.condensationChar.charName);
+                    break;
+                case PBC_EventType::HistoryReload:
+                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: spawning event thread for type=HistoryReload");
+                    break;
+                case PBC_EventType::RelationshipUpdate:
+                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: spawning event thread for type=RelationshipUpdate character=\"{}\" target=\"{}\"",
+                             nextEvent.relationshipChar.charName, nextEvent.relationshipTargetName);
+                    break;
             }
 
             std::thread([ev = std::move(nextEvent)]() mutable {

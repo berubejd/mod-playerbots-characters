@@ -10,7 +10,7 @@
 #include "pbc_scene_helpers.h"
 #include "pbc_group_helpers.h"
 #include "pbc_combat_helpers.h"
-#include "Log.h"
+#include "pbc_log.h"
 #include "Player.h"
 #include "Creature.h"
 #include "GameObject.h"
@@ -104,8 +104,7 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
 
     if (!anchorIsReal && !PBC_BotIsGroupedWithRealPlayer(anchor))
     {
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] DispatchGroupEvent: skipped — no real player in group (anchor={})", anchor->GetName());
+        PBC_Log(PBC_LogLevel::DEBUG, "DispatchGroupEvent: skipped — no real player in group (anchor={})", anchor->GetName());
         return;
     }
 
@@ -119,9 +118,8 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
     // character (group members are iterated in a fixed order).
     std::shuffle(bots.begin(), bots.end(), PBC_GetRNG());
 
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] DispatchGroupEvent: anchor={} bots={} chance={}% event=\"{}\"",
-                 anchor->GetName(), bots.size(), chance, eventLine);
+    PBC_Log(PBC_LogLevel::DEBUG, "DispatchGroupEvent: anchor={} bots={} chance={}% event=\"{}\"",
+             anchor->GetName(), bots.size(), chance, eventLine);
 
     PBC_EventItem ev;
     ev.type            = PBC_EventType::Normal;
@@ -413,8 +411,7 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
 
     if (g_PBC_QuestCompletedSystemPrompt.empty() || g_PBC_QuestCompletedUserPrompt.empty())
     {
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] OnPlayerCompleteQuest: prompts not configured, skipping");
+        PBC_Log(PBC_LogLevel::WARNING, "OnPlayerCompleteQuest: prompts not configured, skipping");
         return;
     }
 
@@ -428,9 +425,8 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     std::string questGiverType      = PBC_GetQuestStarterType(quest->GetQuestId());
     std::string questEnderType      = PBC_GetQuestEnderType(quest->GetQuestId());
 
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] OnPlayerCompleteQuest: leader={} quest='{}' (id={})",
-                 player->GetName(), questTitle, quest->GetQuestId());
+    PBC_Log(PBC_LogLevel::DEBUG, "OnPlayerCompleteQuest: leader={} quest='{}' (id={})",
+             player->GetName(), questTitle, quest->GetQuestId());
 
     std::string userPrompt = PBC_SubstituteQuestVars(
         g_PBC_QuestCompletedUserPrompt,
@@ -462,8 +458,7 @@ static void HandleQuestTaken(Player* player, Quest const* quest,
 
     if (g_PBC_QuestTakenSystemPrompt.empty() || g_PBC_QuestTakenUserPrompt.empty())
     {
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] HandleQuestTaken: prompts not configured, skipping");
+        PBC_Log(PBC_LogLevel::WARNING, "HandleQuestTaken: prompts not configured, skipping");
         return;
     }
 
@@ -472,9 +467,8 @@ static void HandleQuestTaken(Player* player, Quest const* quest,
     std::string questLogDescription = PBC_StripWowTextCodes(quest->GetObjectives());
     std::string questCompletionLog  = PBC_StripWowTextCodes(quest->GetCompletedText());
 
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] HandleQuestTaken: leader={} quest='{}' (id={}) giver='{}' type='{}'",
-                 player->GetName(), questTitle, quest->GetQuestId(), questGiver, questGiverType);
+    PBC_Log(PBC_LogLevel::DEBUG, "HandleQuestTaken: leader={} quest='{}' (id={}) giver='{}' type='{}'",
+             player->GetName(), questTitle, quest->GetQuestId(), questGiver, questGiverType);
 
     std::string userPrompt = PBC_SubstituteQuestVars(
         g_PBC_QuestTakenUserPrompt,
@@ -562,20 +556,18 @@ void PBC_RollBotsWithPenalty(PBC_EventItem& ev,
     {
         if (currentChance == 0)
         {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] Roll {} character={} chance=0% -> silent (no chance left)",
-                         debugLabel, bot->GetName());
+            PBC_Log(PBC_LogLevel::DEBUG, "Roll {} character={} chance=0% -> silent (no chance left)",
+                     debugLabel, bot->GetName());
             ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
             continue;
         }
 
         uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), currentChance);
         bool rolled = PBC_RollChance(effectiveChance);
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] Roll {} character={} chance={}% (base={}% mod={}) -> {}",
-                     debugLabel, bot->GetName(), effectiveChance, currentChance,
-                     static_cast<int32_t>(effectiveChance) - static_cast<int32_t>(currentChance),
-                     rolled ? "RESPOND" : "silent");
+        PBC_Log(PBC_LogLevel::DEBUG, "Roll {} character={} chance={}% (base={}% mod={}) -> {}",
+                 debugLabel, bot->GetName(), effectiveChance, currentChance,
+                 static_cast<int32_t>(effectiveChance) - static_cast<int32_t>(currentChance),
+                 rolled ? "RESPOND" : "silent");
         if (rolled)
         {
             ev.respondingChars.push_back(PBC_SnapshotCharacter(bot));
@@ -631,9 +623,8 @@ void PBC_RollBotsForMessage(PBC_EventItem& ev,
             mentionedGuids.insert(bot->GetGUID().GetCounter());
             uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), g_PBC_ReplyChanceMention);
             bool rolled = PBC_RollChance(effectiveChance);
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] Roll mention character={} chance={}% -> {}",
-                         bot->GetName(), effectiveChance, rolled ? "RESPOND" : "silent");
+            PBC_Log(PBC_LogLevel::DEBUG, "Roll mention character={} chance={}% -> {}",
+                     bot->GetName(), effectiveChance, rolled ? "RESPOND" : "silent");
             if (rolled)
                 ev.respondingChars.push_back(PBC_SnapshotCharacter(bot));
             else
@@ -678,9 +669,8 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
     std::string eventLine   = senderName + " tells you privately: " + msg;
     std::string historyLine = senderName + " (privately to you): " + msg;
 
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] Whisper event: {} -> {}: \"{}\" (chance={}%)",
-                 senderName, target->GetName(), msg, g_PBC_ReplyChanceWhisper);
+    PBC_Log(PBC_LogLevel::DEBUG, "Whisper event: {} -> {}: \"{}\" (chance={}%)",
+             senderName, target->GetName(), msg, g_PBC_ReplyChanceWhisper);
 
     PBC_EventItem ev;
     ev.type      = PBC_EventType::Normal;
@@ -735,9 +725,8 @@ void PBC_DispatchTriggerEvent(Player* bot)
             ev.silentCharGuids.push_back(groupBot->GetGUID().GetCounter());
     }
 
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] Trigger event: character={} chatType={} silentChars={}",
-                 bot->GetName(), chatType, ev.silentCharGuids.size());
+    PBC_Log(PBC_LogLevel::DEBUG, "Trigger event: character={} chatType={} silentChars={}",
+             bot->GetName(), chatType, ev.silentCharGuids.size());
 
     PBC_PushEvent(std::move(ev));
 }
@@ -765,15 +754,13 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
     std::vector<Player*> bots = isGroupChat ? PBC_FindGroupBots(sender) : PBC_FindNearbyBots(sender);
     if (bots.empty())
     {
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] Chat message event from {} type={} discarded — no bots found ({})",
-                     senderName, chatType, isGroupChat ? "group empty" : "none nearby");
+        PBC_Log(PBC_LogLevel::DEBUG, "Chat message event from {} type={} discarded — no bots found ({})",
+                 senderName, chatType, isGroupChat ? "group empty" : "none nearby");
         return;
     }
 
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] Chat message event from {} type={} ({} bots): \"{}\"",
-                 senderName, chatType, bots.size(), msg);
+    PBC_Log(PBC_LogLevel::DEBUG, "Chat message event from {} type={} ({} bots): \"{}\"",
+             senderName, chatType, bots.size(), msg);
 
     PBC_EventItem ev;
     ev.type            = PBC_EventType::Normal;
@@ -784,9 +771,8 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
 
     PBC_RollBotsForMessage(ev, bots, msg);
 
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] Chat from {} type={} -> {}/{} bots will respond",
-                 senderName, chatType, ev.respondingChars.size(), bots.size());
+    PBC_Log(PBC_LogLevel::DEBUG, "Chat from {} type={} -> {}/{} bots will respond",
+             senderName, chatType, ev.respondingChars.size(), bots.size());
 
     PBC_PushEvent(std::move(ev));
 }
@@ -809,13 +795,11 @@ static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
 {
     if (sysPrompt.empty() || userPromptTmpl.empty())
     {
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] CondenseInline: prompts not configured, skipping for character={}", snap.charName);
+        PBC_Log(PBC_LogLevel::DEBUG, "CondenseInline: prompts not configured, skipping for character={}", snap.charName);
         return false;
     }
 
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] CondenseInline: character={} history_lines={}", snap.charName, snap.history.size());
+    PBC_Log(PBC_LogLevel::DEBUG, "CondenseInline: character={} history_lines={}", snap.charName, snap.history.size());
 
     std::string userPrompt = PBC_BuildCondensationPromptFromSnapshot(snap, userPromptTmpl);
     PBC_LLMResult res = g_PBC_UseAltModelForCondensation
@@ -824,7 +808,7 @@ static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
 
     if (!res.success || res.text.empty())
     {
-        LOG_WARN("server.loading", "[PBC] CondenseInline: LLM failed for character={} — history left untouched, will retry on next event", snap.charName);
+        PBC_Log(PBC_LogLevel::WARNING, "CondenseInline: LLM failed for character={} — history left untouched, will retry on next event", snap.charName);
         return false;
     }
 
@@ -880,9 +864,8 @@ static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
     // Update snapshot's local history to match
     snap.history.clear();
 
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] CondenseInline: condensed character={} memories_extracted={}",
-                 snap.charName, memCount);
+    PBC_Log(PBC_LogLevel::DEBUG, "CondenseInline: condensed character={} memories_extracted={}",
+             snap.charName, memCount);
 
     return true;
 }
@@ -938,10 +921,9 @@ static void QueueRelationshipUpdatesAfterCondensation(
 
         PBC_PushEvent(std::move(relEv));
 
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading",
-                     "[PBC] Condensation: queuing relationship update for character={} target={}",
-                     snap.charName, memberName);
+        PBC_Log(PBC_LogLevel::DEBUG,
+                 "Condensation: queuing relationship update for character={} target={}",
+                 snap.charName, memberName);
     }
 }
 
@@ -1116,9 +1098,8 @@ void PBC_PollPartyState()
                 std::string eventLine = PBC_MakeEventLine("The party has started a flight to " + dest);
                 std::string histLine  = PBC_MakeHistLine("The party started a flight to " + dest);
 
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] PollPartyState: flight started — group={} dest={} bots={} chance={}%",
-                             grpGuid, dest, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
+                PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: flight started — group={} dest={} bots={} chance={}%",
+                         grpGuid, dest, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
 
                 PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
                                        g_PBC_ReplyChanceLocationChanged);
@@ -1165,9 +1146,8 @@ void PBC_PollPartyState()
                         std::string eventLine = PBC_MakeEventLine("Party has arrived in " + gi.sharedZone);
                         std::string histLine  = PBC_MakeHistLine("Party moved to " + gi.sharedZone);
 
-                        if (g_PBC_DebugEnabled)
-                            LOG_INFO("server.loading", "[PBC] PollPartyState: location changed — group={} from='{}' to='{}' bots={} chance={}%",
-                                     grpGuid, state.location, gi.sharedZone, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
+                        PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: location changed — group={} from='{}' to='{}' bots={} chance={}%",
+                                 grpGuid, state.location, gi.sharedZone, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
 
                         state.location = gi.sharedZone;
                         state.candidateLocation.clear();
@@ -1176,9 +1156,9 @@ void PBC_PollPartyState()
                         PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
                                                g_PBC_ReplyChanceLocationChanged);
                     }
-                    else if (g_PBC_DebugEnabled)
+                    else
                     {
-                        LOG_INFO("server.loading", "[PBC] PollPartyState: location debouncing — group={} candidate='{}' cycles={}/{}",
+                        PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: location debouncing — group={} candidate='{}' cycles={}/{}",
                                  grpGuid, state.candidateLocation, state.locationStableCycles, g_PBC_LocationChangeDebounceCycles);
                     }
                 }
@@ -1199,24 +1179,21 @@ void PBC_PollPartyState()
             tracker.combatStartTime = GameTime::GetGameTime().count();
             // Record party size at combat start
             tracker.partySize = gi.grp->GetMembersCount();
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] PollPartyState: combat started — group={} partySize={}", grpGuid, tracker.partySize);
+            PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: combat started — group={} partySize={}", grpGuid, tracker.partySize);
         }
 
         // Combat resumed during debounce — reset the end-cycle counter
         if (gi.anyAliveInCombat && tracker.wasInCombat && tracker.combatEndCycles > 0)
         {
             tracker.combatEndCycles = 0;
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] PollPartyState: combat resumed during debounce — group={}", grpGuid);
+            PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: combat resumed during debounce — group={}", grpGuid);
         }
 
         // Full wipe: all members dead while was in combat
         if (gi.allDead && tracker.wasInCombat)
         {
             tracker.wiped = true;
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] PollPartyState: party wiped — group={}", grpGuid);
+            PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: party wiped — group={}", grpGuid);
         }
 
         // Combat ended debounce: no alive members in combat, not all dead, and was in combat
@@ -1226,17 +1203,15 @@ void PBC_PollPartyState()
 
             if (tracker.combatEndCycles < g_PBC_CombatEndDebounceCycles)
             {
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] PollPartyState: combat ended debouncing — group={} cycles={}/{}",
-                             grpGuid, tracker.combatEndCycles, g_PBC_CombatEndDebounceCycles);
+                PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: combat ended debouncing — group={} cycles={}/{}",
+                         grpGuid, tracker.combatEndCycles, g_PBC_CombatEndDebounceCycles);
                 continue;
             }
 
             // Skip event dispatch if chance is 0 (still reset tracker below)
             if (g_PBC_ReplyChanceHardCombat == 0)
             {
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] PollPartyState: combat ended but ReplyChanceHardCombat=0, skipping — group={}", grpGuid);
+                PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: combat ended but ReplyChanceHardCombat=0, skipping — group={}", grpGuid);
                 tracker = PBC_GroupCombatTracker();
                 continue;
             }
@@ -1356,21 +1331,19 @@ void PBC_PollPartyState()
                     // No bots rolled — still dispatch so silent chars get histLine later
                 }
 
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading",
-                             "[PBC] PollPartyState: combat ended (significant) — group={} kills={} notable={} dead={}/{} toughness=\"{}\" duration={}s bots={}",
-                             grpGuid, tracker.killCount, tracker.notableEnemyNames.size(),
-                             tracker.deadCount, tracker.partySize, combatToughness,
-                             static_cast<int>(combatDuration), ev.respondingChars.size());
+                PBC_Log(PBC_LogLevel::DEBUG,
+                         "PollPartyState: combat ended (significant) — group={} kills={} notable={} dead={}/{} toughness=\"{}\" duration={}s bots={}",
+                         grpGuid, tracker.killCount, tracker.notableEnemyNames.size(),
+                         tracker.deadCount, tracker.partySize, combatToughness,
+                         static_cast<int>(combatDuration), ev.respondingChars.size());
 
                 PBC_PushEvent(std::move(ev));
             }
             else
             {
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading",
-                             "[PBC] PollPartyState: combat ended (not significant or wiped) — group={} kills={} wiped={}",
-                             grpGuid, tracker.killCount, tracker.wiped);
+                PBC_Log(PBC_LogLevel::DEBUG,
+                         "PollPartyState: combat ended (not significant or wiped) — group={} kills={} wiped={}",
+                         grpGuid, tracker.killCount, tracker.wiped);
             }
 
             // Reset tracker regardless of significance
@@ -1428,7 +1401,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     // -----------------------------------------------------------------------
     if (ev.type == PBC_EventType::HistoryReload)
     {
-        LOG_INFO("server.loading", "[PBC] HistoryReload: reloading chat history from DB...");
+        PBC_Log(PBC_LogLevel::DEFAULT, "HistoryReload: reloading chat history from DB...");
 
         QueryResult result = CharacterDatabase.Query(
             "SELECT bot_guid, message, UNIX_TIMESTAMP(timestamp) FROM mod_pbc_chat_history ORDER BY id ASC"
@@ -1455,7 +1428,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         // Also reload relationships so the in-memory map stays consistent.
         PBC_LoadRelationshipsFromDB();
 
-        LOG_INFO("server.loading", "[PBC] HistoryReload: chat history and relationships reloaded from DB.");
+        PBC_Log(PBC_LogLevel::DEFAULT, "HistoryReload: chat history and relationships reloaded from DB.");
         g_PBC_EventThreadDone.store(true);
         return;
     }
@@ -1473,8 +1446,8 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
 
         if (!condensed)
         {
-            LOG_WARN("server.loading",
-                     "[PBC] Condensation event failed for character={} — history left untouched, "
+            PBC_Log(PBC_LogLevel::WARNING,
+                     "Condensation event failed for character={} — history left untouched, "
                      "will retry when threshold is reached again",
                      ev.condensationChar.charName);
             g_PBC_EventThreadDone.store(true);
@@ -1500,16 +1473,14 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     {
         if (ev.relationshipSystemPrompt.empty() || ev.relationshipUserPromptTmpl.empty())
         {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] RelationshipUpdate: prompts not configured, skipping for character={}",
-                         ev.relationshipChar.charName);
+            PBC_Log(PBC_LogLevel::WARNING, "RelationshipUpdate: prompts not configured, skipping for character={}",
+                     ev.relationshipChar.charName);
             g_PBC_EventThreadDone.store(true);
             return;
         }
 
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] RelationshipUpdate: character={} target={}",
-                     ev.relationshipChar.charName, ev.relationshipTargetName);
+        PBC_Log(PBC_LogLevel::DEBUG, "RelationshipUpdate: character={} target={}",
+                 ev.relationshipChar.charName, ev.relationshipTargetName);
 
         // Build the user prompt: substitute {character_card}, {chat_history},
         // {relationship_target}, {target_current_relationship}.
@@ -1527,7 +1498,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
 
         if (!res.success || res.text.empty())
         {
-            LOG_WARN("server.loading", "[PBC] RelationshipUpdate: LLM failed for character={} target={}",
+            PBC_Log(PBC_LogLevel::WARNING, "RelationshipUpdate: LLM failed for character={} target={}",
                      ev.relationshipChar.charName, ev.relationshipTargetName);
             g_PBC_EventThreadDone.store(true);
             return;
@@ -1545,10 +1516,9 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
                               res.text, ev.relationshipMentionTotal);
         PBC_WsNotify(ev.relationshipChar.charGuidRaw, "relationship");
 
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] RelationshipUpdate: updated character={} target={} mentions={} text=\"{}\"",
-                     ev.relationshipChar.charName, ev.relationshipTargetName,
-                     ev.relationshipMentionTotal, PBC_SanitizeForFmt(res.text));
+        PBC_Log(PBC_LogLevel::DEBUG, "RelationshipUpdate: updated character={} target={} mentions={} text=\"{}\"",
+                 ev.relationshipChar.charName, ev.relationshipTargetName,
+                 ev.relationshipMentionTotal, PBC_SanitizeForFmt(res.text));
 
         g_PBC_EventThreadDone.store(true);
         return;
@@ -1561,7 +1531,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     // -----------------------------------------------------------------------
     if (ev.type == PBC_EventType::CardAdditionsMigration)
     {
-        LOG_INFO("server.loading", "[PBC] CardAdditionsMigration: starting...");
+        PBC_Log(PBC_LogLevel::DEFAULT, "CardAdditionsMigration: starting...");
 
         // Read all rows from the legacy card additions table
         QueryResult addResult = CharacterDatabase.Query(
@@ -1570,7 +1540,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
 
         if (!addResult)
         {
-            LOG_INFO("server.loading", "[PBC] CardAdditionsMigration: no card additions found, nothing to migrate.");
+            PBC_Log(PBC_LogLevel::DEFAULT, "CardAdditionsMigration: no card additions found, nothing to migrate.");
             g_PBC_EventThreadDone.store(true);
             return;
         }
@@ -1586,7 +1556,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
             ++totalAdditions;
         } while (addResult->NextRow());
 
-        LOG_INFO("server.loading", "[PBC] CardAdditionsMigration: found {} additions across {} characters",
+        PBC_Log(PBC_LogLevel::DEFAULT, "CardAdditionsMigration: found {} additions across {} characters",
                  totalAdditions, additionsByBot.size());
 
         static const std::regex kMemLine(R"(\[(\d+)\]\s*(.+))");
@@ -1633,8 +1603,8 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
 
             if (!res.success || res.text.empty())
             {
-                LOG_WARN("server.loading",
-                         "[PBC] CardAdditionsMigration: LLM failed for character={} (guid={}), skipping",
+                PBC_Log(PBC_LogLevel::WARNING,
+                         "CardAdditionsMigration: LLM failed for character={} (guid={}), skipping",
                          charName.empty() ? fmt::format("guid:{}", botGuid) : charName, botGuid);
                 processed += additions.size();
                 continue;
@@ -1674,8 +1644,8 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
             totalMemories += memCount;
             processed += additions.size();
 
-            LOG_INFO("server.loading",
-                     "[PBC] CardAdditionsMigration: character={} additions={} memories_extracted={} progress={}/{}",
+            PBC_Log(PBC_LogLevel::DEFAULT,
+                     "CardAdditionsMigration: character={} additions={} memories_extracted={} progress={}/{}",
                      charName.empty() ? fmt::format("guid:{}", botGuid) : charName,
                      additions.size(), memCount, processed, totalAdditions);
         }
@@ -1684,8 +1654,8 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         // (the migration loop inserts with dbId=0).
         PBC_LoadMemoriesFromDB();
 
-        LOG_INFO("server.loading",
-                 "[PBC] CardAdditionsMigration: complete. {} additions processed, {} memories created. "
+        PBC_Log(PBC_LogLevel::DEFAULT,
+                 "CardAdditionsMigration: complete. {} additions processed, {} memories created. "
                  "The legacy mod_pbc_character_card_additions table was NOT deleted — "
                  "verify the results and drop it manually if desired.",
                  totalAdditions, totalMemories);
@@ -1701,8 +1671,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     {
         if (ev.combatSystemPrompt.empty() || ev.combatUserPrompt.empty())
         {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] ProcessEvent: CombatSummarization prompts empty, skipping");
+            PBC_Log(PBC_LogLevel::WARNING, "ProcessEvent: CombatSummarization prompts empty, skipping");
             g_PBC_EventThreadDone.store(true);
             return;
         }
@@ -1710,7 +1679,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         PBC_LLMResult summary = PBC_CallLLM(ev.combatSystemPrompt, ev.combatUserPrompt);
         if (!summary.success || summary.text.empty())
         {
-            LOG_WARN("server.loading", "[PBC] ProcessEvent: CombatSummarization LLM failed");
+            PBC_Log(PBC_LogLevel::WARNING, "ProcessEvent: CombatSummarization LLM failed");
             g_PBC_EventThreadDone.store(true);
             return;
         }
@@ -1741,8 +1710,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     {
         if (ev.questSystemPrompt.empty() || ev.questUserPrompt.empty())
         {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] ProcessEvent: QuestSummarization prompts empty, skipping");
+            PBC_Log(PBC_LogLevel::WARNING, "ProcessEvent: QuestSummarization prompts empty, skipping");
             g_PBC_EventThreadDone.store(true);
             return;
         }
@@ -1750,7 +1718,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         PBC_LLMResult summary = PBC_CallLLM(ev.questSystemPrompt, ev.questUserPrompt);
         if (!summary.success || summary.text.empty())
         {
-            LOG_WARN("server.loading", "[PBC] ProcessEvent: QuestSummarization LLM failed");
+            PBC_Log(PBC_LogLevel::WARNING, "ProcessEvent: QuestSummarization LLM failed");
             g_PBC_EventThreadDone.store(true);
             return;
         }
@@ -1777,9 +1745,8 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     // -----------------------------------------------------------------------
     // Normal event processing
     // -----------------------------------------------------------------------
-    if (g_PBC_DebugEnabled)
-        LOG_INFO("server.loading", "[PBC] ProcessEvent: type={} respondingChars={} silentChars={} event=\"{}\"",
-                 static_cast<int>(ev.type), ev.respondingChars.size(), ev.silentCharGuids.size(), ev.eventLine);
+    PBC_Log(PBC_LogLevel::DEBUG, "ProcessEvent: type={} respondingChars={} silentChars={} event=\"{}\"",
+             static_cast<int>(ev.type), ev.respondingChars.size(), ev.silentCharGuids.size(), ev.eventLine);
 
     // The "current event" for the first bot is the original event line.
     // After each bot responds, the current event for the next bot becomes
@@ -1852,15 +1819,14 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         // Build user prompt from snapshot (uses snap.history for {chat_history}).
         std::string userPrompt = PBC_BuildUserPromptFromSnapshot(snap, currentEvent);
 
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] ProcessEvent: calling LLM for character={} event=\"{}\"",
-                     snap.charName, currentEvent);
+        PBC_Log(PBC_LogLevel::DEBUG, "ProcessEvent: calling LLM for character={} event=\"{}\"",
+                 snap.charName, currentEvent);
 
         PBC_LLMResult res = PBC_CallLLM(sysPrompt, userPrompt);
 
         if (!res.success || res.text.empty())
         {
-            LOG_WARN("server.loading", "[PBC] ProcessEvent: LLM failed/empty for character={}", snap.charName);
+            PBC_Log(PBC_LogLevel::WARNING, "ProcessEvent: LLM failed/empty for character={}", snap.charName);
             // Don't advance currentEvent — the next character reacts to the same event.
             // Global history for this character is handled in the deferred write below.
             continue;
@@ -2003,8 +1969,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         lastReplyLine     = replyLine;
         lastEventLine     = currentEvent;
 
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] ProcessEvent: character={} replied", snap.charName);
+        PBC_Log(PBC_LogLevel::DEBUG, "ProcessEvent: character={} replied", snap.charName);
     }
 
     // -----------------------------------------------------------------------
@@ -2070,14 +2035,13 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
             g_PBC_PendingEventRequests.push(std::move(req));
         }
 
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading",
-                     "[PBC] ProcessEvent: queued secondary event from last responder guid={} "
-                     "excluded={} silent={} event=\"{}\"",
-                     lastResponderGuid,
-                     dbgExcluded,
-                     ev.silentCharGuids.size(),
-                     dbgEvent);
+        PBC_Log(PBC_LogLevel::DEBUG,
+                 "ProcessEvent: queued secondary event from last responder guid={} "
+                 "excluded={} silent={} event=\"{}\"",
+                 lastResponderGuid,
+                 dbgExcluded,
+                 ev.silentCharGuids.size(),
+                 dbgEvent);
     }
 
     // -----------------------------------------------------------------------
@@ -2200,10 +2164,9 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
 
                 PBC_PushEvent(std::move(relEv));
 
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading",
-                             "[PBC] MentionTracker: character={} target={} total_mentions={} new_since_last={} — relationship update queued",
-                             snap.charName, memberName, total, newMentions);
+                PBC_Log(PBC_LogLevel::DEBUG,
+                         "MentionTracker: character={} target={} total_mentions={} new_since_last={} — relationship update queued",
+                         snap.charName, memberName, total, newMentions);
             }
         }
     }

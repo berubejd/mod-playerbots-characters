@@ -2,4 +2,4 @@ The party just finished a fight at {location}.
 Party size: {party_size}
 {enemies_section}
 Combat toughness: {combat_toughness}
-Fight duration: {combat_duration}
+Combat duration: {combat_duration}

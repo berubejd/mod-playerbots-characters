@@ -2,7 +2,7 @@
 #include "pbc_config.h"
 #include "pbc_database.h"
 #include "pbc_utils.h"
-#include "Log.h"
+#include "pbc_log.h"
 
 // Rename the httplib namespace to pbc_httplib to avoid ODR violations when
 // other modules (e.g. mod-ale) also bundle cpp-httplib under the default
@@ -69,7 +69,7 @@ std::string PBC_HttpClient::Post(const std::string& url,
         std::smatch m;
         if (!std::regex_match(url, m, urlRe))
         {
-            LOG_ERROR("server.loading", "[PBC] Invalid URL: {}", url);
+            PBC_Log(PBC_LogLevel::ERROR, "Invalid URL: {}", url);
             return "";
         }
 
@@ -79,8 +79,7 @@ std::string PBC_HttpClient::Post(const std::string& url,
         int         port   = proto == "https" ? 443 : 80;
         if (m[3].matched) port = std::stoi(m[3].str());
 
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] HTTP {} {}:{}{}", proto, host, port, path);
+        PBC_Log(PBC_LogLevel::DEBUG, "HTTP {} {}:{}{}", proto, host, port, path);
 
         // Content-Type is set via the content_type parameter of cli.Post(),
         // not here — adding it to the multimap would create a duplicate header.
@@ -103,7 +102,7 @@ std::string PBC_HttpClient::Post(const std::string& url,
             cli.set_write_timeout(m_timeoutSec);
             res = cli.Post(path, headers, jsonData, "application/json");
 #else
-            LOG_ERROR("server.loading", "[PBC] HTTPS requested but OpenSSL not compiled in.");
+            PBC_Log(PBC_LogLevel::ERROR, "HTTPS requested but OpenSSL not compiled in.");
             return "";
 #endif
         }
@@ -118,25 +117,23 @@ std::string PBC_HttpClient::Post(const std::string& url,
 
         if (!res)
         {
-            LOG_ERROR("server.loading", "[PBC] HTTP request failed (no response) for {}:{}{}", host, port, path);
+            PBC_Log(PBC_LogLevel::ERROR, "HTTP request failed (no response) for {}:{}{}", host, port, path);
             return "";
         }
         if (res->status != 200)
         {
-            LOG_ERROR("server.loading", "[PBC] HTTP {} from {}:{}{}", res->status, host, port, path);
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] Response body: {}", PBC_SanitizeForFmt(res->body));
+            PBC_Log(PBC_LogLevel::ERROR, "HTTP {} from {}:{}{}", res->status, host, port, path);
+            PBC_Log(PBC_LogLevel::DEBUG, "Response body: {}", PBC_SanitizeForFmt(res->body));
             return "";
         }
 
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] HTTP OK, body length={}", res->body.size());
+        PBC_Log(PBC_LogLevel::DEBUG, "HTTP OK, body length={}", res->body.size());
 
         return res->body;
     }
     catch (const std::exception& ex)
     {
-        LOG_ERROR("server.loading", "[PBC] HTTP exception: {}", ex.what());
+        PBC_Log(PBC_LogLevel::ERROR, "HTTP exception: {}", ex.what());
         return "";
     }
 }
@@ -296,7 +293,7 @@ static std::string CreateToken(uint64_t playerGuid)
     unsigned char iv[16];
     if (RAND_bytes(iv, 16) != 1)
     {
-        LOG_ERROR("server.loading", "[PBC] CreateToken: RAND_bytes failed");
+        PBC_Log(PBC_LogLevel::ERROR, "CreateToken: RAND_bytes failed");
         return "";
     }
 
@@ -304,14 +301,14 @@ static std::string CreateToken(uint64_t playerGuid)
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx)
     {
-        LOG_ERROR("server.loading", "[PBC] CreateToken: EVP_CIPHER_CTX_new failed");
+        PBC_Log(PBC_LogLevel::ERROR, "CreateToken: EVP_CIPHER_CTX_new failed");
         return "";
     }
 
     if (EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(), iv) != 1)
     {
         EVP_CIPHER_CTX_free(ctx);
-        LOG_ERROR("server.loading", "[PBC] CreateToken: EVP_EncryptInit_ex failed");
+        PBC_Log(PBC_LogLevel::ERROR, "CreateToken: EVP_EncryptInit_ex failed");
         return "";
     }
 
@@ -321,7 +318,7 @@ static std::string CreateToken(uint64_t playerGuid)
     if (EVP_EncryptUpdate(ctx, ciphertext, &outLen1, plaintext, 16) != 1)
     {
         EVP_CIPHER_CTX_free(ctx);
-        LOG_ERROR("server.loading", "[PBC] CreateToken: EVP_EncryptUpdate failed");
+        PBC_Log(PBC_LogLevel::ERROR, "CreateToken: EVP_EncryptUpdate failed");
         return "";
     }
 
@@ -329,7 +326,7 @@ static std::string CreateToken(uint64_t playerGuid)
     if (EVP_EncryptFinal_ex(ctx, ciphertext + outLen1, &outLen2) != 1)
     {
         EVP_CIPHER_CTX_free(ctx);
-        LOG_ERROR("server.loading", "[PBC] CreateToken: EVP_EncryptFinal_ex failed");
+        PBC_Log(PBC_LogLevel::ERROR, "CreateToken: EVP_EncryptFinal_ex failed");
         return "";
     }
 
@@ -416,7 +413,7 @@ static uint64_t ValidateToken(const std::string& token)
 
 static std::string CreateToken(uint64_t /*playerGuid*/)
 {
-    LOG_ERROR("server.loading", "[PBC] CreateToken: OpenSSL not available — token creation impossible");
+    PBC_Log(PBC_LogLevel::ERROR, "CreateToken: OpenSSL not available — token creation impossible");
     return "";
 }
 
@@ -471,7 +468,7 @@ std::string PBC_HttpServerGenerateOTP(uint64_t playerGuid)
 
     if (attempts >= 10)
     {
-        LOG_ERROR("server.loading", "[PBC] Failed to generate unique OTP after 10 attempts");
+        PBC_Log(PBC_LogLevel::ERROR, "Failed to generate unique OTP after 10 attempts");
         return "";
     }
 
@@ -837,15 +834,15 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
     // Private key is required for the authorization layer
     if (g_PBC_HttpServerPrivateKey.empty())
     {
-        LOG_ERROR("server.loading",
-                  "[PBC] HTTP server not started: PBC.HttpServerPrivateKey is not set. "
+        PBC_Log(PBC_LogLevel::ERROR,
+                  "HTTP server not started: PBC.HttpServerPrivateKey is not set. "
                   "A private key is required for the authorization layer.");
         return false;
     }
 
 #ifndef CPPHTTPLIB_OPENSSL_SUPPORT
-    LOG_ERROR("server.loading",
-              "[PBC] HTTP server not started: OpenSSL is not compiled in. "
+    PBC_Log(PBC_LogLevel::ERROR,
+              "HTTP server not started: OpenSSL is not compiled in. "
               "The authorization layer requires OpenSSL for token encryption.");
     return false;
 #else
@@ -885,8 +882,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 }
 
                 // Token is valid — let the WebSocket upgrade proceed
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] WS: authenticated player GUID={}", guid);
+                PBC_Log(PBC_LogLevel::DEBUG, "WS: authenticated player GUID={}", guid);
             }
 
             return httplib::Server::HandlerResponse::Unhandled;
@@ -953,13 +949,13 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 });
 
                 frontendServing = true;
-                LOG_INFO("server.loading", "[PBC] Frontend serving enabled from '{}' (canonical: '{}')",
+                PBC_Log(PBC_LogLevel::DEFAULT, "Frontend serving enabled from '{}' (canonical: '{}')",
                          frontendPath, canonicalStr);
             }
             else
             {
-                LOG_WARN("server.loading",
-                         "[PBC] Frontend path '{}' does not exist or is not a directory. "
+                PBC_Log(PBC_LogLevel::WARNING,
+                         "Frontend path '{}' does not exist or is not a directory. "
                          "Frontend serving disabled.", frontendPath);
             }
         }
@@ -968,8 +964,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         {
             // No frontend — simple health check
             svr->Get("/", [](const httplib::Request& req, httplib::Response& res) {
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+                PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
                 res.set_content("hello", "text/plain");
             });
         }
@@ -982,8 +977,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // player GUID and a timestamp, base64-encoded.
         // -------------------------------------------------------------------
         svr->Get("/api/token", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             std::string otp = req.get_param_value("otp");
             if (otp.empty())
@@ -1019,8 +1013,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires a valid Authorization: Bearer <token> header.
         // -------------------------------------------------------------------
         svr->Get("/api/player", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, false, false, ctx, /*requireOnlinePlayer=*/false))
@@ -1054,8 +1047,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires a valid Authorization: Bearer <token> header.
         // -------------------------------------------------------------------
         svr->Get("/api/config", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, false, false, ctx, /*requireOnlinePlayer=*/false))
@@ -1090,8 +1082,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // The authenticated player must be online.
         // -------------------------------------------------------------------
         svr->Get("/api/party", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, false, false, ctx))
@@ -1154,8 +1145,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  The target character must be online.
         // -------------------------------------------------------------------
         svr->Post("/api/char/:guid/narrate", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
@@ -1174,8 +1164,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
             std::string histLine = PBC_MakeHistLine(message);
             PBC_AppendHistory(ctx.charGuid, histLine);
 
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API narrate: character GUID={} message=\"{}\"", ctx.charGuid, message);
+            PBC_Log(PBC_LogLevel::DEBUG, "API narrate: character GUID={} message=\"{}\"", ctx.charGuid, message);
 
             res.set_content("{\"status\":\"ok\"}", "application/json");
         });
@@ -1194,8 +1183,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // a group.
         // -------------------------------------------------------------------
         svr->Post("/api/party/narrate", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, false, false, ctx))
@@ -1250,8 +1238,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 return;
             }
 
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API party narrate: player GUID={} characters={}", ctx.authGuid, count);
+            PBC_Log(PBC_LogLevel::DEBUG, "API party narrate: player GUID={} characters={}", ctx.authGuid, count);
 
             json response;
             response["status"]          = "ok";
@@ -1273,8 +1260,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // a group.  Returns immediately with "queued" status.
         // -------------------------------------------------------------------
         svr->Post("/api/party/message", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, false, false, ctx))
@@ -1319,8 +1305,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 g_PBC_PendingPartyMessageRequests.push(std::move(pm));
             }
 
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API party message queued: player GUID={}", ctx.authGuid);
+            PBC_Log(PBC_LogLevel::DEBUG, "API party message queued: player GUID={}", ctx.authGuid);
 
             res.set_content("{\"status\":\"queued\"}", "application/json");
         });
@@ -1332,8 +1317,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // The character must be online.  Requires auth.
         // -------------------------------------------------------------------
         svr->Get("/api/char/:guid/card", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
@@ -1362,8 +1346,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // be online.  Requires auth.
         // -------------------------------------------------------------------
         svr->Get("/api/char/:guid/relationships", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
@@ -1399,8 +1382,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  The character must be online.
         // -------------------------------------------------------------------
         svr->Post("/api/char/:guid/relationships", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
@@ -1447,8 +1429,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 return;
             }
 
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API relationship edit: character GUID={} target={}", ctx.charGuid, targetName);
+            PBC_Log(PBC_LogLevel::DEBUG, "API relationship edit: character GUID={} target={}", ctx.charGuid, targetName);
 
             res.set_content("{\"status\":\"updated\"}", "application/json");
         });
@@ -1468,8 +1449,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  The character must be online.
         // -------------------------------------------------------------------
         svr->Delete("/api/char/:guid/relationships", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
@@ -1509,8 +1489,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 return;
             }
 
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API relationship delete: character GUID={} target={}", ctx.charGuid, targetName);
+            PBC_Log(PBC_LogLevel::DEBUG, "API relationship delete: character GUID={} target={}", ctx.charGuid, targetName);
 
             res.set_content("{\"status\":\"deleted\"}", "application/json");
         });
@@ -1527,8 +1506,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // online.  Requires auth.
         // -------------------------------------------------------------------
         svr->Get("/api/char/:guid/context", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
@@ -1555,8 +1533,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  The target character must be online.
         // -------------------------------------------------------------------
         svr->Get("/api/char/:guid/debug/request", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
@@ -1637,8 +1614,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // from the in-memory history map).
         // -------------------------------------------------------------------
         svr->Get("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
@@ -1741,8 +1717,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  The target character must be online.
         // -------------------------------------------------------------------
         svr->Post("/api/char/:guid/whisper", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
@@ -1779,8 +1754,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 g_PBC_PendingWhisperRequests.push(std::move(wr));
             }
 
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API whisper queued: player GUID={} -> character GUID={}", ctx.authGuid, ctx.charGuid);
+            PBC_Log(PBC_LogLevel::DEBUG, "API whisper queued: player GUID={} -> character GUID={}", ctx.authGuid, ctx.charGuid);
 
             res.set_content("{\"status\":\"queued\"}", "application/json");
         });
@@ -1799,8 +1773,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Returns immediately with "queued" status.
         // -------------------------------------------------------------------
         svr->Post("/api/char/:guid/trigger", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
@@ -1815,8 +1788,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 g_PBC_PendingTriggerRequests.push(std::move(tr));
             }
 
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API trigger queued: character GUID={}", ctx.charGuid);
+            PBC_Log(PBC_LogLevel::DEBUG, "API trigger queued: character GUID={}", ctx.charGuid);
 
             res.set_content("{\"status\":\"queued\"}", "application/json");
         });
@@ -1836,8 +1808,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  The authenticated player must be online.
         // -------------------------------------------------------------------
         svr->Post("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
@@ -1894,8 +1865,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 return;
             }
 
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API history edit: character GUID={} index={}", ctx.charGuid, index);
+            PBC_Log(PBC_LogLevel::DEBUG, "API history edit: character GUID={} index={}", ctx.charGuid, index);
 
             res.set_content("{\"status\":\"updated\"}", "application/json");
         });
@@ -1915,8 +1885,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  The authenticated player must be online.
         // -------------------------------------------------------------------
         svr->Delete("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
@@ -1966,8 +1935,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 return;
             }
 
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API history delete: character GUID={} index={}", ctx.charGuid, index);
+            PBC_Log(PBC_LogLevel::DEBUG, "API history delete: character GUID={} index={}", ctx.charGuid, index);
 
             res.set_content("{\"status\":\"deleted\"}", "application/json");
         });
@@ -1979,8 +1947,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  Works even when the character is offline.
         // -------------------------------------------------------------------
         svr->Get("/api/char/:guid/memory/count", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
@@ -2019,8 +1986,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // from the in-memory memories map).
         // -------------------------------------------------------------------
         svr->Get("/api/char/:guid/memory", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
@@ -2154,8 +2120,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  Works even when the character is offline.
         // -------------------------------------------------------------------
         svr->Post("/api/char/:guid/memory/:id", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
@@ -2213,8 +2178,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 return;
             }
 
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API memory edit: character GUID={} memory id={}", ctx.charGuid, memId);
+            PBC_Log(PBC_LogLevel::DEBUG, "API memory edit: character GUID={} memory id={}", ctx.charGuid, memId);
 
             res.set_content("{\"status\":\"updated\"}", "application/json");
         });
@@ -2234,8 +2198,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  Works even when the character is offline.
         // -------------------------------------------------------------------
         svr->Delete("/api/char/:guid/memory/:id", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
@@ -2281,8 +2244,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 return;
             }
 
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] API memory delete: character GUID={} memory id={}", ctx.charGuid, memId);
+            PBC_Log(PBC_LogLevel::DEBUG, "API memory delete: character GUID={} memory id={}", ctx.charGuid, memId);
 
             res.set_content("{\"status\":\"deleted\"}", "application/json");
         });
@@ -2298,8 +2260,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  Works even when the character is offline.
         // -------------------------------------------------------------------
         svr->Get("/api/char/:guid/data", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
@@ -2334,8 +2295,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Requires auth.  Works even when the character is offline.
         // -------------------------------------------------------------------
         svr->Post("/api/char/:guid/data", [](const httplib::Request& req, httplib::Response& res) {
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
             if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
@@ -2375,8 +2335,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                     }
                     DB_UpsertRollChanceModifier(ctx.charGuid, value);
 
-                    if (g_PBC_DebugEnabled)
-                        LOG_INFO("server.loading", "[PBC] API data update: character GUID={} roll_modifier={}", ctx.charGuid, value);
+                    PBC_Log(PBC_LogLevel::DEBUG, "API data update: character GUID={} roll_modifier={}", ctx.charGuid, value);
                 }
                 // Unknown keys are silently ignored for forward compatibility
             }
@@ -2398,8 +2357,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 std::string token = ExtractWebSocketToken(req);
                 uint64_t guid = ValidateToken(token);
 
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] WS: new connection from {} (player GUID={})",
+                PBC_Log(PBC_LogLevel::DEBUG, "WS: new connection from {} (player GUID={})",
                              req.remote_addr, guid);
 
                 ws.send(json({{"event", "connected"}}).dump());
@@ -2419,9 +2377,8 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                             WsSubscribe(&ws, subGuid);
                             ws.send(json({{"event", "subscribed"}, {"guid", subGuid}}).dump());
 
-                            if (g_PBC_DebugEnabled)
-                                LOG_INFO("server.loading", "[PBC] WS: player GUID={} subscribed to character GUID={}",
-                                         guid, subGuid);
+                            PBC_Log(PBC_LogLevel::DEBUG, "WS: player GUID={} subscribed to character GUID={}",
+                                     guid, subGuid);
                         }
                         else
                         {
@@ -2433,8 +2390,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                         WsUnsubscribe(&ws);
                         ws.send(json({{"event", "unsubscribed"}}).dump());
 
-                        if (g_PBC_DebugEnabled)
-                            LOG_INFO("server.loading", "[PBC] WS: player GUID={} unsubscribed", guid);
+                        PBC_Log(PBC_LogLevel::DEBUG, "WS: player GUID={} unsubscribed", guid);
                     }
                     else
                     {
@@ -2449,8 +2405,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 if (s_httpShuttingDown.load())
                     ws.close(httplib::ws::CloseStatus::GoingAway, "server shutting down");
 
-                if (g_PBC_DebugEnabled)
-                    LOG_INFO("server.loading", "[PBC] WS: connection closed (player GUID={})", guid);
+                PBC_Log(PBC_LogLevel::DEBUG, "WS: connection closed (player GUID={})", guid);
             },
             // Sub-protocol selector: return "access_token" to confirm the
             // selected subprotocol in the WebSocket handshake response.
@@ -2473,8 +2428,8 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // false on failure, which lets us handle the error gracefully.
         if (!svr->bind_to_port(bindAddr.c_str(), port))
         {
-            LOG_ERROR("server.loading",
-                      "[PBC] HTTP server failed to bind to {}:{} — port may be in use or address invalid. "
+            PBC_Log(PBC_LogLevel::ERROR,
+                      "HTTP server failed to bind to {}:{} — port may be in use or address invalid. "
                       "HTTP server disabled; the rest of the module continues normally.",
                       bindAddr, port);
             return false;
@@ -2486,18 +2441,18 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         s_httpRunning.store(true);
 
         s_httpThread = std::make_unique<std::thread>([bindAddr, port]() {
-            LOG_INFO("server.loading", "[PBC] HTTP server listening on {}:{}", bindAddr, port);
+            PBC_Log(PBC_LogLevel::DEFAULT, "HTTP server listening on {}:{}", bindAddr, port);
             s_httpServer->listen_after_bind();
             s_httpRunning.store(false);
-            LOG_INFO("server.loading", "[PBC] HTTP server stopped.");
+            PBC_Log(PBC_LogLevel::DEFAULT, "HTTP server stopped.");
         });
 
         return true;
     }
     catch (const std::exception& ex)
     {
-        LOG_ERROR("server.loading",
-                  "[PBC] HTTP server exception during startup: {}. HTTP server disabled; "
+        PBC_Log(PBC_LogLevel::ERROR,
+                  "HTTP server exception during startup: {}. HTTP server disabled; "
                   "the rest of the module continues normally.",
                   ex.what());
         s_httpServer.reset();

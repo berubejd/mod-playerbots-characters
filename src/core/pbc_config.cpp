@@ -5,8 +5,8 @@
 #include "pbc_events.h"
 #include "pbc_http.h"
 #include "pbc_utils.h"
+#include "pbc_log.h"
 #include "Config.h"
-#include "Log.h"
 #include "DatabaseEnv.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
@@ -260,20 +260,20 @@ void PBC_LoadConfig(bool /*isStartup*/)
         {
             if (check.value.empty())
             {
-                LOG_ERROR("server.loading", "[PBC] {} is not set. This is a required setting when the module is enabled.", check.key);
+                PBC_Log(PBC_LogLevel::ERROR, "{} is not set. This is a required setting when the module is enabled.", check.key);
                 configValid = false;
             }
         }
 
         if (g_PBC_MaxHistoryCtx == 0)
         {
-            LOG_ERROR("server.loading", "[PBC] PBC.MaxHistoryCtx is not set (or is 0). This is a required setting when the module is enabled.");
+            PBC_Log(PBC_LogLevel::ERROR, "PBC.MaxHistoryCtx is not set (or is 0). This is a required setting when the module is enabled.");
             configValid = false;
         }
 
         if (!configValid)
         {
-            LOG_ERROR("server.loading", "[PBC] Required configuration is missing or empty. Module DISABLED — fix your playerbots_characters.conf and reload with .chars reload.");
+            PBC_Log(PBC_LogLevel::ERROR, "Required configuration is missing or empty. Module DISABLED — fix your playerbots_characters.conf and reload with .chars reload.");
             g_PBC_Enable = false;
             return;
         }
@@ -281,7 +281,7 @@ void PBC_LoadConfig(bool /*isStartup*/)
         // HTTP server private key is required when the HTTP server is enabled
         if (g_PBC_HttpServerPort > 0 && g_PBC_HttpServerPrivateKey.empty())
         {
-            LOG_ERROR("server.loading", "[PBC] PBC.HttpServerPrivateKey is not set but PBC.HttpServerPort is {}. "
+            PBC_Log(PBC_LogLevel::ERROR, "PBC.HttpServerPrivateKey is not set but PBC.HttpServerPort is {}. "
                       "The private key is required for the authorization layer when the HTTP server is enabled. "
                       "HTTP server will NOT start.", g_PBC_HttpServerPort);
         }
@@ -290,13 +290,13 @@ void PBC_LoadConfig(bool /*isStartup*/)
     // Load prompts from files (required for the module to work)
     if (g_PBC_Enable && !PBC_LoadPrompts())
     {
-        LOG_ERROR("server.loading", "[PBC] Failed to load prompts. Module DISABLED — fix prompt path and reload with .chars reload.");
+        PBC_Log(PBC_LogLevel::ERROR, "Failed to load prompts. Module DISABLED — fix prompt path and reload with .chars reload.");
         g_PBC_Enable = false;
         return;
     }
 
-    LOG_INFO("server.loading",
-        "[PBC] Config: Enable={} APIType='{}' Model='{}' Url='{}' MaxHistoryCtx={} MaxMemoriesCtx={} Timeout={}s "
+    PBC_Log(PBC_LogLevel::DEFAULT,
+        "Config: Enable={} APIType='{}' Model='{}' Url='{}' MaxHistoryCtx={} MaxMemoriesCtx={} Timeout={}s "
         "Chances: Whisper={}% Mention={}% Message={}% RollPenalty={}% "
         "Item={}% Duel={}% LevelUp={}% HardCombat={}% QuestCompleted={}% QuestTaken={}%",
         g_PBC_Enable, g_PBC_APIType, g_PBC_Model, g_PBC_BaseUrl, g_PBC_MaxHistoryCtx, g_PBC_MaxMemoriesCtx,
@@ -307,13 +307,13 @@ void PBC_LoadConfig(bool /*isStartup*/)
         g_PBC_ReplyChanceDuel, g_PBC_ReplyChanceLevelUp,
         g_PBC_ReplyChanceHardCombat, g_PBC_ReplyChanceQuestCompleted, g_PBC_ReplyChanceQuestTaken);
 
-    LOG_INFO("server.loading",
-        "[PBC] HTTP Server: Port={} Bind='{}' Timeout={}s BaseUrl='{}' PrivateKey={} FrontendPath='{}'",
+    PBC_Log(PBC_LogLevel::DEFAULT,
+        "HTTP Server: Port={} Bind='{}' Timeout={}s BaseUrl='{}' PrivateKey={} FrontendPath='{}'",
         g_PBC_HttpServerPort, g_PBC_HttpServerBind, g_PBC_HttpServerTimeout, g_PBC_HttpServerBaseUrl,
         g_PBC_HttpServerPrivateKey.empty() ? "(not set)" : "(set)", g_PBC_HttpServerFrontendPath);
 
-    LOG_INFO("server.loading",
-        "[PBC] Alt Model: Condensation={} RelationshipUpdate={} APIType='{}' Model='{}' Url='{}' Timeout={}s",
+    PBC_Log(PBC_LogLevel::DEFAULT,
+        "Alt Model: Condensation={} RelationshipUpdate={} APIType='{}' Model='{}' Url='{}' Timeout={}s",
         g_PBC_UseAltModelForCondensation, g_PBC_UseAltModelForRelationshipUpdate,
         g_PBC_AltModelAPIType, g_PBC_AltModel, g_PBC_AltModelBaseUrl, g_PBC_AltModelRequestTimeoutSec);
 }
@@ -345,7 +345,7 @@ static bool LoadPromptFile(const std::string& customPath,
         buf << fCustom.rdbuf();
         if (buf.str().empty())
         {
-            LOG_WARN("server.loading", "[PBC] Custom prompt file is empty: {}", customPath);
+            PBC_Log(PBC_LogLevel::WARNING, "Custom prompt file is empty: {}", customPath);
         }
         else
         {
@@ -359,7 +359,7 @@ static bool LoadPromptFile(const std::string& customPath,
     std::ifstream fDefault(defaultPath);
     if (!fDefault)
     {
-        LOG_ERROR("server.loading", "[PBC] Cannot open prompt file: {}",
+        PBC_Log(PBC_LogLevel::ERROR, "Cannot open prompt file: {}",
                   defaultPath);
         return false;
     }
@@ -368,7 +368,7 @@ static bool LoadPromptFile(const std::string& customPath,
     buf << fDefault.rdbuf();
     if (buf.str().empty())
     {
-        LOG_ERROR("server.loading", "[PBC] Default prompt file is empty: {}", defaultPath);
+        PBC_Log(PBC_LogLevel::ERROR, "Default prompt file is empty: {}", defaultPath);
         return false;
     }
 
@@ -381,7 +381,7 @@ bool PBC_LoadPrompts()
     std::filesystem::path dir(g_PBC_PromptsPath);
     if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
     {
-        LOG_ERROR("server.loading", "[PBC] Prompts directory not found: {}", g_PBC_PromptsPath);
+        PBC_Log(PBC_LogLevel::ERROR, "Prompts directory not found: {}", g_PBC_PromptsPath);
         return false;
     }
 
@@ -420,15 +420,14 @@ bool PBC_LoadPrompts()
         else if (usedCustom)
         {
             ++customCount;
-            if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] Loaded custom prompt '{}' ({} chars)", entry.filename, entry.target.size());
+            PBC_Log(PBC_LogLevel::DEBUG, "Loaded custom prompt '{}' ({} chars)", entry.filename, entry.target.size());
         }
     }
 
     if (!allOk)
         return false;
 
-    LOG_INFO("server.loading", "[PBC] Loaded {} prompt(s) from '{}' ({} custom)",
+    PBC_Log(PBC_LogLevel::DEFAULT, "Loaded {} prompt(s) from '{}' ({} custom)",
              static_cast<int>(sizeof(prompts) / sizeof(prompts[0])), g_PBC_PromptsPath, customCount);
     return true;
 }
@@ -444,7 +443,7 @@ void PBC_LoadCharacterCards()
     std::filesystem::path dir(g_PBC_CharacterCardsPath);
     if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
     {
-        LOG_WARN("server.loading", "[PBC] Character cards directory not found: {}", g_PBC_CharacterCardsPath);
+        PBC_Log(PBC_LogLevel::WARNING, "Character cards directory not found: {}", g_PBC_CharacterCardsPath);
         return;
     }
 
@@ -463,18 +462,17 @@ void PBC_LoadCharacterCards()
         std::string name = filename.substr(0, filename.size() - cardSuffix.size());
 
         std::ifstream f(path);
-        if (!f) { LOG_WARN("server.loading", "[PBC] Cannot open card file: {}", path.string()); continue; }
+        if (!f) { PBC_Log(PBC_LogLevel::WARNING, "Cannot open card file: {}", path.string()); continue; }
 
         std::stringstream buf;
         buf << f.rdbuf();
         g_PBC_CharacterCards[name] = buf.str();
         ++loaded;
 
-        if (g_PBC_DebugEnabled)
-            LOG_INFO("server.loading", "[PBC] Loaded card '{}' ({} chars)", name, g_PBC_CharacterCards[name].size());
+        PBC_Log(PBC_LogLevel::DEBUG, "Loaded card '{}' ({} chars)", name, g_PBC_CharacterCards[name].size());
     }
 
-    LOG_INFO("server.loading", "[PBC] Loaded {} character card(s) from '{}'", loaded, g_PBC_CharacterCardsPath);
+    PBC_Log(PBC_LogLevel::DEFAULT, "Loaded {} character card(s) from '{}'", loaded, g_PBC_CharacterCardsPath);
 }
 
 // ---------------------------------------------------------------------------
@@ -502,7 +500,7 @@ void PBC_LoadHistoryFromDB()
             g_PBC_LastHistoryTime[botGuid] = ts;
     } while (result->NextRow());
 
-    LOG_INFO("server.loading", "[PBC] Chat history loaded from DB ({} characters with timestamps).",
+    PBC_Log(PBC_LogLevel::DEFAULT, "Chat history loaded from DB ({} characters with timestamps).",
              g_PBC_LastHistoryTime.size());
 }
 
@@ -532,7 +530,7 @@ void PBC_LoadMemoriesFromDB()
         ++count;
     } while (result->NextRow());
 
-    LOG_INFO("server.loading", "[PBC] Character memories loaded from DB ({} entries).", count);
+    PBC_Log(PBC_LogLevel::DEFAULT, "Character memories loaded from DB ({} entries).", count);
 }
 
 void PBC_LoadCharacterDataFromDB()
@@ -546,7 +544,7 @@ void PBC_LoadCharacterDataFromDB()
 
     if (!result)
     {
-        LOG_INFO("server.loading", "[PBC] Characters data loaded from DB (0 entries).");
+        PBC_Log(PBC_LogLevel::DEFAULT, "Characters data loaded from DB (0 entries).");
         return;
     }
 
@@ -559,7 +557,7 @@ void PBC_LoadCharacterDataFromDB()
         ++count;
     } while (result->NextRow());
 
-    LOG_INFO("server.loading", "[PBC] Characters data loaded from DB ({} entries, {} with roll modifier).",
+    PBC_Log(PBC_LogLevel::DEFAULT, "Characters data loaded from DB ({} entries, {} with roll modifier).",
              count, g_PBC_RollChanceModifiers.size());
 }
 
@@ -589,7 +587,7 @@ void PBC_LoadRelationshipsFromDB()
 
     if (!result)
     {
-        LOG_INFO("server.loading", "[PBC] Relationships loaded from DB (0 entries).");
+        PBC_Log(PBC_LogLevel::DEFAULT, "Relationships loaded from DB (0 entries).");
         return;
     }
 
@@ -606,5 +604,5 @@ void PBC_LoadRelationshipsFromDB()
         ++count;
     } while (result->NextRow());
 
-    LOG_INFO("server.loading", "[PBC] Relationships loaded from DB ({} entries).", count);
+    PBC_Log(PBC_LogLevel::DEFAULT, "Relationships loaded from DB ({} entries).", count);
 }

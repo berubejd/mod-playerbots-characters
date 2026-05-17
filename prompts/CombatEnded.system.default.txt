@@ -2,9 +2,8 @@ The party has just emerged from a significant battle. Write a short, vivid summa
 
 Guidelines:
 - If significant enemies are listed, mention them by name
-- If regular enemies are listed, you reference them generically according to their numbers to convey the scale (e.g. "a swarm of bandits", "waves of undead", "several prisoners")
-- If someone was seriously wounded, add to the toughness of the battle
-- If it was a close call, convey the desperation
+- If regular enemies are listed, you reference them generically according to their numbers to convey the scale (e.g. "a swarm of bandits", "waves of undead", "several prisoners"), never mentioning specific numbers
+- Convey the desperation, depending on how party handled the combat, remember that no battle is truly effortless
 - If the party was vastly outnumbered, reflect the scale of the fight
 - Do NOT assume that the battle led to some major changes, write only what could be inferred from the provided data
 - Keep it to one line. Describe everything as inhabitants of Azeroth would — use in-universe language and avoid game terminology. Output only one line of plain text with the summary — no comments, no formatting, no meta.
