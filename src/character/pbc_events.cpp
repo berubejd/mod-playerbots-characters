@@ -261,6 +261,7 @@ void PBC_PlayerEvents::OnPlayerLootItem(Player* player, Item* item, uint32 /*cou
 {
     if (!g_PBC_Enable) return;
     if (!PBC_PTR_VALID(player) || !PBC_PTR_VALID(item)) return;
+    if (!item->IsInWorld()) return;
 
     ItemTemplate const* tmpl = item->GetTemplate();
     if (!tmpl || tmpl->Quality < ITEM_QUALITY_RARE) return;
@@ -283,6 +284,7 @@ void PBC_PlayerEvents::OnPlayerLootItem(Player* player, Item* item, uint32 /*cou
 void PBC_PlayerEvents::OnPlayerQuestRewardItem(Player* player, Item* item, uint32 /*count*/)
 {
     if (!PBC_QuestEventGuard(player) || !PBC_PTR_VALID(item)) return;
+    if (!item->IsInWorld()) return;
 
     ItemTemplate const* tmpl = item->GetTemplate();
     if (!tmpl || tmpl->Quality < ITEM_QUALITY_RARE) return;
@@ -306,6 +308,7 @@ void PBC_PlayerEvents::OnPlayerGroupRollRewardItem(Player* player, Item* item, u
 {
     if (!g_PBC_Enable) return;
     if (!PBC_PTR_VALID(player) || !PBC_PTR_VALID(item)) return;
+    if (!item->IsInWorld()) return;
 
     ItemTemplate const* tmpl = item->GetTemplate();
     if (!tmpl || tmpl->Quality < ITEM_QUALITY_RARE) return;
