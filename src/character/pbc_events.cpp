@@ -1295,16 +1295,18 @@ void PBC_PollPartyState()
                         combatToughness = "The party was almost wiped out and barely survived.";
                 }
 
-                // Duration
+                // Duration — generalized category
                 time_t combatDuration = GameTime::GetGameTime().count() - tracker.combatStartTime;
                 std::string durationStr;
                 {
-                    int minutes = static_cast<int>(combatDuration) / 60;
-                    int seconds = static_cast<int>(combatDuration) % 60;
-                    if (minutes > 0)
-                        durationStr = std::to_string(minutes) + " minute" + (minutes != 1 ? "s" : "");
+                    if (combatDuration < 30)
+                        durationStr = "short";
+                    else if (combatDuration < 60)
+                        durationStr = "average";
+                    else if (combatDuration < 150)
+                        durationStr = "long";
                     else
-                        durationStr = std::to_string(seconds) + " second" + (seconds != 1 ? "s" : "");
+                        durationStr = "very long";
                 }
 
                 // Build user prompt from template

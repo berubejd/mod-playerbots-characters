@@ -103,4 +103,4 @@ These variables can be used in the `CombatEnded.user` prompt.
   - Up to 40% died: "The party members suffered major wounds."
   - More than 40% died: "The party was almost wiped out and barely survived."
 - `{party_size}` — the number of party members when combat started
-- `{combat_duration}` — human-readable fight duration, e.g. "2 minutes" or "45 seconds"
+- `{combat_duration}` — generalized fight duration category: "short" (<30s), "average" (<60s), "long" (<150s), or "very long" (≥150s)
