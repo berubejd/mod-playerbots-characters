@@ -385,13 +385,13 @@ void PBC_PlayerEvents::OnPlayerJustDied(Player* player)
 
     uint32_t grpGuid = grp->GetGUID().GetCounter();
 
-    // Mark the group's combat tracker as seriously wounded.
+    // Increment the group's combat tracker dead count.
     // The poll will handle full-wipe detection.
     {
         std::lock_guard<std::mutex> lock(g_PBC_PartyStateMutex);
         auto it = g_PBC_GroupCombatTrackers.find(grpGuid);
         if (it != g_PBC_GroupCombatTrackers.end())
-            it->second.seriouslyWounded = true;
+            ++it->second.deadCount;
     }
 }
 
@@ -1144,25 +1144,10 @@ void PBC_PollPartyState()
         {
             tracker.wasInCombat = true;
             tracker.combatStartTime = GameTime::GetGameTime().count();
+            // Record party size at combat start
+            tracker.partySize = gi.grp->GetMembersCount();
             if (g_PBC_DebugEnabled)
-                LOG_INFO("server.loading", "[PBC] PollPartyState: combat started — group={}", grpGuid);
-        }
-
-        // Combat ongoing: sample HP for alive members
-        if (gi.anyAliveInCombat)
-        {
-            for (GroupReference* ref = gi.grp->GetFirstMember(); ref; ref = ref->next())
-            {
-                Player* member = ref->GetSource();
-                if (!member || !member->IsInWorld() || !member->IsAlive()) continue;
-                float hpPct = member->GetHealthPct();
-                uint64_t memberGuid = member->GetGUID().GetCounter();
-                auto it = tracker.memberMinHpPct.find(memberGuid);
-                if (it == tracker.memberMinHpPct.end())
-                    tracker.memberMinHpPct[memberGuid] = hpPct;
-                else if (hpPct < it->second)
-                    it->second = hpPct;
-            }
+                LOG_INFO("server.loading", "[PBC] PollPartyState: combat started — group={} partySize={}", grpGuid, tracker.partySize);
         }
 
         // Full wipe: all members dead while was in combat
@@ -1192,22 +1177,11 @@ void PBC_PollPartyState()
             if (!tracker.notableEnemyNames.empty())
                 significant = true;
 
-            // Criterion 2: Seriously wounded
-            if (tracker.seriouslyWounded)
+            // Criterion 2: Party members died
+            if (tracker.deadCount > 0)
                 significant = true;
 
-            // Criterion 3: Close call — average lowest HP% < 25%
-            if (!tracker.memberMinHpPct.empty())
-            {
-                float sum = 0.0f;
-                for (auto const& [guid, minHp] : tracker.memberMinHpPct)
-                    sum += minHp;
-                float avg = sum / static_cast<float>(tracker.memberMinHpPct.size());
-                if (avg < 25.0f)
-                    significant = true;
-            }
-
-            // Criterion 4: Swarm — kill count >= 10
+            // Criterion 3: Swarm — kill count >= 10
             if (tracker.killCount >= 10)
                 significant = true;
 
@@ -1259,15 +1233,20 @@ void PBC_PollPartyState()
                     enemiesSection = oss.str();
                 }
 
-                // Close call
-                bool closeCall = false;
-                if (!tracker.memberMinHpPct.empty())
+                // Combat toughness — based on the ratio of party members who died
+                std::string combatToughness;
                 {
-                    float sum = 0.0f;
-                    for (auto const& [guid, minHp] : tracker.memberMinHpPct)
-                        sum += minHp;
-                    float avg = sum / static_cast<float>(tracker.memberMinHpPct.size());
-                    closeCall = (avg < 25.0f);
+                    uint32_t dead = tracker.deadCount;
+                    uint32_t size = tracker.partySize > 0 ? tracker.partySize : 1;
+                    float deathRatio = static_cast<float>(dead) / static_cast<float>(size);
+                    if (dead == 0)
+                        combatToughness = "The party confidently disposed of the enemies.";
+                    else if (deathRatio <= 0.2f)
+                        combatToughness = "The party members suffered minor wounds.";
+                    else if (deathRatio <= 0.4f)
+                        combatToughness = "The party members suffered major wounds.";
+                    else
+                        combatToughness = "The party was almost wiped out and barely survived.";
                 }
 
                 // Duration
@@ -1287,8 +1266,8 @@ void PBC_PollPartyState()
                 PBC_ExpandNewlineEscapes(userPrompt);
                 PBC_ReplaceToken(userPrompt, "location", location);
                 PBC_ReplaceToken(userPrompt, "enemies_section", enemiesSection);
-                PBC_ReplaceToken(userPrompt, "seriously_wounded", tracker.seriouslyWounded ? "yes" : "no");
-                PBC_ReplaceToken(userPrompt, "close_call", closeCall ? "yes" : "no");
+                PBC_ReplaceToken(userPrompt, "combat_toughness", combatToughness);
+                PBC_ReplaceToken(userPrompt, "party_size", std::to_string(tracker.partySize));
                 PBC_ReplaceToken(userPrompt, "combat_duration", durationStr);
                 PBC_CleanUnknownTokens(userPrompt);
 
@@ -1308,10 +1287,10 @@ void PBC_PollPartyState()
 
                 if (g_PBC_DebugEnabled)
                     LOG_INFO("server.loading",
-                             "[PBC] PollPartyState: combat ended (significant) — group={} kills={} notable={} wounded={} closeCall={} duration={}s bots={}",
+                             "[PBC] PollPartyState: combat ended (significant) — group={} kills={} notable={} dead={}/{} toughness=\"{}\" duration={}s bots={}",
                              grpGuid, tracker.killCount, tracker.notableEnemyNames.size(),
-                             tracker.seriouslyWounded, closeCall, static_cast<int>(combatDuration),
-                             ev.respondingChars.size());
+                             tracker.deadCount, tracker.partySize, combatToughness,
+                             static_cast<int>(combatDuration), ev.respondingChars.size());
 
                 PBC_PushEvent(std::move(ev));
             }

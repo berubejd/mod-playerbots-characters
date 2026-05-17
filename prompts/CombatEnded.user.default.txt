@@ -1,5 +1,5 @@
 The party just finished a fight at {location}.
+Party size: {party_size}
 {enemies_section}
-Someone from the party was seriously wounded: {seriously_wounded}
-Close call: {close_call}
+Combat toughness: {combat_toughness}
 Fight duration: {combat_duration}

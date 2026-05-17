@@ -97,6 +97,10 @@ These variables can be used in the `CombatEnded.user` prompt.
   - Regular enemies only: `Regular enemies defeated: Defias Bandit x5, Scarab x3`
   - Significant enemies only: `Regular enemies defeated: none\nSignificant enemies defeated: VanCleef (Defias Kingpin)`
   - Both: `Regular enemies defeated: Defias Bandit x5\nSignificant enemies defeated: VanCleef (Defias Kingpin)`
-- `{seriously_wounded}` — "yes" if a party member died during the fight, "no" otherwise
-- `{close_call}` — "yes" if the party's average lowest HP dropped below 25%, "no" otherwise
+- `{combat_toughness}` — narrative description of how tough the fight was, based on the ratio of party members who died:
+  - No deaths: "The party confidently disposed of the enemies."
+  - Up to 20% died: "The party members suffered minor wounds."
+  - Up to 40% died: "The party members suffered major wounds."
+  - More than 40% died: "The party was almost wiped out and barely survived."
+- `{party_size}` — the number of party members when combat started
 - `{combat_duration}` — human-readable fight duration, e.g. "2 minutes" or "45 seconds"

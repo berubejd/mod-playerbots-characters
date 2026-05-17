@@ -522,7 +522,6 @@ struct PBC_GroupCombatTracker
 
     // Accumulated during combat
     uint32_t killCount = 0;
-    std::unordered_map<uint64_t, float> memberMinHpPct; // guid → lowest HP% reached
 
     // Ordinary (non-notable) enemies killed: creature name → count.
     // Used to build the "enemies slain" list with counts, e.g. "Defias Bandit x5, Scarab x3".
@@ -534,8 +533,11 @@ struct PBC_GroupCombatTracker
     // No counts needed since notable enemies are always unique.
     std::vector<std::string> notableEnemyNames;
 
-    // Whether any member's HP reached 0 during combat
-    bool seriouslyWounded = false;
+    // Number of party members who died during combat
+    uint32_t deadCount = 0;
+
+    // Total party size when combat started (used for death-ratio calculations)
+    uint32_t partySize = 0;
 };
 extern std::unordered_map<uint32_t, PBC_GroupCombatTracker> g_PBC_GroupCombatTrackers;
 
