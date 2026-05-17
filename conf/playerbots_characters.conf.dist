@@ -254,6 +254,13 @@ PBC.ReplyChanceLevelUp = 5
 #     Default:     25
 PBC.ReplyChanceHardCombat = 25
 
+# PBC.CombatEndDebounceCycles
+#     Description: Number of consecutive 1-second poll cycles with no alive member in combat
+#                  before the "significant combat ended" event is dispatched. Prevents
+#                  premature triggers when combat briefly pauses between pulls.
+#     Default:     5
+PBC.CombatEndDebounceCycles = 5
+
 # PBC.ReplyChanceQuestCompleted
 #     Description: The percent chance (0-100) that each character in the party would react
 #                  when the party leader completes a quest. The LLM first generates a short
@@ -278,6 +285,13 @@ PBC.ReplyChanceQuestTaken = 10
 #                  the "party flight started" and "party location changed" events.
 #     Default:     15
 PBC.ReplyChanceLocationChanged = 15
+
+# PBC.LocationChangeDebounceCycles
+#     Description: Number of consecutive 1-second poll cycles the party must remain in the
+#                  same new zone before the "party location changed" event is dispatched.
+#                  Prevents false triggers during zone transitions.
+#     Default:     5
+PBC.LocationChangeDebounceCycles = 5
 
 
 # --------------------------------------------

@@ -144,9 +144,10 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
                                     bool canCreateEvents = true);
 
 // ---------------------------------------------------------------------------
-// Poll party flight/location state (called from OnUpdate every 5 seconds).
+// Poll party flight/location/combat state (called from OnUpdate every 1 second).
 // Checks all groups with at least one real player and one bot, dispatches
-// events for flight starts and location changes.
+// events for flight starts, location changes (debounced 5 cycles), and
+// combat endings (debounced 5 cycles).
 // ---------------------------------------------------------------------------
 void PBC_PollPartyState();
 

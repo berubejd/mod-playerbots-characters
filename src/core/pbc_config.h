@@ -96,6 +96,9 @@ extern uint32_t g_PBC_ReplyChanceQuestCompleted;
 extern uint32_t g_PBC_ReplyChanceQuestTaken;
 extern uint32_t g_PBC_ReplyChanceLocationChanged;
 
+extern uint32_t g_PBC_LocationChangeDebounceCycles;
+extern uint32_t g_PBC_CombatEndDebounceCycles;
+
 // ---------------------------------------------------------------------------
 // Quest LLM prompts
 // ---------------------------------------------------------------------------
@@ -502,7 +505,9 @@ extern std::unordered_map<std::string, std::string> g_PBC_CharacterCards;
 struct PBC_PartyState
 {
     bool   inFlight     = false;   // true while the whole party is in flight
-    std::string location;         // last known shared location name
+    std::string location;         // last confirmed shared location name
+    std::string candidateLocation;           // new zone being debounced
+    uint32_t locationStableCycles = 0;        // consecutive cycles in candidateLocation
 };
 extern std::unordered_map<uint32_t, PBC_PartyState> g_PBC_PartyStates;
 extern std::mutex g_PBC_PartyStateMutex;
@@ -538,6 +543,9 @@ struct PBC_GroupCombatTracker
 
     // Total party size when combat started (used for death-ratio calculations)
     uint32_t partySize = 0;
+
+    // Consecutive cycles with no alive member in combat (combat-end debounce)
+    uint32_t combatEndCycles = 0;
 };
 extern std::unordered_map<uint32_t, PBC_GroupCombatTracker> g_PBC_GroupCombatTrackers;
 

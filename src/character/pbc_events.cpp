@@ -389,9 +389,18 @@ void PBC_PlayerEvents::OnPlayerJustDied(Player* player)
     // The poll will handle full-wipe detection.
     {
         std::lock_guard<std::mutex> lock(g_PBC_PartyStateMutex);
-        auto it = g_PBC_GroupCombatTrackers.find(grpGuid);
-        if (it != g_PBC_GroupCombatTrackers.end())
-            ++it->second.deadCount;
+        PBC_GroupCombatTracker& tracker = g_PBC_GroupCombatTrackers[grpGuid];
+
+        // If combat hasn't been started yet (player died before any kill
+        // was tracked and before the poll detected combat), start it now.
+        if (!tracker.wasInCombat)
+        {
+            tracker.wasInCombat = true;
+            tracker.combatStartTime = GameTime::GetGameTime().count();
+            tracker.partySize = grp->GetMembersCount();
+        }
+
+        ++tracker.deadCount;
     }
 }
 
@@ -939,8 +948,8 @@ static void QueueRelationshipUpdatesAfterCondensation(
 // ---------------------------------------------------------------------------
 // PBC_PollPartyState
 //
-// Called from OnUpdate every 5 seconds.  Walks all groups that contain at
-// least one real player and one bot, checks for two conditions:
+// Called from OnUpdate every 1 second.  Walks all groups that contain at
+// least one real player and one bot, checks for three conditions:
 //
 //   1. Party flight started — all members are in flight and we haven't
 //      already recorded this flight.  Produces:
@@ -954,9 +963,18 @@ static void QueueRelationshipUpdatesAfterCondensation(
 //      entirely while the party is in flight — the event fires after
 //      landing when the zone settles.  On server boot the tracked zone
 //      is empty, so the first poll only *records* the current zone
-//      without producing an event.  Produces:
+//      without producing an event.  The new zone must remain stable for
+//      PBC.LocationChangeDebounceCycles consecutive cycles before the
+//      event is dispatched, to avoid false triggers during zone
+//      transitions.  Produces:
 //        event: "*Party has arrived in X*"
 //        hist:  "Narrator: *Party moved to X*"
+//
+//   3. Significant combat ended — no alive members are in combat, not all
+//      dead, and we were tracking a combat session.  The "no combat"
+//      condition must persist for PBC.CombatEndDebounceCycles consecutive
+//      cycles before the event is dispatched, to avoid premature triggers
+//      when combat briefly pauses between pulls.
 //
 // Both events use g_PBC_ReplyChanceLocationChanged as the base roll chance.
 // Rolls use the same penalty system as other group events (see
@@ -1108,12 +1126,18 @@ void PBC_PollPartyState()
         }
         state.inFlight = gi.allInFlight;
 
-        // --- Location event ---
+        // --- Location event (debounced: zone must be stable for PBC.LocationChangeDebounceCycles) ---
         if (g_PBC_ReplyChanceLocationChanged > 0)
         {
             // Skip location checks while the party is in flight.  The event
             // will fire naturally after landing when the zone settles.
-            if (!gi.allInFlight && !gi.sharedZone.empty())
+            // Also cancel any pending candidate when flight starts.
+            if (gi.allInFlight)
+            {
+                state.candidateLocation.clear();
+                state.locationStableCycles = 0;
+            }
+            else if (!gi.sharedZone.empty())
             {
                 if (state.location.empty())
                 {
@@ -1122,23 +1146,52 @@ void PBC_PollPartyState()
                 }
                 else if (gi.sharedZone != state.location)
                 {
-                    // Zone changed — dispatch event.
-                    std::string eventLine = PBC_MakeEventLine("Party has arrived in " + gi.sharedZone);
-                    std::string histLine  = PBC_MakeHistLine("Party moved to " + gi.sharedZone);
+                    // Zone differs from confirmed location — debounce.
+                    if (state.candidateLocation != gi.sharedZone)
+                    {
+                        // New candidate zone — reset counter.
+                        state.candidateLocation = gi.sharedZone;
+                        state.locationStableCycles = 1;
+                    }
+                    else
+                    {
+                        // Same candidate — increment.
+                        ++state.locationStableCycles;
+                    }
 
-                    if (g_PBC_DebugEnabled)
-                        LOG_INFO("server.loading", "[PBC] PollPartyState: location changed — group={} from='{}' to='{}' bots={} chance={}%",
-                                 grpGuid, state.location, gi.sharedZone, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
+                    if (state.locationStableCycles >= g_PBC_LocationChangeDebounceCycles)
+                    {
+                        // Candidate zone stable for enough cycles — dispatch event.
+                        std::string eventLine = PBC_MakeEventLine("Party has arrived in " + gi.sharedZone);
+                        std::string histLine  = PBC_MakeHistLine("Party moved to " + gi.sharedZone);
 
-                    state.location = gi.sharedZone;
+                        if (g_PBC_DebugEnabled)
+                            LOG_INFO("server.loading", "[PBC] PollPartyState: location changed — group={} from='{}' to='{}' bots={} chance={}%",
+                                     grpGuid, state.location, gi.sharedZone, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
 
-                    PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
-                                           g_PBC_ReplyChanceLocationChanged);
+                        state.location = gi.sharedZone;
+                        state.candidateLocation.clear();
+                        state.locationStableCycles = 0;
+
+                        PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
+                                               g_PBC_ReplyChanceLocationChanged);
+                    }
+                    else if (g_PBC_DebugEnabled)
+                    {
+                        LOG_INFO("server.loading", "[PBC] PollPartyState: location debouncing — group={} candidate='{}' cycles={}/{}",
+                                 grpGuid, state.candidateLocation, state.locationStableCycles, g_PBC_LocationChangeDebounceCycles);
+                    }
+                }
+                else
+                {
+                    // Same zone as confirmed — clear any pending candidate.
+                    state.candidateLocation.clear();
+                    state.locationStableCycles = 0;
                 }
             }
         }
 
-        // --- Combat state tracking ---
+        // --- Combat state tracking (debounced: combat must be over for PBC.CombatEndDebounceCycles) ---
         // Combat started: any alive member in combat and we weren't already tracking
         if (gi.anyAliveInCombat && !tracker.wasInCombat)
         {
@@ -1150,6 +1203,14 @@ void PBC_PollPartyState()
                 LOG_INFO("server.loading", "[PBC] PollPartyState: combat started — group={} partySize={}", grpGuid, tracker.partySize);
         }
 
+        // Combat resumed during debounce — reset the end-cycle counter
+        if (gi.anyAliveInCombat && tracker.wasInCombat && tracker.combatEndCycles > 0)
+        {
+            tracker.combatEndCycles = 0;
+            if (g_PBC_DebugEnabled)
+                LOG_INFO("server.loading", "[PBC] PollPartyState: combat resumed during debounce — group={}", grpGuid);
+        }
+
         // Full wipe: all members dead while was in combat
         if (gi.allDead && tracker.wasInCombat)
         {
@@ -1158,9 +1219,19 @@ void PBC_PollPartyState()
                 LOG_INFO("server.loading", "[PBC] PollPartyState: party wiped — group={}", grpGuid);
         }
 
-        // Combat ended: no alive members in combat, not all dead, and was in combat
+        // Combat ended debounce: no alive members in combat, not all dead, and was in combat
         if (!gi.anyAliveInCombat && !gi.allDead && tracker.wasInCombat)
         {
+            ++tracker.combatEndCycles;
+
+            if (tracker.combatEndCycles < g_PBC_CombatEndDebounceCycles)
+            {
+                if (g_PBC_DebugEnabled)
+                    LOG_INFO("server.loading", "[PBC] PollPartyState: combat ended debouncing — group={} cycles={}/{}",
+                             grpGuid, tracker.combatEndCycles, g_PBC_CombatEndDebounceCycles);
+                continue;
+            }
+
             // Skip event dispatch if chance is 0 (still reset tracker below)
             if (g_PBC_ReplyChanceHardCombat == 0)
             {

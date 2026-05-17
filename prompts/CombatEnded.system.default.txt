@@ -2,7 +2,7 @@ The party has just emerged from a significant battle. Write a short, vivid summa
 
 Guidelines:
 - If significant enemies are listed, mention them by name
-- If regular enemies are listed, you may reference them generically according to their numbers to convey the scale (e.g. "a swarm of bandits", "waves of undead", "several prisoners")
+- If regular enemies are listed, you reference them generically according to their numbers to convey the scale (e.g. "a swarm of bandits", "waves of undead", "several prisoners")
 - If someone was seriously wounded, add to the toughness of the battle
 - If it was a close call, convey the desperation
 - If the party was vastly outnumbered, reflect the scale of the fight

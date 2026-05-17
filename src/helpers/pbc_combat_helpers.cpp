@@ -70,6 +70,7 @@ void PBC_TrackGroupKill(Player* killer, Creature* killed)
     {
         tracker.wasInCombat = true;
         tracker.combatStartTime = GameTime::GetGameTime().count();
+        tracker.partySize = grp->GetMembersCount();
     }
 
     ++tracker.killCount;
