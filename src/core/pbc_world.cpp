@@ -13,6 +13,7 @@
 #include "Chat.h"
 #include "WorldSession.h"
 #include "SharedDefines.h"
+#include "GameTime.h"
 
 // ---------------------------------------------------------------------------
 // PBC_WorldScript
@@ -100,12 +101,11 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
     // 0. Poll party flight/location/combat state every 1 second.
     // ---------------------------------------------------------------------------
     {
-        static uint32_t s_partyPollTimer = 1000;
-        if (s_partyPollTimer > diff)
-            s_partyPollTimer -= diff;
-        else
+        static time_t s_lastPartyPoll = 0;
+        time_t now = GameTime::GetGameTime().count();
+        if (s_lastPartyPoll == 0 || (now - s_lastPartyPoll) >= 1)
         {
-            s_partyPollTimer = 1000;
+            s_lastPartyPoll = now;
             PBC_PollPartyState();
         }
     }
@@ -115,12 +115,11 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
     // ---------------------------------------------------------------------------
     if (g_PBC_CardAdditionsMigrationNeeded)
     {
-        static uint32_t s_migrationWarnTimer = 60000;
-        if (s_migrationWarnTimer > diff)
-            s_migrationWarnTimer -= diff;
-        else
+        static time_t s_lastMigrationWarn = 0;
+        time_t now = GameTime::GetGameTime().count();
+        if (s_lastMigrationWarn == 0 || (now - s_lastMigrationWarn) >= 60)
         {
-            s_migrationWarnTimer = 60000;
+            s_lastMigrationWarn = now;
             LOG_WARN("server.loading",
                      "[PBC] Legacy card additions detected but no memories found. "
                      "Run `.chars migrate-card-additions` from the server console to migrate.");
