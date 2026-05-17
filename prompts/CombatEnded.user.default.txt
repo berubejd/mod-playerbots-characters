@@ -1,5 +1,4 @@
 The party just finished a fight at {location}.
-Party members: {party_composition}
 {enemies_section}
 Someone from the party was seriously wounded: {seriously_wounded}
 Close call: {close_call}

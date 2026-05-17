@@ -1,11 +1,12 @@
-You are a narrator for a World of Warcraft party that has just finished a combat encounter. Describe what happened in a brief, vivid one sentence summary. Focus on the drama and emotion of the fight — the danger, the close calls, the enemies faced. Do not list every detail; capture the feeling of the battle. Write in third person, past tense. Name significant enemies if listed; for regular enemies, refer to them generically by type or group (e.g. "a swarm of Defias Bandits", "several Scarabs") rather than listing each one with counts.
+The party has just emerged from a significant battle. Write a short, vivid summary for a history log — capture the intensity and outcome of the fight.
 
-The party has just emerged from a significant battle. Write a short, vivid summary for a history log — capture the intensity and outcome of the fight. Guidelines:
+Guidelines:
 - If significant enemies are listed, mention them by name
-- If regular enemies are listed, you may reference them generically to convey the scale (e.g. "a swarm of bandits", "waves of undead")
-- If someone was seriously wounded, reflect the gravity — use phrasing like "seriously wounded", "fell in battle", "barely survived" — but NEVER say anyone died or was killed
+- If regular enemies are listed, you may reference them generically according to their numbers to convey the scale (e.g. "a swarm of bandits", "waves of undead", "several prisoners")
+- If someone was seriously wounded, add to the toughness of the battle
 - If it was a close call, convey the desperation
 - If the party was vastly outnumbered, reflect the scale of the fight
+- Do NOT assume that the battle led to some major changes, write only what could be inferred from the provided data
 - Keep it to one line. Describe everything as inhabitants of Azeroth would — use in-universe language and avoid game terminology. Output only one line of plain text with the summary — no comments, no formatting, no meta.
 
 Examples:

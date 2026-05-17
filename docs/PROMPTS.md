@@ -93,7 +93,6 @@ These variables can be used in the `QuestCompleted.user` and `QuestTaken.user` p
 These variables can be used in the `CombatEnded.user` prompt.
 
 - `{location}` — where the fight took place
-- `{party_composition}` — list of party members as `Name (Class)`, e.g. `John (Warrior), Jane (Priest)`
 - `{enemies_section}` — dynamically built enemy list. Examples:
   - Regular enemies only: `Regular enemies defeated: Defias Bandit x5, Scarab x3`
   - Significant enemies only: `Regular enemies defeated: none\nSignificant enemies defeated: VanCleef (Defias Kingpin)`

@@ -1223,22 +1223,6 @@ void PBC_PollPartyState()
                     location = PBC_BuildPlaceName(locAnchor);
                 }
 
-                // Party composition
-                std::string partyComp;
-                {
-                    std::ostringstream oss;
-                    bool first = true;
-                    for (GroupReference* ref = gi.grp->GetFirstMember(); ref; ref = ref->next())
-                    {
-                        Player* m = ref->GetSource();
-                        if (!m || !m->IsInWorld()) continue;
-                        if (!first) oss << ", ";
-                        first = false;
-                        oss << m->GetName() << " (" << PBC_ClassStr(m->getClass()) << ")";
-                    }
-                    partyComp = oss.str();
-                }
-
                 // Build enemies section dynamically:
                 //   - Always starts with "Regular enemies defeated: ..."
                 //   - If no regular enemies: "Regular enemies defeated: none"
@@ -1302,7 +1286,6 @@ void PBC_PollPartyState()
                 std::string userPrompt = g_PBC_CombatEndedUserPrompt;
                 PBC_ExpandNewlineEscapes(userPrompt);
                 PBC_ReplaceToken(userPrompt, "location", location);
-                PBC_ReplaceToken(userPrompt, "party_composition", partyComp);
                 PBC_ReplaceToken(userPrompt, "enemies_section", enemiesSection);
                 PBC_ReplaceToken(userPrompt, "seriously_wounded", tracker.seriouslyWounded ? "yes" : "no");
                 PBC_ReplaceToken(userPrompt, "close_call", closeCall ? "yes" : "no");
