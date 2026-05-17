@@ -13,6 +13,7 @@
 #include "pbc_log.h"
 #include "Player.h"
 #include "Creature.h"
+#include <ctime>
 #include "GameObject.h"
 #include "Map.h"
 #include "Item.h"
@@ -842,6 +843,7 @@ static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
         entry.dbId       = 0;
         entry.text       = std::move(memText);
         entry.importance = importance;
+        entry.createdAt  = PBC_FormatDate(std::time(nullptr));
 
         {
             std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
@@ -1029,14 +1031,22 @@ void PBC_PollPartyState()
         for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
         {
             Player* member = ref->GetSource();
-            if (!member || !member->IsInWorld()) continue;
+            if (!member || !member->IsInWorld())
+            {
+                // PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: skipped member — null={} inWorld={} group={}",
+                //          !member, (member ? member->IsInWorld() : false), grpGuid);
+                continue;
+            }
 
             WorldSession* ms = member->GetSession();
             if (PBC_PTR_VALID(ms) && ms->IsBot())
                 info.bots.push_back(member);
 
             // Flight check
-            if (!member->IsInFlight())
+            bool inFlight = member->IsInFlight();
+            // PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: member={} inFlight={} group={}",
+            //          member->GetName(), inFlight, grpGuid);
+            if (!inFlight)
                 info.allInFlight = false;
 
             // Zone check — use zone-level name only (e.g. "Elwynn Forest")
@@ -1059,6 +1069,9 @@ void PBC_PollPartyState()
                     info.anyAliveInCombat = true;
             }
         }
+
+        // PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: group={} allInFlight={} sharedZone='{}' bots={}",
+        //          grpGuid, info.allInFlight, info.sharedZone, info.bots.size());
 
         if (zoneMismatch)
             info.sharedZone.clear();   // not all in the same zone
@@ -1513,6 +1526,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
             auto& entry = g_PBC_Relationships[ev.relationshipChar.charGuidRaw][ev.relationshipTargetName];
             entry.text = res.text;
             entry.mentionCountAtLastUpdate = ev.relationshipMentionTotal;
+            entry.updatedAt = PBC_FormatDateTime(std::time(nullptr));
         }
         DB_UpsertRelationship(ev.relationshipChar.charGuidRaw, ev.relationshipTargetName,
                               res.text, ev.relationshipMentionTotal);
@@ -1635,6 +1649,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
                 entry.dbId       = 0;
                 entry.text       = std::move(memText);
                 entry.importance = importance;
+                entry.createdAt  = PBC_FormatDate(std::time(nullptr));
 
                 {
                     std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);

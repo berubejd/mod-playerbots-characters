@@ -170,7 +170,7 @@ Returns character memories. Works even when the character is offline.
 | `page` | No | `1` | Page number (1-based). Only used when `limit` is set. |
 | `limit` | No | `0` | Items per page (1–200). Omit or `0` to return all. |
 
-Returns `{"memories": [...], "page", "limit", "total", "total_pages"}`. Each memory has `id` (DB row id), `memory_text`, and `importance`.
+Returns `{"memories": [...], "page", "limit", "total", "total_pages"}`. Each memory has `id` (DB row id), `memory_text`, `importance`, and `created_at` (YYYY-MM-DD).
 
 #### `POST /api/char/:guid/memory/:id`
 
@@ -185,7 +185,7 @@ Delete a single memory. The memory is identified by its DB row `id`. Body: `{"or
 
 #### `GET /api/char/:guid/relationships`
 
-Returns the character's current relationships as `{"relationships": {"John": "...", "Jane": "..."}}`.
+Returns the character's current relationships as `{"relationships": {"John": {"text": "...", "updated_at": "YYYY-MM-DD hh:ii:ss"}, ...}}`.
 
 #### `POST /api/char/:guid/relationships?name=`
 

@@ -470,6 +470,7 @@ struct PBC_MemoryEntry
     uint64_t    dbId = 0;        // DB row id for chronological ordering
     std::string text;
     uint8_t     importance = 5;
+    std::string createdAt;       // Formatted as YYYY-MM-DD
 };
 
 extern std::unordered_map<uint64_t, std::vector<PBC_MemoryEntry>> g_PBC_Memories;
@@ -483,6 +484,7 @@ struct PBC_RelationshipEntry
 {
     std::string text;
     uint32_t    mentionCountAtLastUpdate = 0;
+    std::string updatedAt;               // Formatted as YYYY-MM-DD hh:ii:ss
 };
 
 // ---------------------------------------------------------------------------

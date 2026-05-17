@@ -10,6 +10,7 @@
 #include <set>
 #include <regex>
 #include <algorithm>
+#include <ctime>
 
 // ---------------------------------------------------------------------------
 // Debug output helpers
@@ -277,4 +278,32 @@ std::string PBC_RaceStr(uint8_t race)
 std::string PBC_GenderStr(uint8_t gender)
 {
     return gender == GENDER_FEMALE ? "female" : "male";
+}
+
+// ---------------------------------------------------------------------------
+// Time formatting helpers
+// ---------------------------------------------------------------------------
+
+std::string PBC_FormatDateTime(time_t t)
+{
+    if (t <= 0)
+        return "";
+    struct tm* lt = localtime(&t);
+    if (!lt)
+        return "";
+    char buf[20];
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", lt);
+    return buf;
+}
+
+std::string PBC_FormatDate(time_t t)
+{
+    if (t <= 0)
+        return "";
+    struct tm* lt = localtime(&t);
+    if (!lt)
+        return "";
+    char buf[11];
+    strftime(buf, sizeof(buf), "%Y-%m-%d", lt);
+    return buf;
 }

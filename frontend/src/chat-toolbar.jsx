@@ -356,7 +356,10 @@ export function MemoriesModal({ show, token, guid, charName, onClose, onDesync }
                     <tbody>
                       {memories.map((mem) => (
                         <tr key={mem.id}>
-                          <td class="text-body-secondary">{mem.id}</td>
+                          <td class="text-body-secondary">
+                            {mem.id}
+                            {mem.created_at && <><br /><span style="font-size: 0.75em">{mem.created_at}</span></>}
+                          </td>
                           <td>{importanceBadge(mem.importance)}</td>
                           <td style="word-break: break-word; max-width: 400px">{mem.memory_text}</td>
                           <td>

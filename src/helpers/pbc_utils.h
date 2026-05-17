@@ -107,4 +107,14 @@ std::mt19937& PBC_GetRNG();
 // Roll 0-99 and return true if result < chance.
 bool PBC_RollChance(uint32_t chance);
 
+// ---------------------------------------------------------------------------
+// Time formatting helpers
+// ---------------------------------------------------------------------------
+
+// Format a time_t as "YYYY-MM-DD hh:ii:ss" (local time).
+std::string PBC_FormatDateTime(time_t t);
+
+// Format a time_t as "YYYY-MM-DD" (local time).
+std::string PBC_FormatDate(time_t t);
+
 #endif // MOD_PBC_UTILS_H

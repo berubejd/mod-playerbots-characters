@@ -1358,7 +1358,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 auto relIt = g_PBC_Relationships.find(ctx.charGuid);
                 if (relIt != g_PBC_Relationships.end())
                     for (const auto& kv : relIt->second)
-                        relationships[kv.first] = kv.second.text;
+                        relationships[kv.first] = {{"text", kv.second.text}, {"updated_at", kv.second.updatedAt}};
             }
 
             json response;
@@ -2074,7 +2074,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                         {
                             // No pagination: return all
                             for (const auto* e : entries)
-                                memories.push_back({{"id", e->dbId}, {"memory_text", e->text}, {"importance", e->importance}});
+                                memories.push_back({{"id", e->dbId}, {"memory_text", e->text}, {"importance", e->importance}, {"created_at", e->createdAt}});
                         }
                         else
                         {
@@ -2084,7 +2084,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                             {
                                 size_t endIdx = std::min(startIdx + static_cast<size_t>(limit), total);
                                 for (size_t i = startIdx; i < endIdx; ++i)
-                                    memories.push_back({{"id", entries[i]->dbId}, {"memory_text", entries[i]->text}, {"importance", entries[i]->importance}});
+                                    memories.push_back({{"id", entries[i]->dbId}, {"memory_text", entries[i]->text}, {"importance", entries[i]->importance}, {"created_at", entries[i]->createdAt}});
                             }
                         }
                     }

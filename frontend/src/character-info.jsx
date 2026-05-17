@@ -214,11 +214,15 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
         // Update local state
         setRelationshipsData(prev => {
           if (!prev || !prev.relationships) return prev;
+          const existing = prev.relationships[editModal.name];
+          const updatedRel = (typeof existing === 'object' && existing !== null)
+            ? { ...existing, text: newText }
+            : { text: newText, updated_at: '' };
           return {
             ...prev,
             relationships: {
               ...prev.relationships,
-              [editModal.name]: newText,
+              [editModal.name]: updatedRel,
             },
           };
         });
@@ -316,35 +320,42 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
             <>
               {renderError('relationships')}
               {relationshipsData && relationshipsData.relationships && Object.keys(relationshipsData.relationships).length > 0 ? (
-                Object.entries(relationshipsData.relationships).map(([name, desc]) => (
+                Object.entries(relationshipsData.relationships).map(([name, rel]) => {
+                  const relText = typeof rel === 'string' ? rel : rel.text;
+                  const relUpdatedAt = typeof rel === 'string' ? '' : (rel.updated_at || '');
+                  return (
                   <div key={name} class="message-line mb-2 position-relative">
                     <div class="message-actions position-absolute top-0 end-0" style="z-index: 1;">
                       <button
                         class="btn btn-sm p-0 px-1"
                         title="Edit"
-                        onClick={(e) => { e.stopPropagation(); handleRelationshipEditOpen(name, desc); }}
+                        onClick={(e) => { e.stopPropagation(); handleRelationshipEditOpen(name, relText); }}
                       >
                         <i class="bi bi-pencil"></i>
                       </button>
                       <button
                         class="btn btn-sm p-0 px-1"
                         title="Delete"
-                        onClick={(e) => { e.stopPropagation(); handleRelationshipDeleteOpen(name, desc); }}
+                        onClick={(e) => { e.stopPropagation(); handleRelationshipDeleteOpen(name, relText); }}
                       >
                         <i class="bi bi-trash3"></i>
                       </button>
                     </div>
                     <div class="action-menu position-absolute top-0 end-0">
-                      <ActionMenu onEdit={() => handleRelationshipEditOpen(name, desc)} onDelete={() => handleRelationshipDeleteOpen(name, desc)} />
+                      <ActionMenu onEdit={() => handleRelationshipEditOpen(name, relText)} onDelete={() => handleRelationshipDeleteOpen(name, relText)} />
                     </div>
-                    <span class="small fw-bold" style={nameColorMap && nameColorMap[name] ? `color: ${nameColorMap[name]}` : undefined}>
-                      {name}
-                    </span>
+                    <div class="d-flex justify-content-between align-items-baseline">
+                      <span class="small fw-bold" style={nameColorMap && nameColorMap[name] ? `color: ${nameColorMap[name]}` : undefined}>
+                        {name}
+                      </span>
+                      {relUpdatedAt && <span class="small text-body-secondary" style="font-size: 0.75em">{relUpdatedAt}</span>}
+                    </div>
                     <div class="small text-body-secondary" style="white-space: pre-wrap; word-break: break-word;">
-                      <FormattedText text={desc} />
+                      <FormattedText text={relText} />
                     </div>
                   </div>
-                ))
+                  );
+                })
               ) : (
                 !errors.relationships && <span class="text-body-secondary">No data</span>
               )}

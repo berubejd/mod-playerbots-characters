@@ -381,6 +381,7 @@ PBC_HistoryResult PBC_UpdateRelationship(uint64_t botGuid, const std::string& ta
         return PBC_HistoryResult::Desync;
 
     relIt->second.text = newText;
+    relIt->second.updatedAt = PBC_FormatDateTime(std::time(nullptr));
     DB_UpdateRelationshipText(botGuid, targetName, newText);
     return PBC_HistoryResult::Ok;
 }

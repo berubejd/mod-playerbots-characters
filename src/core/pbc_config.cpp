@@ -507,7 +507,7 @@ void PBC_LoadHistoryFromDB()
 void PBC_LoadMemoriesFromDB()
 {
     QueryResult result = CharacterDatabase.Query(
-        "SELECT id, bot_guid, memory_text, importance FROM mod_pbc_memories ORDER BY bot_guid ASC, id ASC"
+        "SELECT id, bot_guid, memory_text, importance, UNIX_TIMESTAMP(created_at) FROM mod_pbc_memories ORDER BY bot_guid ASC, id ASC"
     );
 
     std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
@@ -521,11 +521,13 @@ void PBC_LoadMemoriesFromDB()
         uint64_t    botGuid    = (*result)[1].Get<uint64_t>();
         std::string memText    = (*result)[2].Get<std::string>();
         uint8_t     importance = static_cast<uint8_t>((*result)[3].Get<uint32_t>());
+        time_t      createdAt  = static_cast<time_t>((*result)[4].Get<uint64_t>());
 
         PBC_MemoryEntry entry;
         entry.dbId       = dbId;
         entry.text       = std::move(memText);
         entry.importance = importance;
+        entry.createdAt  = PBC_FormatDate(createdAt);
         g_PBC_Memories[botGuid].push_back(std::move(entry));
         ++count;
     } while (result->NextRow());
@@ -578,8 +580,8 @@ uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance)
 void PBC_LoadRelationshipsFromDB()
 {
     QueryResult result = CharacterDatabase.Query(
-        "SELECT bot_guid, target_name, relationship_text, mention_count_at_last_update "
-        "FROM mod_pbc_relationships"
+        "SELECT bot_guid, target_name, relationship_text, mention_count_at_last_update, "
+        "UNIX_TIMESTAMP(updated_at) FROM mod_pbc_relationships"
     );
 
     std::lock_guard<std::mutex> lock(g_PBC_RelationshipsMutex);
@@ -597,10 +599,12 @@ void PBC_LoadRelationshipsFromDB()
         std::string targetName = (*result)[1].Get<std::string>();
         std::string relText    = (*result)[2].Get<std::string>();
         uint32_t    mentions   = (*result)[3].Get<uint32_t>();
+        time_t      updatedAt  = static_cast<time_t>((*result)[4].Get<uint64_t>());
 
         auto& entry = g_PBC_Relationships[botGuid][targetName];
         entry.text                    = std::move(relText);
         entry.mentionCountAtLastUpdate = mentions;
+        entry.updatedAt               = PBC_FormatDateTime(updatedAt);
         ++count;
     } while (result->NextRow());
 
