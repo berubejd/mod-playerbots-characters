@@ -72,8 +72,6 @@ extern std::string g_PBC_CharacterContext;
 extern std::string g_PBC_RelationshipUpdateSystemPrompt;
 extern std::string g_PBC_RelationshipUpdateUserPrompt;
 
-// Number of new "about X" mentions in history that triggers a relationship update for X.
-extern uint32_t g_PBC_RelationshipUpdateThreshold;
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -218,9 +216,8 @@ enum class PBC_EventType : uint8_t
     HistoryReload,
 
     // RelationshipUpdate: ask the LLM to update one character's relationship
-    // description with a specific target character.  Triggered when the
-    // number of new "about target" mentions in the character's history reaches
-    // g_PBC_RelationshipUpdateThreshold since the last update.
+    // description with a specific target character.  Triggered on condensation
+    // (manual or automatic) and via the .chars relationship-update command.
     RelationshipUpdate,
 
     // CardAdditionsMigration: convert legacy card additions into discrete
@@ -311,10 +308,6 @@ struct PBC_EventItem
     // The character's current relationship text with the target (may be the default
     // "You don't know much about X" if no data exists yet).
     std::string     relationshipCurrentText;
-    // Total mention count in the full history at the moment this event was
-    // pushed.  Stored in the DB after a successful update so server restarts
-    // don't trigger redundant calls.
-    uint32_t        relationshipMentionTotal = 0;
     // Prompts for the relationship update LLM call.
     std::string     relationshipSystemPrompt;
     std::string     relationshipUserPromptTmpl;
@@ -477,13 +470,12 @@ extern std::unordered_map<uint64_t, std::vector<PBC_MemoryEntry>> g_PBC_Memories
 extern std::mutex g_PBC_MemoriesMutex;
 
 // ---------------------------------------------------------------------------
-// One relationship entry: the LLM-generated text and the total mention count
-// in the character's history at the time the relationship was last updated.
+// One relationship entry: the LLM-generated text and the timestamp of the
+// last update.
 // ---------------------------------------------------------------------------
 struct PBC_RelationshipEntry
 {
     std::string text;
-    uint32_t    mentionCountAtLastUpdate = 0;
     std::string updatedAt;               // Formatted as YYYY-MM-DD hh:ii:ss
 };
 

@@ -159,11 +159,8 @@ inline void DB_UpsertRollChanceModifier(uint64_t botGuid, int32_t modifier)
 // ---------------------------------------------------------------------------
 
 // Upsert a relationship description for a character with a named target.
-// Also persists mention_count_at_last_update so server restarts don't
-// trigger redundant relationship LLM calls.
 inline void DB_UpsertRelationship(uint64_t botGuid, const std::string& targetName,
-                                  const std::string& relationshipText,
-                                  uint32_t mentionCount)
+                                  const std::string& relationshipText)
 {
     std::string escapedName = targetName;
     CharacterDatabase.EscapeString(escapedName);
@@ -171,18 +168,15 @@ inline void DB_UpsertRelationship(uint64_t botGuid, const std::string& targetNam
     CharacterDatabase.EscapeString(escapedText);
     CharacterDatabase.Execute(
         "INSERT INTO mod_pbc_relationships "
-        "  (bot_guid, target_name, relationship_text, mention_count_at_last_update) "
-        "VALUES ({}, '{}', '{}', {}) "
+        "  (bot_guid, target_name, relationship_text) "
+        "VALUES ({}, '{}', '{}') "
         "ON DUPLICATE KEY UPDATE "
         "  relationship_text = '{}', "
-        "  mention_count_at_last_update = {}, "
         "  updated_at = CURRENT_TIMESTAMP",
         botGuid,
         escapedName,
         escapedText,
-        mentionCount,
-        escapedText,
-        mentionCount
+        escapedText
     );
 }
 
@@ -202,7 +196,6 @@ inline void DB_DeleteAllRelationships()
 }
 
 // Update the relationship text for a specific (bot, target) pair.
-// Only updates the text; mention_count_at_last_update is preserved.
 inline void DB_UpdateRelationshipText(uint64_t botGuid, const std::string& targetName,
                                        const std::string& newText)
 {

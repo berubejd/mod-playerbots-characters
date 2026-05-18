@@ -877,16 +877,13 @@ static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
 //
 // After condensation succeeds, queue RelationshipUpdate events for all party
 // members of the given character, using the pre-condensation history so the
-// LLM has full context.  Resets mentionCountAtLastUpdate to 0 so the normal
-// threshold tracking accumulates fresh counts from the new post-condensation
-// history.
+// LLM has full context.
 // ---------------------------------------------------------------------------
 static void QueueRelationshipUpdatesAfterCondensation(
     const PBC_CharacterSnapshot& snap,
     const std::deque<std::string>& preCondensationHistory)
 {
-    if (g_PBC_RelationshipUpdateThreshold == 0 ||
-        g_PBC_RelationshipUpdateSystemPrompt.empty() ||
+    if (g_PBC_RelationshipUpdateSystemPrompt.empty() ||
         g_PBC_RelationshipUpdateUserPrompt.empty() ||
         snap.partyMemberNames.empty())
         return;
@@ -917,7 +914,6 @@ static void QueueRelationshipUpdatesAfterCondensation(
         relEv.relationshipTargetName     = memberName;
         relEv.relationshipTargetInfo     = PBC_BuildTargetInfo(memberName);
         relEv.relationshipCurrentText    = currentRel;
-        relEv.relationshipMentionTotal   = 0; // reset baseline for post-condensation tracking
         relEv.relationshipSystemPrompt   = g_PBC_RelationshipUpdateSystemPrompt;
         relEv.relationshipUserPromptTmpl = g_PBC_RelationshipUpdateUserPrompt;
 
@@ -1519,22 +1515,20 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
             return;
         }
 
-        // Store the updated relationship text and the mention count at time of
-        // update, so server restarts don't trigger redundant LLM calls.
+        // Store the updated relationship text.
         {
             std::lock_guard<std::mutex> lk(g_PBC_RelationshipsMutex);
             auto& entry = g_PBC_Relationships[ev.relationshipChar.charGuidRaw][ev.relationshipTargetName];
             entry.text = res.text;
-            entry.mentionCountAtLastUpdate = ev.relationshipMentionTotal;
             entry.updatedAt = PBC_FormatDateTime(std::time(nullptr));
         }
         DB_UpsertRelationship(ev.relationshipChar.charGuidRaw, ev.relationshipTargetName,
-                              res.text, ev.relationshipMentionTotal);
+                              res.text);
         PBC_WsNotify(ev.relationshipChar.charGuidRaw, "relationship");
 
-        PBC_Log(PBC_LogLevel::DEBUG, "RelationshipUpdate: updated character={} target={} mentions={} text=\"{}\"",
+        PBC_Log(PBC_LogLevel::DEBUG, "RelationshipUpdate: updated character={} target={} text=\"{}\"",
                  ev.relationshipChar.charName, ev.relationshipTargetName,
-                 ev.relationshipMentionTotal, PBC_SanitizeForFmt(res.text));
+                 PBC_SanitizeForFmt(res.text));
 
         g_PBC_EventThreadDone.store(true);
         return;
@@ -2099,92 +2093,6 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         {
             for (const auto& replyLine : completedReplyLines)
                 PBC_AppendHistory(guid, replyLine);
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Mention tracking for relationship updates.
-    //
-    // After all history writes, for each responding bot count how many times
-    // each party member's name appears in that bot's full global history.
-    // We compare the total against the mentionCountAtLastUpdate stored in
-    // g_PBC_Relationships (persisted in DB across server restarts).
-    // If new mentions since the last update >= threshold, push a
-    // RelationshipUpdate event.
-    // -----------------------------------------------------------------------
-    if (g_PBC_RelationshipUpdateThreshold > 0 &&
-        !g_PBC_RelationshipUpdateSystemPrompt.empty() &&
-        !g_PBC_RelationshipUpdateUserPrompt.empty() &&
-        !ev.respondingChars.empty())
-    {
-        for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
-        {
-            if (snap.partyMemberNames.empty()) continue;
-
-            // Read the bot's full current history from the global map.
-            std::deque<std::string> fullHistory;
-            {
-                std::lock_guard<std::mutex> lh(g_PBC_HistoryMutex);
-                auto hIt = g_PBC_ChatHistory.find(snap.charGuidRaw);
-                if (hIt != g_PBC_ChatHistory.end())
-                    fullHistory = hIt->second;
-            }
-            if (fullHistory.empty()) continue;
-
-            for (const auto& memberName : snap.partyMemberNames)
-            {
-                // Count total occurrences of memberName in the full history.
-                uint32_t total = PBC_CountMentions(fullHistory, memberName);
-
-                // Read the mention count recorded at the last update.
-                uint32_t lastCount = 0;
-                std::string currentRel;
-                {
-                    std::lock_guard<std::mutex> lk(g_PBC_RelationshipsMutex);
-                    auto botIt = g_PBC_Relationships.find(snap.charGuidRaw);
-                    if (botIt != g_PBC_Relationships.end())
-                    {
-                        auto tgtIt = botIt->second.find(memberName);
-                        if (tgtIt != botIt->second.end())
-                        {
-                            lastCount  = tgtIt->second.mentionCountAtLastUpdate;
-                            currentRel = tgtIt->second.text;
-                        }
-                    }
-                }
-
-                // Guard against counter going backwards (history was condensed/reset).
-                if (total < lastCount) lastCount = 0;
-
-                uint32_t newMentions = total - lastCount;
-                if (newMentions < g_PBC_RelationshipUpdateThreshold) continue;
-
-                if (currentRel.empty())
-                    currentRel = PBC_DefaultRelationshipText(memberName);
-
-                // Build a snapshot for the relationship event.  Use the
-                // current responding bot's snapshot but refresh its history
-                // to the full global history we just read.
-                PBC_CharacterSnapshot relSnap = snap;
-                relSnap.history         = fullHistory;
-
-                PBC_EventItem relEv;
-                relEv.type                       = PBC_EventType::RelationshipUpdate;
-                relEv.relationshipChar            = std::move(relSnap);
-                relEv.relationshipTargetName     = memberName;
-                relEv.relationshipTargetInfo     = PBC_BuildTargetInfo(memberName);
-                relEv.relationshipCurrentText    = currentRel;
-                // Pass the current total so the handler can persist it.
-                relEv.relationshipMentionTotal   = total;
-                relEv.relationshipSystemPrompt   = g_PBC_RelationshipUpdateSystemPrompt;
-                relEv.relationshipUserPromptTmpl = g_PBC_RelationshipUpdateUserPrompt;
-
-                PBC_PushEvent(std::move(relEv));
-
-                PBC_Log(PBC_LogLevel::DEBUG,
-                         "MentionTracker: character={} target={} total_mentions={} new_since_last={} — relationship update queued",
-                         snap.charName, memberName, total, newMentions);
-            }
         }
     }
 

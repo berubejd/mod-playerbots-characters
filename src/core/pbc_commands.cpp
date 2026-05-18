@@ -294,9 +294,8 @@ static bool HandleCharsRelationship(ChatHandler* handler,
         return true;
     }
 
-    handler->PSendSysMessage("[PBC] {}'s relationship with {} (mentions at last update: {}):\n{}",
+    handler->PSendSysMessage("[PBC] {}'s relationship with {}:\n{}",
         bot->GetName(), targetName,
-        tgtIt->second.mentionCountAtLastUpdate,
         tgtIt->second.text);
     return true;
 }
@@ -352,15 +351,6 @@ static bool HandleCharsRelationshipUpdate(ChatHandler* handler,
     if (currentRel.empty())
         currentRel = PBC_DefaultRelationshipText(targetName);
 
-    // Count current mentions of targetName in the bot's full history
-    uint32_t total = 0;
-    {
-        std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        auto hIt = g_PBC_ChatHistory.find(botGuid);
-        if (hIt != g_PBC_ChatHistory.end())
-            total = PBC_CountMentions(hIt->second, targetName);
-    }
-
     PBC_CharacterSnapshot snap = PBC_SnapshotCharacter(bot);
 
     PBC_EventItem relEv;
@@ -369,7 +359,6 @@ static bool HandleCharsRelationshipUpdate(ChatHandler* handler,
     relEv.relationshipTargetName     = targetName;
     relEv.relationshipTargetInfo     = targetName;
     relEv.relationshipCurrentText    = currentRel;
-    relEv.relationshipMentionTotal   = total;
     relEv.relationshipSystemPrompt   = g_PBC_RelationshipUpdateSystemPrompt;
     relEv.relationshipUserPromptTmpl = g_PBC_RelationshipUpdateUserPrompt;
 

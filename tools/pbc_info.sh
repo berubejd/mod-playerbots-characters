@@ -53,7 +53,7 @@ fi
 
 # ── relationships ─────────────────────────────────────────────────────────────
 RELS=$(mysql -NB acore_characters 2>/dev/null <<SQL
-SELECT target_name, updated_at, mention_count_at_last_update, relationship_text
+SELECT target_name, updated_at, relationship_text
 FROM mod_pbc_relationships
 WHERE bot_guid = ${GUID}
 ORDER BY target_name ASC;
@@ -65,9 +65,9 @@ echo "── Relationships ─────────────────�
 if [[ -z "$RELS" ]]; then
     echo "(none)"
 else
-    while IFS=$'\t' read -r target updated_at mentions rel_text; do
+    while IFS=$'\t' read -r target updated_at rel_text; do
         echo ""
-        echo "  → ${target}  (updated: ${updated_at}, mentions at update: ${mentions})"
+        echo "  → ${target}  (updated: ${updated_at})"
         echo "${rel_text}" | fold -s -w 76 | sed 's/^/    /'
     done <<< "$RELS"
 fi

@@ -63,7 +63,6 @@ std::string g_PBC_CharacterContext;
 
 std::string g_PBC_RelationshipUpdateSystemPrompt;
 std::string g_PBC_RelationshipUpdateUserPrompt;
-uint32_t    g_PBC_RelationshipUpdateThreshold = 100;
 
 std::string g_PBC_PromptsPath = "../../../modules/mod-playerbots-characters/prompts";
 std::string g_PBC_CharacterCardsPath = "../../../modules/mod-playerbots-characters/characters";
@@ -221,8 +220,6 @@ void PBC_LoadConfig(bool /*isStartup*/)
 
     g_PBC_LocationChangeDebounceCycles = sConfigMgr->GetOption<uint32_t>("PBC.LocationChangeDebounceCycles", 5);
     g_PBC_CombatEndDebounceCycles      = sConfigMgr->GetOption<uint32_t>("PBC.CombatEndDebounceCycles", 5);
-
-    g_PBC_RelationshipUpdateThreshold    = sConfigMgr->GetOption<uint32_t>("PBC.RelationshipUpdateThreshold", 100);
 
     std::string blacklistStr = sConfigMgr->GetOption<std::string>("PBC.Blacklist", "");
     g_PBC_Blacklist = SplitByComma(blacklistStr);
@@ -580,7 +577,7 @@ uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance)
 void PBC_LoadRelationshipsFromDB()
 {
     QueryResult result = CharacterDatabase.Query(
-        "SELECT bot_guid, target_name, relationship_text, mention_count_at_last_update, "
+        "SELECT bot_guid, target_name, relationship_text, "
         "UNIX_TIMESTAMP(updated_at) FROM mod_pbc_relationships"
     );
 
@@ -598,13 +595,11 @@ void PBC_LoadRelationshipsFromDB()
         uint64_t    botGuid    = (*result)[0].Get<uint64_t>();
         std::string targetName = (*result)[1].Get<std::string>();
         std::string relText    = (*result)[2].Get<std::string>();
-        uint32_t    mentions   = (*result)[3].Get<uint32_t>();
-        time_t      updatedAt  = static_cast<time_t>((*result)[4].Get<uint64_t>());
+        time_t      updatedAt  = static_cast<time_t>((*result)[3].Get<uint64_t>());
 
         auto& entry = g_PBC_Relationships[botGuid][targetName];
-        entry.text                    = std::move(relText);
-        entry.mentionCountAtLastUpdate = mentions;
-        entry.updatedAt               = PBC_FormatDateTime(updatedAt);
+        entry.text      = std::move(relText);
+        entry.updatedAt = PBC_FormatDateTime(updatedAt);
         ++count;
     } while (result->NextRow());
 

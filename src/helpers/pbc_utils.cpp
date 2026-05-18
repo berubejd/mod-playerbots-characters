@@ -130,24 +130,6 @@ std::string PBC_DefaultRelationshipText(const std::string& name)
     return "You don't know much about " + name + ".";
 }
 
-// ---------------------------------------------------------------------------
-// Mention counting
-// ---------------------------------------------------------------------------
-
-uint32_t PBC_CountMentions(const std::deque<std::string>& history, const std::string& name)
-{
-    uint32_t total = 0;
-    for (const auto& line : history)
-    {
-        size_t pos = 0;
-        while ((pos = line.find(name, pos)) != std::string::npos)
-        {
-            ++total;
-            pos += name.size();
-        }
-    }
-    return total;
-}
 
 // ---------------------------------------------------------------------------
 // Chat / message helpers

@@ -178,16 +178,6 @@ PBC.PromptsPath = ../../../modules/mod-playerbots-characters/prompts
 #     Default:     ../../../modules/mod-playerbots-characters/characters
 PBC.CharacterCardsPath = ../../../modules/mod-playerbots-characters/characters
 
-# PBC.RelationshipUpdateThreshold
-#     Description: Number of new mentions of a character name in a character's history
-#                  since the last relationship update before a new update is triggered.
-#                  For example, if set to 100, a relationship update will be triggered
-#                  every 100 new occurrences of the target's name in the character's history.
-#                  Set to 0 to disable relationship updates entirely.
-#     Default:     100
-PBC.RelationshipUpdateThreshold = 100
-
-
 # --------------------------------------------
 # REPLY CHANCES
 # --------------------------------------------

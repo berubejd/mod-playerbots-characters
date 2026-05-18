@@ -70,7 +70,7 @@ These variables can only be used in the `Main.system` and `Main.user` prompts.
 - `{character_card}` — current character card or generic description from `DefaultCharacterDescription`
 - `{memories}` — discrete narrator-style memories extracted from previous condensations, selected by importance within the token budget (`PBC.MaxMemoriesCtx`). Output chronologically.
 - `{chat_history}` — current chat history, including events
-- `{relationships}` — the character's current relationship descriptions with other party members. When the character is not in a group with a real player (e.g. a whisper interaction), falls back to "You don't know much about <player_name>.". When in a group, lists one entry per member, e.g. "You know John is brave and kind." or "You don't know much about John." for members with no data yet. Updated automatically every `PBC.RelationshipUpdateThreshold` new mentions of a character name in history.
+- `{relationships}` — the character's current relationship descriptions with other party members. When the character is not in a group with a real player (e.g. a whisper interaction), falls back to "You don't know much about <player_name>.". When in a group, lists one entry per member, e.g. "You know John is brave and kind." or "You don't know much about John." for members with no data yet. Updated automatically on condensation (manual or automatic) and via the `.chars relationship-update` command.
 - `{context}` — current context for the character, defined in `CharacterContext`
 - `{event}` — recently happened event, see [Events](EVENTS.md) for details
 

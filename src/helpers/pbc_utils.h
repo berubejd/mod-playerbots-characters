@@ -90,12 +90,7 @@ std::string PBC_RaceStr(uint8_t race);
 // Convert gender ID to human-readable name (GENDER_FEMALE → "female", else "male").
 std::string PBC_GenderStr(uint8_t gender);
 
-// ---------------------------------------------------------------------------
-// Mention counting
-// ---------------------------------------------------------------------------
 
-// Count total occurrences of name in history lines (deque<string>).
-uint32_t PBC_CountMentions(const std::deque<std::string>& history, const std::string& name);
 
 // ---------------------------------------------------------------------------
 // RNG
