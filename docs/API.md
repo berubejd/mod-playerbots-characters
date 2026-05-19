@@ -83,12 +83,24 @@ Returns online party members for the authenticated player. Requires the player t
       "level": 80,
       "character": true,
       "guid": 12345
+    },
+    {
+      "name": "John",
+      "gender": "Male",
+      "race": "Human",
+      "class": "Warrior",
+      "level": 80,
+      "character": true,
+      "guid": 54321,
+      "is_player": true
     }
   ]
 }
 ```
 
-The `party` array contains all online group members (excluding the authenticated player). Each member has a `character` flag — `true` for characters (bots managed by the module), `false` for real players. Characters also include their `guid`.
+The `party` array contains all online group members. Each member has a `character` flag — `true` for characters (bots managed by the module), `false` for real players. Characters also include their `guid`.
+
+When `PBC.TrackPlayerCharacter` is enabled (`1`), the player's own character is also included in the party list with `character: true` and `is_player: true`. This allows the frontend to display the player character alongside bots and enables browsing/editing of their memories and relationships.
 
 #### `GET /api/config`
 
@@ -97,6 +109,7 @@ Returns current module configuration parameters. Does not require the player to 
 ```json
 {
   "config": [
+    {"key": "TrackPlayerCharacter", "value": false},
     {"key": "MaxResponseLength", "value": 120},
     {"key": "MaxHistoryCtx", "value": 0},
     {"key": "MaxMemoriesCtx", "value": 8192},
@@ -182,6 +195,8 @@ Delete a single memory. The memory is identified by its DB row `id`. Body: `{"or
 
 
 ### Character Relationships
+
+Relationships endpoints work for any GUID — bot characters and player characters alike (as long as the character exists in the in-memory relationships map).
 
 #### `GET /api/char/:guid/relationships`
 
@@ -281,7 +296,9 @@ Returns `{"status": "ok", "characters_count": 3}` on success. Returns `400` if t
 
 #### `POST /api/char/:guid/trigger`
 
-Trigger a response from the specified character. The character responds as a party message if they are in a group, or as a say otherwise. The trigger event (`*you feel the urge to say something*`) is not written into the character's history. No request body required. The character must be online.
+Trigger a response from the specified character. The character responds as a party message if they are in a group, or as a say otherwise. The trigger event (`*you feel the urge to say something*`) is not written into the character's history. No request body required.
+
+The target must be online and must be either a bot character in the same party as the authenticated player, or the player's own character (when `PBC.TrackPlayerCharacter` is enabled). Returns `403` if the target is not in the same party.
 
 Returns `{"status": "queued"}` immediately — the actual LLM call and in-game reply happen asynchronously.
 

@@ -9,8 +9,11 @@ import { useVisualViewport } from './use-visual-viewport.js';
 
 const TAB = { CHARACTERS: 'characters', CHAT: 'chat', INFO: 'info' };
 
-export default function PlayerView({ player, party, token, faction, wsEvent, onSubscriptionChange, initialSelectedGuid, onDesync, onOpenAccountManager, maxHistoryCtx }) {
+export default function PlayerView({ player, party, token, faction, wsEvent, onSubscriptionChange, initialSelectedGuid, onDesync, onOpenAccountManager, maxHistoryCtx, trackPlayerCharacter }) {
   const characters = (party?.party || []).filter((m) => m.character);
+  // Identify the player's own character (set by backend when TrackPlayerCharacter is enabled)
+  const playerChar = (party?.party || []).find((m) => m.is_player === true);
+  const playerGuid = playerChar ? playerChar.guid : null;
   const [messageMode, setMessageMode] = useState('whisper');
 
   // Initialize selectedGuid from initialSelectedGuid if it's a valid character
@@ -156,6 +159,7 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
             cls={char['class']}
             selected={selectedGuid === char.guid}
             onClick={() => handleSelect(char.guid)}
+            badge={char.is_player ? 'You' : undefined}
           />
         ))}
       </div>
@@ -170,6 +174,7 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
       nameColorMap={nameColorMap}
       charName={selectedCharName}
       playerName={player.name}
+      playerGuid={playerGuid}
       chatEvent={chatEvent}
       chatReloadKey={chatReloadKey}
       onLoadComplete={handleChatLoadComplete}

@@ -299,7 +299,20 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             }
 
             WorldSession* ts = target->GetSession();
-            if (!ts || !ts->IsBot())
+            if (!ts)
+            {
+                PBC_Log(PBC_LogLevel::DEBUG, "API trigger: target GUID={} has no session, skipping", tr.targetGuid);
+                localTriggers.pop();
+                continue;
+            }
+
+            // Allow triggering bot characters OR the player's own character
+            // (when PBC.TrackPlayerCharacter is enabled).
+            bool isBot = ts->IsBot();
+            bool isTrackedPlayer = (g_PBC_TrackPlayerCharacter && tr.targetGuid == target->GetGUID().GetCounter() &&
+                                    !isBot);
+
+            if (!isBot && !isTrackedPlayer)
             {
                 PBC_Log(PBC_LogLevel::DEBUG, "API trigger: target GUID={} is not a character, skipping", tr.targetGuid);
                 localTriggers.pop();

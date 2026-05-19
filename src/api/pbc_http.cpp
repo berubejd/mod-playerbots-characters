@@ -656,7 +656,11 @@ static bool PBC_ValidateApiRequest(const httplib::Request& req, httplib::Respons
         }
 
         WorldSession* session = bot->GetSession();
-        if (!session || !session->IsBot())
+        // When PBC.TrackPlayerCharacter is enabled, the player's own character
+        // is treated as a regular character for most operations (card, context,
+        // history, memories, relationships, data).
+        bool isOwnCharacter = (g_PBC_TrackPlayerCharacter && ctx.charGuid == ctx.authGuid);
+        if (!session || (!session->IsBot() && !isOwnCharacter))
         {
             res.status = 400;
             res.set_content("{\"error\":\"Specified guid is not a character\"}", "application/json");
@@ -1054,6 +1058,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 return;
 
             json config = json::array();
+            config.push_back({{"key", "TrackPlayerCharacter"},     {"value", g_PBC_TrackPlayerCharacter}});
             config.push_back({{"key", "MaxResponseLength"},        {"value", g_PBC_MaxResponseTokens}});
             config.push_back({{"key", "MaxHistoryCtx"},            {"value", g_PBC_MaxHistoryCtx}});
             config.push_back({{"key", "MaxMemoriesCtx"},           {"value", g_PBC_MaxMemoriesCtx}});
@@ -1125,6 +1130,25 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
                     party.push_back(memberJson);
                 }
+            }
+
+            // When PBC.TrackPlayerCharacter is enabled, add the player's own
+            // character to the front of the party list so the frontend treats
+            // them as a regular character with full functionality (history,
+            // memories, relationships browsing/editing, trigger).
+            if (g_PBC_TrackPlayerCharacter)
+            {
+                json playerJson;
+                playerJson["name"]      = player->GetName();
+                playerJson["gender"]    = HttpGenderStr(player->getGender());
+                playerJson["race"]      = HttpRaceStr(player->getRace());
+                playerJson["class"]     = HttpClassStr(player->getClass());
+                playerJson["level"]     = player->GetLevel();
+                playerJson["character"] = true;
+                playerJson["guid"]      = player->GetGUID().GetCounter();
+                playerJson["is_player"] = true;   // Frontend flag to identify own character
+                // Insert at the beginning so the player character appears first
+                party.insert(party.begin(), playerJson);
             }
 
             json response;
@@ -1342,14 +1366,14 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // GET /api/char/:guid/relationships
         //
         // Returns the character's current relationships as an object mapping
-        // character names to relationship descriptions.  The character must
-        // be online.  Requires auth.
+        // character names to relationship descriptions.  Works for any GUID
+        // (bot or tracked player character).  Requires auth.
         // -------------------------------------------------------------------
         svr->Get("/api/char/:guid/relationships", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
-            if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
+            if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
                 return;
 
             json relationships = json::object();
@@ -1385,7 +1409,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
-            if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
+            if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
                 return;
 
             // Parse name parameter (target character name)
@@ -1452,7 +1476,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
-            if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
+            if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
                 return;
 
             // Parse name parameter (target character name)
@@ -1723,6 +1747,14 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
             if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
                 return;
 
+            // Block whispering to yourself
+            if (ctx.charGuid == ctx.authGuid)
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Cannot whisper to yourself\"}", "application/json");
+                return;
+            }
+
             // Look up the sender (authenticated player) — must be online
             Player* sender = ObjectAccessor::FindPlayer(ObjectGuid(ctx.authGuid));
             if (!sender)
@@ -1767,17 +1799,72 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // otherwise. The trigger event (*you feel the urge to say something*)
         // is NOT written into the character's history.
         //
+        // When PBC.TrackPlayerCharacter is enabled, the player's own character
+        // can be triggered (they will respond via LLM like any bot character).
+        //
         // No request body required.
         //
-        // Requires auth.  The target character must be online.
+        // Requires auth.  The target must be online.  For bot targets the
+        // session must be a bot session; for the player's own character
+        // (when TrackPlayerCharacter is enabled) any online player is accepted.
         // Returns immediately with "queued" status.
         // -------------------------------------------------------------------
         svr->Post("/api/char/:guid/trigger", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
 
             PBC_ApiContext ctx;
-            if (!PBC_ValidateApiRequest(req, res, true, true, ctx))
+            // Use requireOnlineBot=false so we can also handle the player's own character
+            if (!PBC_ValidateApiRequest(req, res, true, false, ctx))
                 return;
+
+            Player* sender = ObjectAccessor::FindPlayer(ObjectGuid(ctx.authGuid));
+            if (!sender || !sender->IsInWorld())
+            {
+                res.status = 410;
+                res.set_content("{\"error\":\"player_offline\"}", "application/json");
+                return;
+            }
+
+            // Verify the target is either a bot or the player's own tracked character
+            Player* target = ObjectAccessor::FindPlayer(ObjectGuid(ctx.charGuid));
+            if (!target || !target->IsInWorld())
+            {
+                res.status = 404;
+                res.set_content("{\"error\":\"Target is not online\"}", "application/json");
+                return;
+            }
+
+            WorldSession* ts = target->GetSession();
+            if (!ts)
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Invalid target\"}", "application/json");
+                return;
+            }
+
+            bool isBot = ts->IsBot();
+            bool isOwnCharacter = (ctx.charGuid == ctx.authGuid && g_PBC_TrackPlayerCharacter);
+
+            if (!isBot && !isOwnCharacter)
+            {
+                res.status = 400;
+                res.set_content("{\"error\":\"Specified guid is not a character\"}", "application/json");
+                return;
+            }
+
+            // Security guard: the target must be in the same party as the authenticated
+            // player OR be the player character themselves.  This prevents triggering
+            // characters that belong to other players' groups.
+            if (!isOwnCharacter)
+            {
+                Group* senderGroup = sender->GetGroup();
+                if (!senderGroup || !senderGroup->IsMember(target->GetGUID()))
+                {
+                    res.status = 403;
+                    res.set_content("{\"error\":\"Target is not in your party\"}", "application/json");
+                    return;
+                }
+            }
 
             // Queue the trigger request for the main thread
             {
@@ -1788,7 +1875,8 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 g_PBC_PendingTriggerRequests.push(std::move(tr));
             }
 
-            PBC_Log(PBC_LogLevel::DEBUG, "API trigger queued: character GUID={}", ctx.charGuid);
+            PBC_Log(PBC_LogLevel::DEBUG, "API trigger queued: character GUID={} (isBot={} isOwnCharacter={})",
+                     ctx.charGuid, isBot, isOwnCharacter);
 
             res.set_content("{\"status\":\"queued\"}", "application/json");
         });

@@ -1,6 +1,6 @@
 import { getClassColor } from './wow-colors.js';
 
-export default function CharacterCard({ name, level, gender, race, cls, selected, onClick }) {
+export default function CharacterCard({ name, level, gender, race, cls, selected, onClick, badge }) {
   const nameColor = getClassColor(cls);
   const nameStyle = nameColor ? `color: ${nameColor}` : undefined;
 
@@ -14,6 +14,7 @@ export default function CharacterCard({ name, level, gender, race, cls, selected
         <div class="d-flex align-items-center gap-2">
           <h6 class="mb-0" style={nameStyle}>{name}</h6>
           <span class="badge bg-secondary">{level}</span>
+          {badge && <span class="badge bg-info ms-auto">{badge}</span>}
         </div>
         <small class="text-body-secondary">{gender} {race} {cls}</small>
       </div>

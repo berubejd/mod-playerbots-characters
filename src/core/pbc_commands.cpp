@@ -614,7 +614,26 @@ static bool HandleCharsTrigger(ChatHandler* handler, std::string_view charNameAr
         return false;
     }
 
-    if (!target->GetSession() || !target->GetSession()->IsBot())
+    // Allow triggering bot characters OR the player's own character
+    // (when PBC.TrackPlayerCharacter is enabled).
+    WorldSession* ts = target->GetSession();
+    if (!ts)
+    {
+        handler->PSendSysMessage("[PBC] '{}' has no session.", target->GetName());
+        return false;
+    }
+
+    bool isBot = ts->IsBot();
+    bool isOwnCharacter = false;
+
+    if (!isBot && g_PBC_TrackPlayerCharacter && handler->GetSession())
+    {
+        Player* callingPlayer = handler->GetSession()->GetPlayer();
+        if (callingPlayer && callingPlayer->GetGUID() == target->GetGUID())
+            isOwnCharacter = true;
+    }
+
+    if (!isBot && !isOwnCharacter)
     {
         handler->PSendSysMessage("[PBC] '{}' is not a playerbot.", target->GetName());
         return false;

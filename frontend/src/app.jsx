@@ -342,6 +342,7 @@ export default function App() {
             onDesync={handleDesync}
             onOpenAccountManager={handleOpenAccountManager}
             maxHistoryCtx={config ? (config.config.find(c => c.key === 'MaxHistoryCtx')?.value ?? 0) : 0}
+            trackPlayerCharacter={config ? (config.config.find(c => c.key === 'TrackPlayerCharacter')?.value ?? false) : false}
           />
         )}
         {view === VIEW.ACCOUNT_MANAGER && (
