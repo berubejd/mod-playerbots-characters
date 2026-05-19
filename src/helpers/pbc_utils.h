@@ -54,15 +54,6 @@ std::string PBC_SanitizeChatMessage(const std::string& msg);
 bool PBC_MentionsCharacter(const std::string& msg, const std::string& charName);
 
 // ---------------------------------------------------------------------------
-// Group helpers (require Player* — implementation in pbc_utils.cpp)
-// ---------------------------------------------------------------------------
-
-class Player;
-
-// Returns true if bot is in a group that contains at least one real (non-bot) player.
-bool PBC_BotIsGroupedWithRealPlayer(Player* bot);
-
-// ---------------------------------------------------------------------------
 // String formatting helpers
 // ---------------------------------------------------------------------------
 

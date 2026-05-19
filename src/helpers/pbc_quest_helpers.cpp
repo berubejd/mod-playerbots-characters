@@ -1,5 +1,6 @@
 #include "pbc_quest_helpers.h"
 #include "pbc_utils.h"
+#include "pbc_group_helpers.h"
 #include "pbc_config.h"
 #include "ObjectMgr.h"
 #include "Creature.h"

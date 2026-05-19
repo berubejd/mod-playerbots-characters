@@ -309,32 +309,6 @@ extern std::mutex g_PBC_RelationshipsMutex;
 // Character cards loaded from disk: name -> card text
 extern std::unordered_map<std::string, std::string> g_PBC_CharacterCards;
 
-// Party state tracking for location/flight events
-struct PBC_PartyState
-{
-    bool   inFlight     = false;
-    std::string location;              // Last confirmed shared location
-    std::string candidateLocation;     // New zone being debounced
-    uint32_t locationStableCycles = 0;
-};
-extern std::unordered_map<uint32_t, PBC_PartyState> g_PBC_PartyStates;
-extern std::mutex g_PBC_PartyStateMutex;
-
-// Per-group combat session tracking
-struct PBC_GroupCombatTracker
-{
-    bool wasInCombat = false;
-    bool wiped = false;
-    time_t combatStartTime = 0;
-    uint32_t killCount = 0;
-    std::map<std::string, uint32_t> killedEnemies;     // name -> count
-    std::vector<std::string> notableEnemyNames;         // bosses/rares
-    uint32_t deadCount = 0;
-    uint32_t partySize = 0;
-    uint32_t combatEndCycles = 0;
-};
-extern std::unordered_map<uint32_t, PBC_GroupCombatTracker> g_PBC_GroupCombatTrackers;
-
 void PBC_PushEvent(PBC_EventItem item);
 
 // Per-character roll chance helper (main-thread only)
@@ -344,9 +318,5 @@ uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance);
 void PBC_LoadConfig(bool isStartup = false);
 bool PBC_LoadPrompts();
 void PBC_LoadCharacterCards();
-void PBC_LoadHistoryFromDB();
-void PBC_LoadMemoriesFromDB();
-void PBC_LoadCharacterDataFromDB();
-void PBC_LoadRelationshipsFromDB();
 
 #endif // MOD_PBC_CONFIG_H

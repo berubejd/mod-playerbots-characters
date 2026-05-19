@@ -5,7 +5,7 @@
 #include "pbc_llm.h"
 #include "pbc_http.h"
 #include "pbc_utils.h"
-#include "pbc_events.h"
+#include "pbc_event_dispatch.h"
 #include "Chat.h"
 #include "Config.h"
 #include "Player.h"
@@ -576,15 +576,32 @@ static bool HandleCharsNarrate(ChatHandler* handler,
         return false;
     }
 
-    if (!target->GetSession() || !target->GetSession()->IsBot())
+    WorldSession* targetSess = target->GetSession();
+    if (!targetSess)
+    {
+        handler->PSendSysMessage("[PBC] '{}' has no session.", target->GetName());
+        return false;
+    }
+
+    bool isBot = targetSess->IsBot();
+    bool isOwnCharacter = false;
+
+    if (!isBot && g_PBC_TrackPlayerCharacter && handler->GetSession())
+    {
+        Player* callingPlayer = handler->GetSession()->GetPlayer();
+        if (callingPlayer && callingPlayer->GetGUID() == target->GetGUID())
+            isOwnCharacter = true;
+    }
+
+    if (!isBot && !isOwnCharacter)
     {
         handler->PSendSysMessage("[PBC] '{}' is not a playerbot.", target->GetName());
         return false;
     }
 
-    uint64_t botGuid = target->GetGUID().GetCounter();
+    uint64_t targetGuid = target->GetGUID().GetCounter();
     std::string histLine = PBC_MakeHistLine(std::string(messageArg));
-    PBC_AppendHistory(botGuid, histLine);
+    PBC_AppendHistory(targetGuid, histLine);
 
     handler->PSendSysMessage("[PBC] Narrator line added to '{}'s history.", target->GetName());
     return true;
@@ -690,6 +707,14 @@ static bool HandleCharsNarrateParty(ChatHandler* handler, Tail messageArg)
         if (!sess || !sess->IsBot()) continue;
 
         PBC_AppendHistory(member->GetGUID().GetCounter(), histLine);
+        ++count;
+    }
+
+    // When PBC.TrackPlayerCharacter is enabled, also write the narrator line
+    // to the calling player's own character history.
+    if (g_PBC_TrackPlayerCharacter)
+    {
+        PBC_AppendHistory(player->GetGUID().GetCounter(), histLine);
         ++count;
     }
 

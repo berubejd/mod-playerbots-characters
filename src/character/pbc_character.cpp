@@ -17,6 +17,66 @@
 #include <ctime>
 #include <algorithm>
 
+// ---------------------------------------------------------------------------
+// Variable substitution — var map
+// ---------------------------------------------------------------------------
+
+void PBC_SubstituteFromMap(std::string& tmpl, const PBC_VarMap& vars, bool annotate)
+{
+    PBC_ExpandNewlineEscapes(tmpl);
+    for (const auto& [key, value] : vars)
+    {
+        PBC_ReplaceToken(tmpl, key,
+            annotate ? ("[" + key + "]" + value) : value);
+    }
+}
+
+PBC_VarMap PBC_BuildVarMap(Player* bot, const std::string& event)
+{
+    PBC_VarMap vars;
+    if (!bot) return vars;
+
+    vars["char_name"]   = bot->GetName();
+    vars["char_gender"] = PBC_GenderStr(bot->getGender());
+    vars["char_race"]   = PBC_RaceStr(bot->getRace());
+    vars["char_class"]  = PBC_ClassStr(bot->getClass());
+    vars["char_role"]   = PBC_RoleStr(bot);
+    vars["char_level"]  = std::to_string(bot->GetLevel());
+    { uint32 m = bot->GetMoney(); vars["char_gold"] = std::to_string(m / 10000) + "g " + std::to_string((m % 10000) / 100) + "s"; }
+    vars["scene"]        = PBC_BuildSceneStr(bot);
+    vars["combat_status"] = PBC_BuildCombatStatusStr(bot);
+    vars["equipment"]    = PBC_BuildEquipmentStr(bot);
+    vars["char_group"]   = PBC_BuildGroupStatusStr(bot);
+    vars["char_los"]     = PBC_BuildLosStr(bot);
+
+    if (!event.empty())
+        vars["event"] = event;
+
+    return vars;
+}
+
+PBC_VarMap PBC_BuildVarMapFromSnapshot(const PBC_CharacterSnapshot& snap, const std::string& event)
+{
+    PBC_VarMap vars;
+    vars["char_name"]   = snap.charName;
+    vars["char_gender"] = snap.charGender;
+    vars["char_race"]   = snap.charRace;
+    vars["char_class"]  = snap.charClass;
+    vars["char_role"]   = snap.charRole;
+    vars["char_level"]  = snap.charLevel;
+    vars["char_gold"]   = snap.charGold;
+    vars["scene"]        = snap.scene;
+    vars["combat_status"] = snap.combatStatus;
+    vars["equipment"]    = snap.equipment;
+    vars["char_group"]   = snap.charGroup;
+    vars["char_los"]     = snap.charLos;
+
+    if (!event.empty())
+        vars["event"] = event;
+
+    return vars;
+}
+
 void PBC_TriggerCondensation(Player* bot)
 {
     if (!bot) return;
@@ -37,50 +97,20 @@ std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot, const std::
                                 bool expandComposites, bool annotate)
 {
     std::string out = tmpl;
-    PBC_ExpandNewlineEscapes(out);
+    PBC_VarMap vars = PBC_BuildVarMap(bot, event);
+    PBC_SubstituteFromMap(out, vars, annotate);
 
-    // Helper: replaces {key} with value (or {key}value when annotate=true)
-    auto replace = [&](const std::string& key, const std::string& value)
+    if (expandComposites && bot)
     {
-        PBC_ReplaceToken(out, key, annotate ? ("{" + key + "}" + value) : value);
-    };
-
-    if (bot)
-    {
-        replace("char_name",   bot->GetName());
-        replace("char_gender", PBC_GenderStr(bot->getGender()));
-        replace("char_race",   PBC_RaceStr(bot->getRace()));
-        replace("char_class",  PBC_ClassStr(bot->getClass()));
-        replace("char_role",   PBC_RoleStr(bot));
-        replace("char_level",  std::to_string(bot->GetLevel()));
-        { uint32 m = bot->GetMoney(); replace("char_gold", std::to_string(m / 10000) + "g " + std::to_string((m % 10000) / 100) + "s"); }
-
-        // Scene (location + travel state + time of day + optional weather)
-        replace("scene", PBC_BuildSceneStr(bot));
-
-        // Combat status
-        replace("combat_status", PBC_BuildCombatStatusStr(bot));
-
-        // Equipment
-        replace("equipment", PBC_BuildEquipmentStr(bot));
-
-        // Group status
-        replace("char_group", PBC_BuildGroupStatusStr(bot));
-
-        // Line-of-sight
-        replace("char_los", PBC_BuildLosStr(bot));
-
-        replace("nearby_chars", "");
-
-        if (expandComposites)
-        {
-            replace("character_card", PBC_GetCharacterCard(bot));
-            replace("chat_history",   PBC_GetChatHistory(bot->GetGUID().GetCounter()));
-            replace("context",        PBC_GetCharacterContext(bot));
-        }
+        PBC_ReplaceToken(out, "character_card",
+            annotate ? ("[character_card]" + PBC_GetCharacterCard(bot)) : PBC_GetCharacterCard(bot));
+        PBC_ReplaceToken(out, "chat_history",
+            annotate ? ("[chat_history]" + PBC_GetChatHistory(bot->GetGUID().GetCounter())) : PBC_GetChatHistory(bot->GetGUID().GetCounter()));
+        PBC_ReplaceToken(out, "context",
+            annotate ? ("[context]" + PBC_GetCharacterContext(bot)) : PBC_GetCharacterContext(bot));
     }
 
-    replace("event", event);
+    PBC_CleanUnknownTokens(out);
     return out;
 }
 
@@ -406,32 +436,25 @@ PBC_HistoryResult PBC_DeleteMemory(uint64_t botGuid, uint64_t memoryId,
 }
 
 // Snapshot var substitution helper (thread-safe, uses snapshot only)
+// Substitutes all vars that can be derived from the snapshot + DB.
+// Does NOT include relationships — that's handled per-caller since
+// some callers (condensation) don't need it.  Callers should invoke
+// PBC_CleanUnknownTokens after all their substitutions are done.
 static void ReplaceSnapshotVars(std::string& out, const PBC_CharacterSnapshot& snap,
                                 const std::string& eventLine)
 {
-    // Composite vars
+    PBC_VarMap vars = PBC_BuildVarMapFromSnapshot(snap, eventLine);
+    PBC_SubstituteFromMap(out, vars);
+
+    // Composite vars from snapshot (need snapshot-specific data, not in the map)
     PBC_ReplaceToken(out, "character_card", snap.characterCard);
-    PBC_ReplaceToken(out, "memories",       PBC_GetMemoriesBlock(snap.charGuidRaw));
     PBC_ReplaceToken(out, "context",        snap.context);
 
     // Chat history from the snapshot's local (thread-local) copy
     { std::ostringstream histOss; for (const auto& line : snap.history) histOss << line << "\n"; PBC_ReplaceToken(out, "chat_history", histOss.str()); }
 
-    // Basic vars
-    PBC_ReplaceToken(out, "char_name",     snap.charName);
-    PBC_ReplaceToken(out, "char_gender",   snap.charGender);
-    PBC_ReplaceToken(out, "char_race",     snap.charRace);
-    PBC_ReplaceToken(out, "char_class",    snap.charClass);
-    PBC_ReplaceToken(out, "char_role",     snap.charRole);
-    PBC_ReplaceToken(out, "char_level",    snap.charLevel);
-    PBC_ReplaceToken(out, "char_gold",     snap.charGold);
-    PBC_ReplaceToken(out, "scene",         snap.scene);
-    PBC_ReplaceToken(out, "char_group",    snap.charGroup);
-    PBC_ReplaceToken(out, "char_los",      snap.charLos);
-    PBC_ReplaceToken(out, "combat_status", snap.combatStatus);
-    PBC_ReplaceToken(out, "equipment",     snap.equipment);
-    PBC_ReplaceToken(out, "nearby_chars",  "");  // deprecated, keep for template compat
-    PBC_ReplaceToken(out, "event",         eventLine);
+    // Memories from DB (thread-safe)
+    PBC_ReplaceToken(out, "memories", PBC_GetMemoriesBlock(snap.charGuidRaw));
 }
 
 
@@ -600,6 +623,7 @@ std::string PBC_BuildUserPromptFromSnapshot(const PBC_CharacterSnapshot& snap,
     // Relationships block (only in the main user prompt, not condensation)
     PBC_ReplaceToken(out, "relationships", PBC_GetRelationshipsBlock(snap));
 
+    PBC_CleanUnknownTokens(out);
     return out;
 }
 
@@ -613,5 +637,6 @@ std::string PBC_BuildCondensationPromptFromSnapshot(const PBC_CharacterSnapshot&
     // Substitute all snapshot vars with empty event
     ReplaceSnapshotVars(out, snap, "");
 
+    PBC_CleanUnknownTokens(out);
     return out;
 }

@@ -377,12 +377,12 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
                   {contextData.context.split('\n').map((line, i, arr) => {
                     // Determine icon based on which template variable is present
                     const varIconMap = [
-                      { vars: ['{char_name}', '{char_gender}', '{char_race}', '{char_class}', '{char_level}', '{char_role}'], icon: 'bi-person-circle' },
-                      { vars: ['{scene}'], icon: 'bi-compass-fill' },
-                      { vars: ['{combat_status}'], icon: 'bi-shield-fill' },
-                      { vars: ['{equipment}'], icon: 'bi-bag-fill' },
-                      { vars: ['{char_group}'], icon: 'bi-people-fill' },
-                      { vars: ['{char_los}'], icon: 'bi-eye-fill' },
+                      { vars: ['[char_name]', '[char_gender]', '[char_race]', '[char_class]', '[char_level]', '[char_role]'], icon: 'bi-person-circle' },
+                      { vars: ['[scene]'], icon: 'bi-compass-fill' },
+                      { vars: ['[combat_status]'], icon: 'bi-shield-fill' },
+                      { vars: ['[equipment]'], icon: 'bi-bag-fill' },
+                      { vars: ['[char_group]'], icon: 'bi-people-fill' },
+                      { vars: ['[char_los]'], icon: 'bi-eye-fill' },
                     ];
                     let icon = 'bi-info-circle-fill';
                     for (const mapping of varIconMap) {
@@ -391,8 +391,8 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
                         break;
                       }
                     }
-                    // Strip all {variable_name} markers from the displayed text
-                    const displayLine = line.replace(/\{[a-zA-Z_][a-zA-Z0-9_]*\}/g, '');
+                    // Strip all annotation markers ([variable_name]) from the displayed text
+                    const displayLine = line.replace(/\[[a-zA-Z_][a-zA-Z0-9_]*\]/g, '');
                     return (
                       <div key={i}>
                         <div class="d-flex align-items-baseline">

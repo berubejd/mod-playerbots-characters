@@ -2,10 +2,29 @@
 #define MOD_PBC_CHARACTER_H
 
 #include <string>
+#include <unordered_map>
 #include "Player.h"
 #include "pbc_config.h"
 #include "pbc_scene_helpers.h"
 #include "pbc_equipment_helpers.h"
+
+// ---------------------------------------------------------------------------
+// Variable substitution types
+// ---------------------------------------------------------------------------
+
+// Key-value map for template variable substitution.
+using PBC_VarMap = std::unordered_map<std::string, std::string>;
+
+// Core substitution engine: iterates over the map and replaces {key} with
+// value in tmpl (in-place).  When annotate=true, uses {key}value format so
+// variable boundaries are visible (used only by the API context endpoint).
+void PBC_SubstituteFromMap(std::string& tmpl, const PBC_VarMap& vars, bool annotate = false);
+
+// Build a var map from a live Player*.  Main-thread only (accesses game data).
+PBC_VarMap PBC_BuildVarMap(Player* bot, const std::string& event = "");
+
+// Build a var map from a PBC_CharacterSnapshot.  Thread-safe.
+PBC_VarMap PBC_BuildVarMapFromSnapshot(const PBC_CharacterSnapshot& snap, const std::string& event = "");
 
 // ---------------------------------------------------------------------------
 // Snapshot builder (main-thread only)
@@ -110,7 +129,8 @@ std::string PBC_GetCharacterContext(Player* bot);
 // Full variable substitution (main-thread only)
 //
 // expandComposites=false skips {character_card}, {chat_history}, {context}
-// to prevent infinite recursion when called from card/context builders.
+// {memories}, {relationships} to prevent infinite recursion when called from
+// card/context builders.
 //
 // annotate=true replaces {key} with {key}value instead of just value,
 // leaving the variable name visible in the output so the frontend can

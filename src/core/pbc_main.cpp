@@ -1,8 +1,9 @@
 #include "pbc_config.h"
-#include "pbc_events.h"
 #include "pbc_world.h"
 #include "pbc_commands.h"
 #include "pbc_log.h"
+#include "pbc_player_scripts.h"
+#include "pbc_quest_scripts.h"
 
 void Addmod_playerbots_charactersScripts()
 {

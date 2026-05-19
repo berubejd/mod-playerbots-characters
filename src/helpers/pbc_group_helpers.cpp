@@ -105,3 +105,23 @@ std::vector<Player*> PBC_FindNearbyBots(Player* source, float range)
     Cell::VisitObjects(source, worker, range);
     return bots;
 }
+
+// ---------------------------------------------------------------------------
+// PBC_BotIsGroupedWithRealPlayer
+// ---------------------------------------------------------------------------
+
+bool PBC_BotIsGroupedWithRealPlayer(Player* bot)
+{
+    if (!PBC_PTR_VALID(bot)) return false;
+    Group* grp = bot->GetGroup();
+    if (!grp) return false;
+    for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!PBC_PTR_VALID(member) || !member->IsInWorld()) continue;
+        WorldSession* sess = member->GetSession();
+        if (!PBC_PTR_VALID(sess)) continue;
+        if (!sess->IsBot()) return true;
+    }
+    return false;
+}

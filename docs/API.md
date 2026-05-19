@@ -137,7 +137,7 @@ Returns the character card (base card with variable substitution).
 
 #### `GET /api/char/:guid/context`
 
-Returns the fully-built context string for a character with **annotated template variables** — each substituted variable leaves its name before the value (e.g. `{char_name}Jon`). The LLM request uses the non-annotated version.
+Returns the fully-built context string for a character with **annotated template variables** — each substituted variable leaves its name before the value (e.g. `[char_name]Jon`). The LLM request uses the non-annotated version.
 
 
 ### Character Chat History

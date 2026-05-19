@@ -2,12 +2,10 @@
 #include "pbc_character.h"
 #include "pbc_database.h"
 #include "pbc_llm.h"
-#include "pbc_events.h"
 #include "pbc_http.h"
 #include "pbc_utils.h"
 #include "pbc_log.h"
 #include "Config.h"
-#include "DatabaseEnv.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "Chat.h"
@@ -132,11 +130,6 @@ std::unordered_map<uint64_t, int32_t> g_PBC_RollChanceModifiers;
 std::mutex g_PBC_DataMutex;
 
 std::unordered_map<uint64_t, time_t> g_PBC_LastHistoryTime;
-
-std::unordered_map<uint32_t, PBC_PartyState> g_PBC_PartyStates;
-std::mutex g_PBC_PartyStateMutex;
-
-std::unordered_map<uint32_t, PBC_GroupCombatTracker> g_PBC_GroupCombatTrackers;
 
 static std::vector<std::string> SplitByComma(const std::string& s)
 {
@@ -424,92 +417,6 @@ void PBC_LoadCharacterCards()
     PBC_Log(PBC_LogLevel::DEFAULT, "Loaded {} character card(s) from '{}'", loaded, g_PBC_CharacterCardsPath);
 }
 
-
-void PBC_LoadHistoryFromDB()
-{
-    QueryResult result = CharacterDatabase.Query(
-        "SELECT bot_guid, message, UNIX_TIMESTAMP(timestamp) FROM mod_pbc_chat_history ORDER BY id ASC"
-    );
-
-    std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-    g_PBC_ChatHistory.clear();
-    g_PBC_LastHistoryTime.clear();
-
-    if (!result) return;
-
-    do {
-        uint64_t    botGuid = (*result)[0].Get<uint64_t>();
-        std::string msg     = (*result)[1].Get<std::string>();
-        time_t      ts      = static_cast<time_t>((*result)[2].Get<uint64_t>());
-        g_PBC_ChatHistory[botGuid].push_back(std::move(msg));
-        if (ts > 0)
-            g_PBC_LastHistoryTime[botGuid] = ts;
-    } while (result->NextRow());
-
-    PBC_Log(PBC_LogLevel::DEFAULT, "Chat history loaded from DB ({} characters with timestamps).",
-             g_PBC_LastHistoryTime.size());
-}
-
-void PBC_LoadMemoriesFromDB()
-{
-    QueryResult result = CharacterDatabase.Query(
-        "SELECT id, bot_guid, memory_text, importance, UNIX_TIMESTAMP(created_at) FROM mod_pbc_memories ORDER BY bot_guid ASC, id ASC"
-    );
-
-    std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
-    g_PBC_Memories.clear();
-
-    if (!result) return;
-
-    size_t count = 0;
-    do {
-        uint64_t    dbId       = (*result)[0].Get<uint64_t>();
-        uint64_t    botGuid    = (*result)[1].Get<uint64_t>();
-        std::string memText    = (*result)[2].Get<std::string>();
-        uint8_t     importance = static_cast<uint8_t>((*result)[3].Get<uint32_t>());
-        time_t      createdAt  = static_cast<time_t>((*result)[4].Get<uint64_t>());
-
-        PBC_MemoryEntry entry;
-        entry.dbId       = dbId;
-        entry.text       = std::move(memText);
-        entry.importance = importance;
-        entry.createdAt  = PBC_FormatDate(createdAt);
-        g_PBC_Memories[botGuid].push_back(std::move(entry));
-        ++count;
-    } while (result->NextRow());
-
-    PBC_Log(PBC_LogLevel::DEFAULT, "Character memories loaded from DB ({} entries).", count);
-}
-
-void PBC_LoadCharacterDataFromDB()
-{
-    QueryResult result = CharacterDatabase.Query(
-        "SELECT bot_guid, roll_chance_modifier FROM mod_pbc_data"
-    );
-
-    std::lock_guard<std::mutex> lock(g_PBC_DataMutex);
-    g_PBC_RollChanceModifiers.clear();
-
-    if (!result)
-    {
-        PBC_Log(PBC_LogLevel::DEFAULT, "Characters data loaded from DB (0 entries).");
-        return;
-    }
-
-    size_t count = 0;
-    do {
-        uint64_t botGuid = (*result)[0].Get<uint64_t>();
-        int32_t  rollMod = (*result)[1].Get<int32_t>();
-        if (rollMod != 0)
-            g_PBC_RollChanceModifiers[botGuid] = rollMod;
-        ++count;
-    } while (result->NextRow());
-
-    PBC_Log(PBC_LogLevel::DEFAULT, "Characters data loaded from DB ({} entries, {} with roll modifier).",
-             count, g_PBC_RollChanceModifiers.size());
-}
-
-
 uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance)
 {
     std::lock_guard<std::mutex> lock(g_PBC_DataMutex);
@@ -520,34 +427,4 @@ uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance)
     return static_cast<uint32_t>(std::max(0, std::min(100, effective)));
 }
 
-void PBC_LoadRelationshipsFromDB()
-{
-    QueryResult result = CharacterDatabase.Query(
-        "SELECT bot_guid, target_name, relationship_text, "
-        "UNIX_TIMESTAMP(updated_at) FROM mod_pbc_relationships"
-    );
 
-    std::lock_guard<std::mutex> lock(g_PBC_RelationshipsMutex);
-    g_PBC_Relationships.clear();
-
-    if (!result)
-    {
-        PBC_Log(PBC_LogLevel::DEFAULT, "Relationships loaded from DB (0 entries).");
-        return;
-    }
-
-    size_t count = 0;
-    do {
-        uint64_t    botGuid    = (*result)[0].Get<uint64_t>();
-        std::string targetName = (*result)[1].Get<std::string>();
-        std::string relText    = (*result)[2].Get<std::string>();
-        time_t      updatedAt  = static_cast<time_t>((*result)[3].Get<uint64_t>());
-
-        auto& entry = g_PBC_Relationships[botGuid][targetName];
-        entry.text      = std::move(relText);
-        entry.updatedAt = PBC_FormatDateTime(updatedAt);
-        ++count;
-    } while (result->NextRow());
-
-    PBC_Log(PBC_LogLevel::DEFAULT, "Relationships loaded from DB ({} entries).", count);
-}

@@ -1,65 +1,11 @@
-#ifndef MOD_PBC_EVENTS_H
-#define MOD_PBC_EVENTS_H
+#ifndef MOD_PBC_EVENT_DISPATCH_H
+#define MOD_PBC_EVENT_DISPATCH_H
 
-#include "ScriptMgr.h"
-#include "AllCreatureScript.h"
-#include "AllGameObjectScript.h"
-#include "AllItemScript.h"
-#include "QuestDef.h"
-#include "pbc_config.h"
-#include "pbc_group_helpers.h"
-#include "pbc_combat_helpers.h"
 #include <string>
+#include <vector>
 
-// Listens to player / world events and feeds them to the character system.
-
-class PBC_PlayerEvents : public PlayerScript
-{
-public:
-    PBC_PlayerEvents();
-
-    // Chat events
-    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
-                            std::string& msg, Player* receiver) override;
-    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
-                            std::string& msg) override;
-    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
-                            std::string& msg, Group* group) override;
-
-    // World events bots may react to
-    void OnPlayerLootItem(Player* player, Item* item, uint32 count, ObjectGuid lootguid) override;
-    void OnPlayerQuestRewardItem(Player* player, Item* item, uint32 count) override;
-    void OnPlayerGroupRollRewardItem(Player* player, Item* item, uint32 count, RollVote voteType, Roll* roll) override;
-    void OnPlayerDuelEnd(Player* winner, Player* loser, DuelCompleteType type) override;
-    void OnPlayerLevelChanged(Player* player, uint8 oldLevel) override;
-    void OnPlayerCreatureKill(Player* killer, Creature* killed) override;
-    void OnPlayerCompleteQuest(Player* player, Quest const* quest) override;
-    void OnPlayerJustDied(Player* player) override;
-};
-
-// Captures quest-accept events from all creatures.
-class PBC_AllCreatureQuestScript : public AllCreatureScript
-{
-public:
-    PBC_AllCreatureQuestScript();
-    bool CanCreatureQuestAccept(Player* player, Creature* creature, Quest const* quest) override;
-};
-
-// Captures quest-accept events from all gameobjects.
-class PBC_AllGameObjectQuestScript : public AllGameObjectScript
-{
-public:
-    PBC_AllGameObjectQuestScript();
-    bool CanGameObjectQuestAccept(Player* player, GameObject* go, Quest const* quest) override;
-};
-
-// Captures quest-accept events from all items.
-class PBC_AllItemQuestScript : public AllItemScript
-{
-public:
-    PBC_AllItemQuestScript();
-    bool CanItemQuestAccept(Player* player, Item* item, Quest const* quest) override;
-};
+class Player;
+struct PBC_EventItem;
 
 // ---------------------------------------------------------------------------
 // Narrator event formatting helpers
@@ -144,16 +90,11 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
                                     bool canCreateEvents = true);
 
 // ---------------------------------------------------------------------------
-// Poll party flight/location/combat state (called from OnUpdate every 1 second).
-// Checks all groups with at least one real player and one bot, dispatches
-// events for flight starts, location changes (debounced 5 cycles), and
-// combat endings (debounced 5 cycles).
+// When PBC.TrackPlayerCharacter is enabled, adds all real (non-bot) players in
+// the anchor's group (including the anchor itself if it's a real player) to the
+// event's silentCharGuids and playerCharGuids.  This ensures player characters
+// receive history passively during play sessions.
 // ---------------------------------------------------------------------------
-void PBC_PollPartyState();
+void AddTrackedPlayersToEvent(PBC_EventItem& ev, Player* anchor);
 
-// ---------------------------------------------------------------------------
-// Process a single event item (runs in a detached thread).
-// ---------------------------------------------------------------------------
-void PBC_ProcessEventItem(PBC_EventItem ev);
-
-#endif // MOD_PBC_EVENTS_H
+#endif // MOD_PBC_EVENT_DISPATCH_H

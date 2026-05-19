@@ -1,0 +1,95 @@
+#include "pbc_http.h"
+#include "pbc_log.h"
+#include "pbc_utils.h"
+
+// Rename httplib namespace to avoid ODR violations with other modules.
+#define httplib pbc_httplib
+#include <httplib.h>
+#include <regex>
+#include <vector>
+#include <utility>
+
+PBC_HttpClient::PBC_HttpClient() : m_timeoutSec(120) {}
+
+void PBC_HttpClient::SetTimeoutSeconds(int seconds)
+{
+    m_timeoutSec = seconds;
+}
+
+std::string PBC_HttpClient::Post(const std::string& url,
+                                 const std::string& jsonData,
+                                 const std::vector<std::pair<std::string, std::string>>& extraHeaders)
+{
+    try
+    {
+        // Parse URL  e.g. https://api.deepseek.com/v1/chat/completions
+        static const std::regex urlRe(R"(^(https?)://([^:/]+)(?::(\d+))?(/.*)?$)");
+        std::smatch m;
+        if (!std::regex_match(url, m, urlRe))
+        {
+            PBC_Log(PBC_LogLevel::ERROR, "Invalid URL: {}", url);
+            return "";
+        }
+
+        std::string proto  = m[1].str();
+        std::string host   = m[2].str();
+        std::string path   = m[4].matched ? m[4].str() : "/";
+        int         port   = proto == "https" ? 443 : 80;
+        if (m[3].matched) port = std::stoi(m[3].str());
+
+        PBC_Log(PBC_LogLevel::DEBUG, "HTTP {} {}:{}{}", proto, host, port, path);
+
+        httplib::Headers headers = {
+            {"Accept",       "application/json"},
+            {"User-Agent",   "AzerothCore-PBC/1.0"}
+        };
+        for (const auto& hdr : extraHeaders)
+            headers.emplace(hdr.first, hdr.second);
+
+        httplib::Result res;
+
+        if (proto == "https")
+        {
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+            httplib::SSLClient cli(host, port);
+            cli.enable_server_certificate_verification(false);
+            cli.set_connection_timeout(m_timeoutSec);
+            cli.set_read_timeout(m_timeoutSec);
+            cli.set_write_timeout(m_timeoutSec);
+            res = cli.Post(path, headers, jsonData, "application/json");
+#else
+            PBC_Log(PBC_LogLevel::ERROR, "HTTPS requested but OpenSSL not compiled in.");
+            return "";
+#endif
+        }
+        else
+        {
+            httplib::Client cli(host, port);
+            cli.set_connection_timeout(m_timeoutSec);
+            cli.set_read_timeout(m_timeoutSec);
+            cli.set_write_timeout(m_timeoutSec);
+            res = cli.Post(path, headers, jsonData, "application/json");
+        }
+
+        if (!res)
+        {
+            PBC_Log(PBC_LogLevel::ERROR, "HTTP request failed (no response) for {}:{}{}", host, port, path);
+            return "";
+        }
+        if (res->status != 200)
+        {
+            PBC_Log(PBC_LogLevel::ERROR, "HTTP {} from {}:{}{}", res->status, host, port, path);
+            PBC_Log(PBC_LogLevel::DEBUG, "Response body: {}", PBC_SanitizeForFmt(res->body));
+            return "";
+        }
+
+        PBC_Log(PBC_LogLevel::DEBUG, "HTTP OK, body length={}", res->body.size());
+
+        return res->body;
+    }
+    catch (const std::exception& ex)
+    {
+        PBC_Log(PBC_LogLevel::ERROR, "HTTP exception: {}", ex.what());
+        return "";
+    }
+}

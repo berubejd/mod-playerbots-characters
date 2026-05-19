@@ -34,4 +34,7 @@ std::vector<Player*> PBC_FindGroupBotsExcluding(Player* player,
 // Used for say/yell chat events where proximity matters rather than group.
 std::vector<Player*> PBC_FindNearbyBots(Player* source, float range = 60.0f);
 
+// Returns true if bot is in a group that contains at least one real (non-bot) player.
+bool PBC_BotIsGroupedWithRealPlayer(Player* bot);
+
 #endif // MOD_PBC_GROUP_HELPERS_H
