@@ -86,6 +86,41 @@ static bool IsBlacklisted(const std::string& msg)
 
 
 // ---------------------------------------------------------------------------
+// AddTrackedPlayersToEvent
+//
+// When PBC.TrackPlayerCharacter is enabled, adds all real (non-bot) players in
+// the anchor's group (including the anchor itself if it's a real player) to the
+// event's silentCharGuids and playerCharGuids.  This ensures player characters
+// receive history passively during play sessions.
+// ---------------------------------------------------------------------------
+static void AddTrackedPlayersToEvent(PBC_EventItem& ev, Player* anchor)
+{
+    if (!g_PBC_TrackPlayerCharacter) return;
+    if (!PBC_PTR_VALID(anchor)) return;
+
+    // Add other real players in the group
+    auto realPlayers = PBC_FindRealPlayersInGroup(anchor);
+    for (Player* rp : realPlayers)
+    {
+        uint64_t guid = rp->GetGUID().GetCounter();
+        ev.silentCharGuids.push_back(guid);
+        ev.playerCharGuids.push_back(guid);
+    }
+
+    // Add the anchor if it's a real player
+    WorldSession* anchorSess = anchor->GetSession();
+    if (PBC_PTR_VALID(anchorSess) && !anchorSess->IsBot())
+    {
+        uint64_t guid = anchor->GetGUID().GetCounter();
+        if (std::find(ev.playerCharGuids.begin(), ev.playerCharGuids.end(), guid) == ev.playerCharGuids.end())
+        {
+            ev.silentCharGuids.push_back(guid);
+            ev.playerCharGuids.push_back(guid);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // PBC_DispatchGroupEvent
 //
 // Central dispatch for all standard group events.  Validates the anchor,
@@ -136,6 +171,8 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
     // responder replies in its own history.
     if (anchorIsBot)
         ev.silentCharGuids.push_back(anchor->GetGUID().GetCounter());
+
+    AddTrackedPlayersToEvent(ev, anchor);
 
     PBC_PushEvent(std::move(ev));
 }
@@ -445,6 +482,8 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     if (!PBC_RollGroupBotsIntoEvent(ev, player, g_PBC_ReplyChanceQuestCompleted, "quest-completed"))
         return;
 
+    AddTrackedPlayersToEvent(ev, player);
+
     PBC_PushEvent(std::move(ev));
 }
 
@@ -486,6 +525,8 @@ static void HandleQuestTaken(Player* player, Quest const* quest,
 
     if (!PBC_RollGroupBotsIntoEvent(ev, player, g_PBC_ReplyChanceQuestTaken, "quest-taken"))
         return;
+
+    AddTrackedPlayersToEvent(ev, player);
 
     PBC_PushEvent(std::move(ev));
 }
@@ -667,17 +708,22 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
     if (!PBC_PTR_VALID(sender) || !PBC_PTR_VALID(target)) return;
 
     std::string senderName = sender->GetName();
+    std::string targetName = target->GetName();
     std::string eventLine   = senderName + " tells you privately: " + msg;
     std::string historyLine = senderName + " (privately to you): " + msg;
 
     PBC_Log(PBC_LogLevel::DEBUG, "Whisper event: {} -> {}: \"{}\" (chance={}%)",
-             senderName, target->GetName(), msg, g_PBC_ReplyChanceWhisper);
+             senderName, targetName, msg, g_PBC_ReplyChanceWhisper);
 
     PBC_EventItem ev;
     ev.type      = PBC_EventType::Normal;
     ev.eventLine = eventLine;
     ev.histLine  = historyLine;
     ev.chatType  = CHAT_MSG_WHISPER;
+
+    // Store whisper perspective info for player history adjustment
+    ev.whisperSenderName = senderName;
+    ev.whisperTargetName = targetName;
 
     // Deliberately not applying roll chance modifiers — whispers are direct
     // conversations and should always use the base chance.
@@ -691,6 +737,21 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
     else
     {
         ev.silentCharGuids.push_back(target->GetGUID().GetCounter());
+    }
+
+    // Add the sender as a tracked player if they are a real player.
+    // Note: for whisper events we do NOT add the sender to silentCharGuids
+    // because the histLine is from the bot's perspective ("privately to you")
+    // and needs to be adjusted for the player.  The player's history is
+    // written separately in PBC_ProcessEventItem using playerCharGuids.
+    if (g_PBC_TrackPlayerCharacter)
+    {
+        WorldSession* senderSess = sender->GetSession();
+        if (PBC_PTR_VALID(senderSess) && !senderSess->IsBot())
+        {
+            uint64_t senderGuid = sender->GetGUID().GetCounter();
+            ev.playerCharGuids.push_back(senderGuid);
+        }
     }
 
     PBC_PushEvent(std::move(ev));
@@ -725,6 +786,8 @@ void PBC_DispatchTriggerEvent(Player* bot)
         for (Player* groupBot : groupBots)
             ev.silentCharGuids.push_back(groupBot->GetGUID().GetCounter());
     }
+
+    AddTrackedPlayersToEvent(ev, bot);
 
     PBC_Log(PBC_LogLevel::DEBUG, "Trigger event: character={} chatType={} silentChars={}",
              bot->GetName(), chatType, ev.silentCharGuids.size());
@@ -771,6 +834,8 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
     ev.canCreateEvents = canCreateEvents;
 
     PBC_RollBotsForMessage(ev, bots, msg);
+
+    AddTrackedPlayersToEvent(ev, sender);
 
     PBC_Log(PBC_LogLevel::DEBUG, "Chat from {} type={} -> {}/{} bots will respond",
              senderName, chatType, ev.respondingChars.size(), bots.size());
@@ -1341,6 +1406,8 @@ void PBC_PollPartyState()
                 {
                     // No bots rolled — still dispatch so silent chars get histLine later
                 }
+
+                AddTrackedPlayersToEvent(ev, gi.anchor);
 
                 PBC_Log(PBC_LogLevel::DEBUG,
                          "PollPartyState: combat ended (significant) — group={} kills={} notable={} dead={}/{} toughness=\"{}\" duration={}s bots={}",
@@ -2035,6 +2102,9 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         // histLine but still need to receive any new replies.
         for (const auto& rs : ev.respondingChars)
             req.originCharGuids.push_back(rs.charGuidRaw);
+        // Propagate player character GUIDs so they receive new replies from
+        // the secondary event (but NOT histLine, which was already written).
+        req.playerCharGuids  = ev.playerCharGuids;
         req.excludedCharGuids = std::move(excluded);
 
         // Capture debug values before the move.
@@ -2093,6 +2163,81 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         {
             for (const auto& replyLine : completedReplyLines)
                 PBC_AppendHistory(guid, replyLine);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Write history for tracked player characters.
+    //
+    // For non-whisper events, player characters are already in silentCharGuids
+    // and receive history through the normal path above.  For whisper events,
+    // the player (sender) was NOT added to silentCharGuids because the histLine
+    // is from the bot's perspective ("privately to you") and needs adjustment.
+    //
+    // Whisper perspective adjustments:
+    //   histLine: "SenderName (privately to you): msg"
+    //     → player sees: "SenderName (privately to TargetName): msg"
+    //   replyLine: "BotName (privately to SenderName): reply"
+    //     → player sees: "BotName (privately to you): reply"
+    // -----------------------------------------------------------------------
+    if (!ev.playerCharGuids.empty())
+    {
+        if (ev.chatType == CHAT_MSG_WHISPER
+            && !ev.whisperSenderName.empty()
+            && !ev.whisperTargetName.empty())
+        {
+            std::string playerHistLine = ev.histLine;
+            {
+                const std::string from = "(privately to you)";
+                const std::string to   = "(privately to " + ev.whisperTargetName + ")";
+                size_t pos = 0;
+                while ((pos = playerHistLine.find(from, pos)) != std::string::npos)
+                {
+                    playerHistLine.replace(pos, from.size(), to);
+                    pos += to.size();
+                }
+            }
+
+            for (uint64_t guid : ev.playerCharGuids)
+            {
+                if (!playerHistLine.empty())
+                    PBC_AppendHistory(guid, playerHistLine);
+
+                for (const auto& replyLine : completedReplyLines)
+                {
+                    std::string playerReplyLine = replyLine;
+                    {
+                        const std::string from = "(privately to " + ev.whisperSenderName + ")";
+                        const std::string to   = "(privately to you)";
+                        size_t pos = 0;
+                        while ((pos = playerReplyLine.find(from, pos)) != std::string::npos)
+                        {
+                            playerReplyLine.replace(pos, from.size(), to);
+                            pos += to.size();
+                        }
+                    }
+                    PBC_AppendHistory(guid, playerReplyLine);
+                }
+            }
+        }
+        else if (!completedReplyLines.empty())
+        {
+            for (uint64_t guid : ev.playerCharGuids)
+            {
+                // Skip if this GUID was already handled as a silent/replyOnly char
+                bool alreadyHandled = false;
+                for (uint64_t sg : ev.silentCharGuids)
+                    { if (sg == guid) { alreadyHandled = true; break; } }
+                if (!alreadyHandled)
+                {
+                    for (uint64_t rg : ev.replyOnlyCharGuids)
+                        { if (rg == guid) { alreadyHandled = true; break; } }
+                }
+                if (alreadyHandled) continue;
+
+                for (const auto& replyLine : completedReplyLines)
+                    PBC_AppendHistory(guid, replyLine);
+            }
         }
     }
 

@@ -12,6 +12,7 @@
 #include "Group.h"
 #include "Chat.h"
 #include "WorldSession.h"
+#include "WorldSessionMgr.h"
 #include "SharedDefines.h"
 #include "GameTime.h"
 
@@ -109,7 +110,41 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
     }
 
     // ---------------------------------------------------------------------------
-    // 0b. Warn about pending card additions migration every 60 seconds.
+    // 0b. Trigger condensation for tracked player characters whose history
+    //     exceeds the token limit.  Checked every 30 seconds.
+    // ---------------------------------------------------------------------------
+    if (g_PBC_TrackPlayerCharacter && g_PBC_MaxHistoryCtx > 0)
+    {
+        static time_t s_lastPlayerCondenseCheck = 0;
+        time_t now = GameTime::GetGameTime().count();
+        if (s_lastPlayerCondenseCheck == 0 || (now - s_lastPlayerCondenseCheck) >= 30)
+        {
+            s_lastPlayerCondenseCheck = now;
+
+            // Walk all sessions to find real players whose history needs condensation
+            WorldSessionMgr::SessionMap const& sessions = sWorldSessionMgr->GetAllSessions();
+            for (auto const& [id, session] : sessions)
+            {
+                Player* player = session->GetPlayer();
+                if (!player || !player->IsInWorld()) continue;
+
+                WorldSession* sess = player->GetSession();
+                if (!PBC_PTR_VALID(sess) || sess->IsBot()) continue;
+
+                uint64_t playerGuid = player->GetGUID().GetCounter();
+                int histTokens = PBC_EstimateHistoryTokens(playerGuid);
+                if (histTokens > static_cast<int>(g_PBC_MaxHistoryCtx))
+                {
+                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: player character={} history tokens={} exceeds limit {}, triggering condensation",
+                             player->GetName(), histTokens, g_PBC_MaxHistoryCtx);
+                    PBC_TriggerCondensation(player);
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 0c. Warn about pending card additions migration every 60 seconds.
     // ---------------------------------------------------------------------------
     if (g_PBC_CardAdditionsMigrationNeeded)
     {
@@ -170,6 +205,9 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 // Original responders already have histLine; they only need
                 // to receive any new replies produced by this secondary event.
                 newEv.replyOnlyCharGuids = req.originCharGuids;
+                // Player characters already have histLine from the primary event;
+                // they only need new replies.  Propagated via playerCharGuids.
+                newEv.playerCharGuids  = req.playerCharGuids;
 
                 // Shuffle targets so the penalty doesn't always favour the
                 // same character — same approach as the primary chat handler.

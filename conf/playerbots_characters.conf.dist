@@ -42,6 +42,19 @@ PBC.DebugShowFullRequest = 0
 #     Default:     1 (true)
 PBC.DisplayNarratorEvents = 1
 
+# PBC.TrackPlayerCharacter
+#     Description: When enabled (1), the real player's character will have
+#                  history written for them during play sessions, just like
+#                  bot characters. This allows the player to build up memories
+#                  and relationships on their own character, so when they switch
+#                  to an alt, the main character retains full recollection of
+#                  what happened. Condensation (with relationship updates) is
+#                  triggered as usual when the player's history exceeds the
+#                  token limit. The player's character never reacts to events
+#                  (no LLM calls) — history is written passively.
+#     Default:     0 (false)
+PBC.TrackPlayerCharacter = 0
+
 
 # --------------------------------------------
 # API CONNECTION

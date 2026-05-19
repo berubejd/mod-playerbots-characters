@@ -20,6 +20,10 @@ class Player;
 // itself).  Returns empty vector if the player is not in a group.
 std::vector<Player*> PBC_FindGroupBots(Player* player);
 
+// Find all real (non-bot) players in the same group as 'player' (excluding
+// 'player' itself).  Returns empty vector if the player is not in a group.
+std::vector<Player*> PBC_FindRealPlayersInGroup(Player* player);
+
 // Find all bot players in the same group as 'player', excluding 'player'
 // itself AND any GUIDs in the excluded set.  Returns empty vector if the
 // player is not in a group.

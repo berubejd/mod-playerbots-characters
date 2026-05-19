@@ -33,6 +33,31 @@ std::vector<Player*> PBC_FindGroupBots(Player* player)
 }
 
 // ---------------------------------------------------------------------------
+// PBC_FindRealPlayersInGroup
+// ---------------------------------------------------------------------------
+
+std::vector<Player*> PBC_FindRealPlayersInGroup(Player* player)
+{
+    std::vector<Player*> realPlayers;
+    if (!PBC_PTR_VALID(player)) return realPlayers;
+
+    Group* grp = player->GetGroup();
+    if (!grp) return realPlayers;
+
+    for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!PBC_PTR_VALID(member) || member == player) continue;
+        if (!member->IsInWorld()) continue;
+        WorldSession* sess = member->GetSession();
+        if (!PBC_PTR_VALID(sess)) continue;
+        if (sess->IsBot()) continue;
+        realPlayers.push_back(member);
+    }
+    return realPlayers;
+}
+
+// ---------------------------------------------------------------------------
 // PBC_FindGroupBotsExcluding
 // ---------------------------------------------------------------------------
 
