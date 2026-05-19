@@ -20,6 +20,7 @@ struct PBC_PartyState
     std::string location;              // Last confirmed shared location
     std::string candidateLocation;     // New zone being debounced
     uint32_t locationStableCycles = 0;
+    bool   baselineLogged = false;     // One-shot: log when baseline is first set
 };
 
 extern std::unordered_map<uint32_t, PBC_PartyState> g_PBC_PartyStates;

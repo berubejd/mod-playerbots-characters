@@ -237,25 +237,55 @@ void PBC_PollPartyState()
         {
             if (gi.allInFlight)
             {
+                // All party members are on a flight path — reset debounce state.
+                // We keep state.location so we know where we departed from.
+                if (!state.candidateLocation.empty())
+                {
+                    PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: location debounce interrupted by flight — group={} was debouncing '{}'->'{}'",
+                             grpGuid, state.location, state.candidateLocation);
+                }
                 state.candidateLocation.clear();
                 state.locationStableCycles = 0;
             }
             else if (!gi.sharedZone.empty())
             {
+                // All party members share the same zone.
                 if (state.location.empty())
                 {
+                    // First time we see this group — establish baseline silently.
                     state.location = gi.sharedZone;
+                    if (!state.baselineLogged)
+                    {
+                        PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: location baseline set — group={} zone='{}' bots={}",
+                                 grpGuid, state.location, gi.bots.size());
+                        state.baselineLogged = true;
+                    }
                 }
                 else if (gi.sharedZone != state.location)
                 {
+                    // Zone differs from last confirmed location — start or continue debounce.
                     if (state.candidateLocation != gi.sharedZone)
                     {
+                        // New candidate zone (or first time seeing this change).
+                        if (!state.candidateLocation.empty())
+                        {
+                            PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: location candidate changed — group={} from='{}' old_candidate='{}' new_candidate='{}'",
+                                     grpGuid, state.location, state.candidateLocation, gi.sharedZone);
+                        }
+                        else
+                        {
+                            PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: location change detected — group={} from='{}' to='{}' debounce=1/{}",
+                                     grpGuid, state.location, gi.sharedZone, g_PBC_LocationChangeDebounceCycles);
+                        }
                         state.candidateLocation = gi.sharedZone;
                         state.locationStableCycles = 1;
                     }
                     else
                     {
+                        // Same candidate — count stable cycles.
                         ++state.locationStableCycles;
+                        PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: location debouncing — group={} candidate='{}' cycles={}/{}",
+                                 grpGuid, state.candidateLocation, state.locationStableCycles, g_PBC_LocationChangeDebounceCycles);
                     }
 
                     if (state.locationStableCycles >= g_PBC_LocationChangeDebounceCycles)
@@ -273,16 +303,27 @@ void PBC_PollPartyState()
                         PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
                                                g_PBC_ReplyChanceLocationChanged);
                     }
-                    else
-                    {
-                        PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: location debouncing — group={} candidate='{}' cycles={}/{}",
-                                 grpGuid, state.candidateLocation, state.locationStableCycles, g_PBC_LocationChangeDebounceCycles);
-                    }
                 }
                 else
                 {
+                    // Same zone as last confirmed — clear any stale debounce state.
+                    if (!state.candidateLocation.empty())
+                    {
+                        PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: location returned to confirmed zone — group={} zone='{}' clearing candidate='{}'",
+                                 grpGuid, state.location, state.candidateLocation);
+                    }
                     state.candidateLocation.clear();
                     state.locationStableCycles = 0;
+                }
+            }
+            else
+            {
+                // sharedZone is empty: party members are in different zones.
+                // Don't spam — log only when there was an active debounce being interrupted.
+                if (!state.candidateLocation.empty())
+                {
+                    PBC_Log(PBC_LogLevel::DEBUG, "PollPartyState: location debounce on hold — group={} party not all in same zone (candidate='{}')",
+                             grpGuid, state.candidateLocation);
                 }
             }
         }
@@ -451,24 +492,4 @@ void PBC_PollPartyState()
         }
     }
 
-    // Cleanup stale groups
-    std::unordered_set<uint32_t> activeGroups;
-    for (auto const& gi : groups)
-        activeGroups.insert(gi.grp->GetGUID().GetCounter());
-
-    for (auto it = g_PBC_PartyStates.begin(); it != g_PBC_PartyStates.end(); )
-    {
-        if (!activeGroups.count(it->first))
-            it = g_PBC_PartyStates.erase(it);
-        else
-            ++it;
-    }
-
-    for (auto it = g_PBC_GroupCombatTrackers.begin(); it != g_PBC_GroupCombatTrackers.end(); )
-    {
-        if (!activeGroups.count(it->first))
-            it = g_PBC_GroupCombatTrackers.erase(it);
-        else
-            ++it;
-    }
 }
