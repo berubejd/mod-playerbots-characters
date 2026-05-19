@@ -21,9 +21,6 @@
 
 using namespace Acore::ChatCommands;
 
-// ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
 static Player* FindTarget(ChatHandler* handler, std::optional<std::string_view> nameArg)
 {
     if (!nameArg || nameArg->empty())
@@ -716,9 +713,6 @@ static bool HandleCharsMigrateCardAdditions(ChatHandler* handler, Optional<std::
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
 
 PBC_CommandScript::PBC_CommandScript() : CommandScript("PBC_CommandScript") {}
 

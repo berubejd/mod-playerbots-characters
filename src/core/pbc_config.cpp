@@ -21,9 +21,7 @@
 #include <cmath>
 #include <unordered_set>
 
-// ---------------------------------------------------------------------------
 // Global variable definitions
-// ---------------------------------------------------------------------------
 
 bool     g_PBC_Enable              = true;
 bool     g_PBC_DebugEnabled        = false;
@@ -140,20 +138,6 @@ std::mutex g_PBC_PartyStateMutex;
 
 std::unordered_map<uint32_t, PBC_GroupCombatTracker> g_PBC_GroupCombatTrackers;
 
-// ---------------------------------------------------------------------------
-// PBC_PushEvent
-// ---------------------------------------------------------------------------
-
-void PBC_PushEvent(PBC_EventItem item)
-{
-    std::lock_guard<std::mutex> lock(g_PBC_EventQueueMutex);
-    g_PBC_EventQueue.push(std::move(item));
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 static std::vector<std::string> SplitByComma(const std::string& s)
 {
     std::vector<std::string> out;
@@ -166,10 +150,6 @@ static std::vector<std::string> SplitByComma(const std::string& s)
     }
     return out;
 }
-
-// ---------------------------------------------------------------------------
-// PBC_LoadConfig
-// ---------------------------------------------------------------------------
 
 void PBC_LoadConfig(bool /*isStartup*/)
 {
@@ -234,19 +214,8 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_HttpServerFrontendPath = sConfigMgr->GetOption<std::string>("PBC.HttpServerFrontendPath",
                                                                        "../../../modules/mod-playerbots-characters/frontend/dist");
 
-    // -----------------------------------------------------------------------
-    // Validate required settings when the module is enabled.
-    //
-    // AzerothCore does NOT fall back to .conf.dist for missing parameters —
-    // it uses the C++ default passed to GetOption().  To avoid silent
-    // misconfiguration, every parameter that is essential for the module to
-    // work correctly must be present and non-empty in the user's .conf file.
-    // If any required parameter is missing the module is disabled with a
-    // clear error; the server itself keeps running.
-    // -----------------------------------------------------------------------
     if (g_PBC_Enable)
     {
-        // Each entry: { config key, reference to the loaded value }
         struct RequiredCheck { const char* key; std::string const& value; };
         const RequiredCheck requiredStrings[] = {
             { "PBC.BaseUrl",                        g_PBC_BaseUrl                        },
@@ -277,7 +246,6 @@ void PBC_LoadConfig(bool /*isStartup*/)
             return;
         }
 
-        // HTTP server private key is required when the HTTP server is enabled
         if (g_PBC_HttpServerPort > 0 && g_PBC_HttpServerPrivateKey.empty())
         {
             PBC_Log(PBC_LogLevel::ERROR, "PBC.HttpServerPrivateKey is not set but PBC.HttpServerPort is {}. "
@@ -286,7 +254,6 @@ void PBC_LoadConfig(bool /*isStartup*/)
         }
     }
 
-    // Load prompts from files (required for the module to work)
     if (g_PBC_Enable && !PBC_LoadPrompts())
     {
         PBC_Log(PBC_LogLevel::ERROR, "Failed to load prompts. Module DISABLED — fix prompt path and reload with .chars reload.");
@@ -317,18 +284,7 @@ void PBC_LoadConfig(bool /*isStartup*/)
         g_PBC_AltModelAPIType, g_PBC_AltModel, g_PBC_AltModelBaseUrl, g_PBC_AltModelRequestTimeoutSec);
 }
 
-// ---------------------------------------------------------------------------
-// PBC_LoadPrompts
-//
-// Loads all prompt templates from the directory specified by PBC.PromptsPath.
-// For each prompt, tries the .custom.txt version first; if not found, falls
-// back to the .default.txt version.  Returns false if any prompt fails to load,
-// which should disable the module.
-// ---------------------------------------------------------------------------
-
-// Helper: load a single prompt file.  Tries customPath first, then defaultPath.
-// Returns true on success, false on failure.  Sets usedCustom if the custom
-// file was loaded.
+// Helper: load a single prompt file. Tries customPath first, then defaultPath.
 static bool LoadPromptFile(const std::string& customPath,
                            const std::string& defaultPath,
                            std::string& target,
@@ -336,7 +292,6 @@ static bool LoadPromptFile(const std::string& customPath,
 {
     usedCustom = false;
 
-    // Try custom first
     std::ifstream fCustom(customPath);
     if (fCustom)
     {
@@ -354,7 +309,6 @@ static bool LoadPromptFile(const std::string& customPath,
         }
     }
 
-    // Fall back to default
     std::ifstream fDefault(defaultPath);
     if (!fDefault)
     {
@@ -384,7 +338,6 @@ bool PBC_LoadPrompts()
         return false;
     }
 
-    // Each prompt: { filename (without extension), reference to global variable }
     struct PromptEntry { const char* filename; std::string& target; };
     const PromptEntry prompts[] = {
         { "Main.system",                      g_PBC_SystemPrompt                   },
@@ -431,9 +384,6 @@ bool PBC_LoadPrompts()
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_LoadCharacterCards
-// ---------------------------------------------------------------------------
 
 void PBC_LoadCharacterCards()
 {
@@ -474,9 +424,6 @@ void PBC_LoadCharacterCards()
     PBC_Log(PBC_LogLevel::DEFAULT, "Loaded {} character card(s) from '{}'", loaded, g_PBC_CharacterCardsPath);
 }
 
-// ---------------------------------------------------------------------------
-// DB helpers
-// ---------------------------------------------------------------------------
 
 void PBC_LoadHistoryFromDB()
 {
@@ -562,9 +509,6 @@ void PBC_LoadCharacterDataFromDB()
              count, g_PBC_RollChanceModifiers.size());
 }
 
-// ---------------------------------------------------------------------------
-// PBC_GetEffectiveChance
-// ---------------------------------------------------------------------------
 
 uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance)
 {

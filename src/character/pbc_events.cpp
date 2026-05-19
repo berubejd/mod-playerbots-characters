@@ -843,18 +843,44 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
     PBC_PushEvent(std::move(ev));
 }
 
-// ---------------------------------------------------------------------------
-// PBC_CondenseInline
-//
-// Runs condensation synchronously inside the event thread for a bot whose
-// history has exceeded g_PBC_MaxHistoryCtx.  Calls the LLM, writes extracted
-// memories directly (thread-safe), and clears the in-memory history.
-// short tail.  Does NOT touch any Player* objects.
-//
-// Returns true if condensation succeeded (history was trimmed and card
-// addition written).  Returns false if the LLM call failed or returned
-// empty — in that case the history is left untouched so no data is lost.
-// ---------------------------------------------------------------------------
+// Parse LLM output lines matching [N] text and insert as memories.
+static int PBC_ParseMemoryLines(const std::string& text, uint64_t botGuid)
+{
+    static const std::regex kMemLine(R"(\[(\d+)\]\s*(.+))");
+    std::istringstream iss(text);
+    std::string line;
+    int memCount = 0;
+
+    while (std::getline(iss, line))
+    {
+        std::smatch m;
+        if (!std::regex_match(line, m, kMemLine))
+            continue;
+
+        uint8_t importance = 5;
+        try { importance = static_cast<uint8_t>(std::clamp(std::stoi(m[1].str()), 1, 10)); } catch (...) {}
+        std::string memText = m[2].str();
+        if (memText.empty())
+            continue;
+
+        DB_InsertMemory(botGuid, memText, importance);
+
+        PBC_MemoryEntry entry;
+        entry.dbId       = 0;
+        entry.text       = std::move(memText);
+        entry.importance = importance;
+        entry.createdAt  = PBC_FormatDate(std::time(nullptr));
+
+        {
+            std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+            g_PBC_Memories[botGuid].push_back(std::move(entry));
+        }
+        ++memCount;
+    }
+    return memCount;
+}
+
+// Runs condensation synchronously inside the event thread.
 static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
                                 const std::string& sysPrompt,
                                 const std::string& userPromptTmpl)
@@ -878,57 +904,14 @@ static bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
         return false;
     }
 
-    // Parse the LLM output: each line matching [N] text becomes a memory entry
-    // Lines that don't match the pattern are silently skipped.
-    static const std::regex kMemLine(R"(\[(\d+)\]\s*(.+))");
-    std::istringstream iss(res.text);
-    std::string line;
-    int memCount = 0;
-
-    while (std::getline(iss, line))
-    {
-        std::smatch m;
-        if (!std::regex_match(line, m, kMemLine))
-            continue;
-
-        uint8_t importance = 5;
-        try { importance = static_cast<uint8_t>(std::clamp(std::stoi(m[1].str()), 1, 10)); } catch (...) {}
-        std::string memText = m[2].str();
-
-        if (memText.empty())
-            continue;
-
-        // Insert into DB
-        DB_InsertMemory(snap.charGuidRaw, memText, importance);
-
-        // Insert into in-memory store with a temporary dbId of 0.
-        // PBC_LoadMemoriesFromDB() is called after the condensation loop
-        // finishes to reload all memories with proper DB row ids.
-        PBC_MemoryEntry entry;
-        entry.dbId       = 0;
-        entry.text       = std::move(memText);
-        entry.importance = importance;
-        entry.createdAt  = PBC_FormatDate(std::time(nullptr));
-
-        {
-            std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
-            g_PBC_Memories[snap.charGuidRaw].push_back(std::move(entry));
-        }
-        ++memCount;
-    }
-
+    int memCount = PBC_ParseMemoryLines(res.text, snap.charGuidRaw);
     PBC_WsNotify(snap.charGuidRaw, "memory");
 
-    // Clear ALL history — memories capture what matters, keeping recent
-    // history would only duplicate information already present in the
-    // memories section and confuse the model.
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
         g_PBC_ChatHistory[snap.charGuidRaw].clear();
     }
     DB_DeleteHistoryForCharacter(snap.charGuidRaw);
-
-    // Update snapshot's local history to match
     snap.history.clear();
 
     PBC_Log(PBC_LogLevel::DEBUG, "CondenseInline: condensed character={} memories_extracted={}",
@@ -1453,59 +1436,41 @@ void PBC_PollPartyState()
     }
 }
 
-// ---------------------------------------------------------------------------
-// PBC_ProcessEventItem
-//
-// Worker function — runs in a detached thread.  Processes one PBC_EventItem
-// completely (all LLM calls, history writes) then sets g_PBC_EventThreadDone.
-//
-// Only game-object operations (sending chat packets) are deferred to the main
-// thread via PBC_PendingActions.
-// ---------------------------------------------------------------------------
+void PBC_PushEvent(PBC_EventItem item)
+{
+    std::lock_guard<std::mutex> lock(g_PBC_EventQueueMutex);
+    g_PBC_EventQueue.push(std::move(item));
+}
+
+// Push a narrator summary as a PendingAction to real players in anchor's group.
+static void PBC_PushNarratorSummary(const ObjectGuid& anchorObjGuid, const std::string& eventLine)
+{
+    if (g_PBC_DisplayNarratorEvents && !anchorObjGuid.IsEmpty())
+    {
+        PBC_PendingAction narrAction;
+        narrAction.charGuid          = anchorObjGuid;
+        narrAction.text              = eventLine;
+        narrAction.isNarratorMessage = true;
+
+        std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
+        g_PBC_PendingActions.push(std::move(narrAction));
+    }
+}
+
 void PBC_ProcessEventItem(PBC_EventItem ev)
 {
-    // Capture config strings we need (read-only, safe without lock since
-    // only main thread writes them and this thread just reads).
+    // Capture config strings (read-only, safe without lock)
     std::string sysPrompt         = g_PBC_SystemPrompt;
     std::string condenseSysPrompt = g_PBC_CondensationSystemPrompt;
     std::string condenseUsrTmpl   = g_PBC_CondensationUserPrompt;
 
     // -----------------------------------------------------------------------
-    // HistoryReload event
-    //
-    // Reload all bot histories from the database, replacing the in-memory
-    // maps.  This runs after all previously queued events have been processed,
-    // so no in-flight history writes are lost.
+    // HistoryReload
     // -----------------------------------------------------------------------
     if (ev.type == PBC_EventType::HistoryReload)
     {
-        PBC_Log(PBC_LogLevel::DEFAULT, "HistoryReload: reloading chat history from DB...");
-
-        QueryResult result = CharacterDatabase.Query(
-            "SELECT bot_guid, message, UNIX_TIMESTAMP(timestamp) FROM mod_pbc_chat_history ORDER BY id ASC"
-        );
-
-        {
-            std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-            g_PBC_ChatHistory.clear();
-            g_PBC_LastHistoryTime.clear();
-
-            if (result)
-            {
-                do {
-                    uint64_t    botGuid = (*result)[0].Get<uint64_t>();
-                    std::string msg     = (*result)[1].Get<std::string>();
-                    time_t      ts      = static_cast<time_t>((*result)[2].Get<uint64_t>());
-                    g_PBC_ChatHistory[botGuid].push_back(std::move(msg));
-                    if (ts > 0)
-                        g_PBC_LastHistoryTime[botGuid] = ts;
-                } while (result->NextRow());
-            }
-        }
-
-        // Also reload relationships so the in-memory map stays consistent.
+        PBC_LoadHistoryFromDB();
         PBC_LoadRelationshipsFromDB();
-
         PBC_Log(PBC_LogLevel::DEFAULT, "HistoryReload: chat history and relationships reloaded from DB.");
         g_PBC_EventThreadDone.store(true);
         return;
@@ -1610,7 +1575,6 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     {
         PBC_Log(PBC_LogLevel::DEFAULT, "CardAdditionsMigration: starting...");
 
-        // Read all rows from the legacy card additions table
         QueryResult addResult = CharacterDatabase.Query(
             "SELECT bot_guid, addition FROM mod_pbc_character_card_additions ORDER BY bot_guid ASC, id ASC"
         );
@@ -1622,7 +1586,6 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
             return;
         }
 
-        // Group additions by bot_guid
         std::unordered_map<uint64_t, std::vector<std::string>> additionsByBot;
         uint32_t totalAdditions = 0;
         do
@@ -1636,13 +1599,11 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         PBC_Log(PBC_LogLevel::DEFAULT, "CardAdditionsMigration: found {} additions across {} characters",
                  totalAdditions, additionsByBot.size());
 
-        static const std::regex kMemLine(R"(\[(\d+)\]\s*(.+))");
         uint32_t processed = 0;
         uint32_t totalMemories = 0;
 
         for (auto& [botGuid, additions] : additionsByBot)
         {
-            // Look up character name from the characters table
             std::string charName;
             QueryResult nameResult = CharacterDatabase.Query(
                 "SELECT name FROM characters WHERE guid = {}", botGuid
@@ -1650,7 +1611,6 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
             if (nameResult)
                 charName = (*nameResult)[0].Get<std::string>();
 
-            // Look up character card from the in-memory map
             std::string charCard;
             if (!charName.empty())
             {
@@ -1663,17 +1623,15 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
 
             // Build a minimal snapshot — the addition texts become the "history"
             PBC_CharacterSnapshot snap;
-            snap.charGuidRaw  = botGuid;
-            snap.charName     = charName;
+            snap.charGuidRaw   = botGuid;
+            snap.charName      = charName;
             snap.characterCard = charCard;
             for (const auto& addition : additions)
                 snap.history.push_back(addition);
 
-            // Build the condensation prompt from the snapshot
             std::string userPrompt = PBC_BuildCondensationPromptFromSnapshot(
                 snap, ev.migrationCondensationUserPromptTmpl);
 
-            // Call the LLM
             PBC_LLMResult res = g_PBC_UseAltModelForCondensation
                 ? PBC_CallLLMAlt(ev.migrationCondensationSystemPrompt, userPrompt, /*maxTokensOverride=*/-1, /*preserveNewlines=*/true)
                 : PBC_CallLLM(ev.migrationCondensationSystemPrompt, userPrompt, /*maxTokensOverride=*/-1, /*preserveNewlines=*/true);
@@ -1681,44 +1639,13 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
             if (!res.success || res.text.empty())
             {
                 PBC_Log(PBC_LogLevel::WARNING,
-                         "CardAdditionsMigration: LLM failed for character={} (guid={}), skipping",
-                         charName.empty() ? fmt::format("guid:{}", botGuid) : charName, botGuid);
+                         "CardAdditionsMigration: LLM failed for character={}, skipping",
+                         charName.empty() ? fmt::format("guid:{}", botGuid) : charName);
                 processed += additions.size();
                 continue;
             }
 
-            // Parse memories from the LLM output
-            std::istringstream iss(res.text);
-            std::string line;
-            int memCount = 0;
-
-            while (std::getline(iss, line))
-            {
-                std::smatch m;
-                if (!std::regex_match(line, m, kMemLine))
-                    continue;
-
-                uint8_t importance = 5;
-                try { importance = static_cast<uint8_t>(std::clamp(std::stoi(m[1].str()), 1, 10)); } catch (...) {}
-                std::string memText = m[2].str();
-                if (memText.empty())
-                    continue;
-
-                DB_InsertMemory(botGuid, memText, importance);
-
-                PBC_MemoryEntry entry;
-                entry.dbId       = 0;
-                entry.text       = std::move(memText);
-                entry.importance = importance;
-                entry.createdAt  = PBC_FormatDate(std::time(nullptr));
-
-                {
-                    std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
-                    g_PBC_Memories[botGuid].push_back(std::move(entry));
-                }
-                ++memCount;
-            }
-
+            int memCount = PBC_ParseMemoryLines(res.text, botGuid);
             totalMemories += memCount;
             processed += additions.size();
 
@@ -1728,14 +1655,10 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
                      additions.size(), memCount, processed, totalAdditions);
         }
 
-        // Reload memories from DB so in-memory entries have proper DB row ids
-        // (the migration loop inserts with dbId=0).
         PBC_LoadMemoriesFromDB();
 
         PBC_Log(PBC_LogLevel::DEFAULT,
-                 "CardAdditionsMigration: complete. {} additions processed, {} memories created. "
-                 "The legacy mod_pbc_character_card_additions table was NOT deleted — "
-                 "verify the results and drop it manually if desired.",
+                 "CardAdditionsMigration: complete. {} additions processed, {} memories created.",
                  totalAdditions, totalMemories);
 
         g_PBC_EventThreadDone.store(true);
@@ -1765,24 +1688,14 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         ev.eventLine = PBC_MakeEventLine(summary.text);
         ev.histLine  = PBC_MakeHistLine(summary.text);
 
-        // Send the narrator summary to all real players in the anchor's group,
-        // using the same PBC_PendingAction mechanism as "thinks..." messages.
-        if (g_PBC_DisplayNarratorEvents && !ev.anchorObjGuid.IsEmpty())
-        {
-            PBC_PendingAction narrAction;
-            narrAction.charGuid          = ev.anchorObjGuid;
-            narrAction.text              = ev.eventLine;
-            narrAction.isNarratorMessage = true;
-
-            std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
-            g_PBC_PendingActions.push(std::move(narrAction));
-        }
+        // Send narrator summary to real players in anchor's group
+        PBC_PushNarratorSummary(ev.anchorObjGuid, ev.eventLine);
 
         // Fall through to Normal processing
     }
 
     // -----------------------------------------------------------------------
-    // QuestSummarization: generate the summary first, then treat as Normal.
+    // QuestSummarization
     // -----------------------------------------------------------------------
     if (ev.type == PBC_EventType::QuestSummarization)
     {
@@ -1804,18 +1717,8 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
         ev.eventLine = PBC_MakeEventLine(summary.text);
         ev.histLine  = PBC_MakeHistLine(summary.text);
 
-        // Send the narrator summary to all real players in the anchor's group,
-        // using the same PBC_PendingAction mechanism as "thinks..." messages.
-        if (g_PBC_DisplayNarratorEvents && !ev.anchorObjGuid.IsEmpty())
-        {
-            PBC_PendingAction narrAction;
-            narrAction.charGuid          = ev.anchorObjGuid;
-            narrAction.text              = ev.eventLine;
-            narrAction.isNarratorMessage = true;
-
-            std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);
-            g_PBC_PendingActions.push(std::move(narrAction));
-        }
+        // Send narrator summary to real players in anchor's group
+        PBC_PushNarratorSummary(ev.anchorObjGuid, ev.eventLine);
 
         // Fall through to Normal processing
     }

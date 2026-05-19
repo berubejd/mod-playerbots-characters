@@ -16,10 +16,6 @@
 #include "SharedDefines.h"
 #include "GameTime.h"
 
-// ---------------------------------------------------------------------------
-// PBC_WorldScript
-// ---------------------------------------------------------------------------
-
 PBC_WorldScript::PBC_WorldScript() : WorldScript("PBC_WorldScript") {}
 
 void PBC_WorldScript::OnStartup()
@@ -41,7 +37,7 @@ void PBC_WorldScript::OnStartup()
 
     g_PBC_EventThreadDone.store(true);
 
-    // Start the HTTP/WS server if a port is configured.
+    // Start the HTTP/WS server if configured
     if (g_PBC_HttpServerPort > 0)
     {
         if (!PBC_HttpServerStart(g_PBC_HttpServerBind, g_PBC_HttpServerPort, g_PBC_HttpServerTimeout))
@@ -58,8 +54,6 @@ void PBC_WorldScript::OnStartup()
     }
 
     PBC_Log(PBC_LogLevel::DEFAULT, "Module started.");
-
-    // Check if legacy card additions need migration to the new memories system.
     if (DB_MemoriesTableEmpty() && DB_CardAdditionsTableNotEmpty())
     {
         g_PBC_CardAdditionsMigrationNeeded = true;
@@ -71,14 +65,13 @@ void PBC_WorldScript::OnStartup()
 
 void PBC_WorldScript::OnShutdown()
 {
-    // Stop the HTTP/WS server if it is running.
     if (PBC_HttpServerIsRunning())
     {
         PBC_Log(PBC_LogLevel::DEFAULT, "Stopping HTTP server...");
         PBC_HttpServerStop();
     }
 
-    // History is written through to DB on every PBC_AppendHistory call,
+    // History is written to DB on every PBC_AppendHistory call,
     // so no explicit flush is needed on shutdown.
     PBC_Log(PBC_LogLevel::DEFAULT, "Module shutdown.");
 }
@@ -96,9 +89,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
     }
     s_tickTimer = 100; // 100 ms gate
 
-    // ---------------------------------------------------------------------------
-    // 0. Poll party flight/location/combat state every 1 second.
-    // ---------------------------------------------------------------------------
+    // 0. Poll party state every 1 second
     {
         static time_t s_lastPartyPoll = 0;
         time_t now = GameTime::GetGameTime().count();
@@ -109,10 +100,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // 0b. Trigger condensation for tracked player characters whose history
-    //     exceeds the token limit.  Checked every 30 seconds.
-    // ---------------------------------------------------------------------------
+    // 0b. Trigger condensation for tracked player characters (every 30s)
     if (g_PBC_TrackPlayerCharacter && g_PBC_MaxHistoryCtx > 0)
     {
         static time_t s_lastPlayerCondenseCheck = 0;
@@ -143,9 +131,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // 0c. Warn about pending card additions migration every 60 seconds.
-    // ---------------------------------------------------------------------------
+    // 0c. Warn about pending card additions migration (every 60s)
     if (g_PBC_CardAdditionsMigrationNeeded)
     {
         static time_t s_lastMigrationWarn = 0;
@@ -158,11 +144,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // 1. Drain secondary event requests posted by the event thread.
-    //    The worker thread cannot do Player* lookups or take snapshots, so it
-    //    posts a lightweight PBC_PendingEventRequest and we resolve it here.
-    // ---------------------------------------------------------------------------
+    // 1. Drain secondary event requests from event thread
     {
         std::queue<PBC_PendingEventRequest> localReqs;
         {
@@ -236,9 +218,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // 1b. Drain whisper requests posted from the HTTP API thread.
-    // ---------------------------------------------------------------------------
+    // 1b. Drain whisper requests from HTTP API thread
     {
         std::queue<PBC_PendingWhisperRequest> localWhispers;
         {
@@ -273,9 +253,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // 1c. Drain party message requests posted from the HTTP API thread.
-    // ---------------------------------------------------------------------------
+    // 1c. Drain party message requests from HTTP API thread
     {
         std::queue<PBC_PendingPartyMessageRequest> localMsgs;
         {
@@ -300,9 +278,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // 1d. Drain trigger requests posted from the HTTP API thread.
-    // ---------------------------------------------------------------------------
+    // 1d. Drain trigger requests from HTTP API thread
     {
         std::queue<PBC_PendingTriggerRequest> localTriggers;
         {
@@ -335,9 +311,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // 2. Drain completed chat-send actions from the event thread.
-    // ---------------------------------------------------------------------------
+    // 2. Drain completed chat-send actions from event thread
     {
         std::queue<PBC_PendingAction> local;
         {
@@ -421,9 +395,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // 3. Spawn next event thread if the previous one has finished.
-    // ---------------------------------------------------------------------------
+    // 3. Spawn next event thread if previous one has finished
     if (g_PBC_EventThreadDone.load())
     {
         PBC_EventItem nextEvent;

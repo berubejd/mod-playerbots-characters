@@ -17,12 +17,6 @@
 #include <ctime>
 #include <algorithm>
 
-// ---------------------------------------------------------------------------
-// PBC_TriggerCondensation  (main-thread only)
-//
-// Pushes a Condensation event for the given character onto the global event queue.
-// The event thread will call PBC_CondenseInline when it processes the item.
-// ---------------------------------------------------------------------------
 void PBC_TriggerCondensation(Player* bot)
 {
     if (!bot) return;
@@ -38,9 +32,6 @@ void PBC_TriggerCondensation(Player* bot)
     PBC_PushEvent(std::move(ev));
 }
 
-// ---------------------------------------------------------------------------
-// PBC_SubstituteVars  (main-thread only)
-// ---------------------------------------------------------------------------
 
 std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot, const std::string& event,
                                 bool expandComposites, bool annotate)
@@ -93,9 +84,6 @@ std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot, const std::
     return out;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_GetCharacterCard  (main-thread only)
-// ---------------------------------------------------------------------------
 
 std::string PBC_GetCharacterCard(Player* bot)
 {
@@ -107,15 +95,8 @@ std::string PBC_GetCharacterCard(Player* bot)
     return PBC_SubstituteVars(g_PBC_DefaultCharacterDescription, bot, "", false);
 }
 
-// ---------------------------------------------------------------------------
-// PBC_GetMemoriesBlock  (thread-safe)
-//
-// Builds the [MEMORIES] text block for a character's user prompt.
-// Selection: sort all memories by importance DESC, take the most important
-// ones until the token budget (g_PBC_MaxMemoriesCtx) is exceeded.
-// Output: the selected memories are sorted chronologically (by DB id ASC)
-// so the narrative flows naturally.
-// ---------------------------------------------------------------------------
+// Builds the [MEMORIES] block for a character's prompt.
+// Selection: most important memories within token budget, output chronologically.
 std::string PBC_GetMemoriesBlock(uint64_t botGuid)
 {
     // We need both the entries and their original positions for chronological
@@ -184,18 +165,12 @@ std::string PBC_GetMemoriesBlock(uint64_t botGuid)
     return result;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_GetCharacterContext  (main-thread only)
-// ---------------------------------------------------------------------------
 
 std::string PBC_GetCharacterContext(Player* bot)
 {
     return PBC_SubstituteVars(g_PBC_CharacterContext, bot, "", false);
 }
 
-// ---------------------------------------------------------------------------
-// PBC_GetChatHistory  (thread-safe)
-// ---------------------------------------------------------------------------
 
 std::string PBC_GetChatHistory(uint64_t botGuid)
 {
@@ -210,9 +185,6 @@ std::string PBC_GetChatHistory(uint64_t botGuid)
     return oss.str();
 }
 
-// ---------------------------------------------------------------------------
-// PBC_AppendHistory  (thread-safe)
-// ---------------------------------------------------------------------------
 
 void PBC_AppendHistory(uint64_t botGuid, const std::string& line)
 {
@@ -288,9 +260,6 @@ void PBC_AppendHistory(uint64_t botGuid, const std::string& line)
         PBC_WsNotifyHistory(botGuid, ev.first, ev.second);
 }
 
-// ---------------------------------------------------------------------------
-// PBC_EstimateHistoryTokens  (thread-safe)
-// ---------------------------------------------------------------------------
 
 int PBC_EstimateHistoryTokens(uint64_t botGuid)
 {
@@ -304,13 +273,6 @@ int PBC_EstimateHistoryTokens(uint64_t botGuid)
     return total;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_UpdateHistoryLine  (thread-safe)
-//
-// Updates a single history line at the given 0-based index for a character.
-// The current content at the index is compared against originalMessage first
-// — a mismatch returns PBC_HistoryResult::Desync without modifying anything.
-// ---------------------------------------------------------------------------
 PBC_HistoryResult PBC_UpdateHistoryLine(uint64_t botGuid, size_t index,
                                         const std::string& newMessage,
                                         const std::string& originalMessage)
@@ -332,13 +294,6 @@ PBC_HistoryResult PBC_UpdateHistoryLine(uint64_t botGuid, size_t index,
     return PBC_HistoryResult::Ok;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_DeleteHistoryLine  (thread-safe)
-//
-// Deletes a single history line at the given 0-based index for a character.
-// The current content at the index is compared against originalMessage first
-// — a mismatch returns PBC_HistoryResult::Desync without modifying anything.
-// ---------------------------------------------------------------------------
 PBC_HistoryResult PBC_DeleteHistoryLine(uint64_t botGuid, size_t index,
                                         const std::string& originalMessage)
 {
@@ -357,13 +312,6 @@ PBC_HistoryResult PBC_DeleteHistoryLine(uint64_t botGuid, size_t index,
 }
 
 
-// ---------------------------------------------------------------------------
-// PBC_UpdateRelationship  (thread-safe)
-//
-// Updates the relationship text for a specific (bot, target) pair.
-// The current text is compared against originalText first — a mismatch
-// returns PBC_HistoryResult::Desync without modifying anything.
-// ---------------------------------------------------------------------------
 PBC_HistoryResult PBC_UpdateRelationship(uint64_t botGuid, const std::string& targetName,
                                           const std::string& newText,
                                           const std::string& originalText)
@@ -386,13 +334,6 @@ PBC_HistoryResult PBC_UpdateRelationship(uint64_t botGuid, const std::string& ta
     return PBC_HistoryResult::Ok;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_DeleteRelationship  (thread-safe)
-//
-// Deletes the relationship entry for a specific (bot, target) pair.
-// The current text is compared against originalText first — a mismatch
-// returns PBC_HistoryResult::Desync without modifying anything.
-// ---------------------------------------------------------------------------
 PBC_HistoryResult PBC_DeleteRelationship(uint64_t botGuid, const std::string& targetName,
                                           const std::string& originalText)
 {
@@ -413,13 +354,6 @@ PBC_HistoryResult PBC_DeleteRelationship(uint64_t botGuid, const std::string& ta
     return PBC_HistoryResult::Ok;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_UpdateMemory  (thread-safe)
-//
-// Updates the text and importance of a single memory identified by its DB row
-// id.  The current text is compared against originalText first — a mismatch
-// returns PBC_HistoryResult::Desync without modifying anything.
-// ---------------------------------------------------------------------------
 PBC_HistoryResult PBC_UpdateMemory(uint64_t botGuid, uint64_t memoryId,
                                     const std::string& newText,
                                     uint8_t newImportance,
@@ -447,13 +381,6 @@ PBC_HistoryResult PBC_UpdateMemory(uint64_t botGuid, uint64_t memoryId,
     return PBC_HistoryResult::NotFound;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_DeleteMemory  (thread-safe)
-//
-// Deletes a single memory identified by its DB row id.  The current text is
-// compared against originalText first — a mismatch returns
-// PBC_HistoryResult::Desync without modifying anything.
-// ---------------------------------------------------------------------------
 PBC_HistoryResult PBC_DeleteMemory(uint64_t botGuid, uint64_t memoryId,
                                     const std::string& originalText)
 {
@@ -478,14 +405,7 @@ PBC_HistoryResult PBC_DeleteMemory(uint64_t botGuid, uint64_t memoryId,
     return PBC_HistoryResult::NotFound;
 }
 
-// ---------------------------------------------------------------------------
 // Snapshot var substitution helper (thread-safe, uses snapshot only)
-//
-// Replaces all snapshot-based template variables in the given string.
-// Used by both PBC_BuildUserPromptFromSnapshot and
-// PBC_BuildCondensationPromptFromSnapshot to avoid duplicating the
-// variable list.
-// ---------------------------------------------------------------------------
 static void ReplaceSnapshotVars(std::string& out, const PBC_CharacterSnapshot& snap,
                                 const std::string& eventLine)
 {
@@ -514,12 +434,6 @@ static void ReplaceSnapshotVars(std::string& out, const PBC_CharacterSnapshot& s
     PBC_ReplaceToken(out, "event",         eventLine);
 }
 
-// ---------------------------------------------------------------------------
-// PBC_SnapshotCharacter  (main-thread only)
-//
-// Captures all live Player* data into a PBC_CharacterSnapshot.  The result is safe
-// to hand off to an event thread without further access to game objects.
-// ---------------------------------------------------------------------------
 
 PBC_CharacterSnapshot PBC_SnapshotCharacter(Player* bot)
 {
@@ -589,15 +503,6 @@ PBC_CharacterSnapshot PBC_SnapshotCharacter(Player* bot)
     return snap;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_BuildTargetInfo  (main-thread only; safe to call from event thread as
-// a read-only ObjectAccessor pass if called carefully, but here we assume
-// it is called from the event thread where we do a best-effort lookup via
-// ObjectAccessor::FindPlayerByName which is thread-safe for reads).
-//
-// Returns e.g. "JOHN, MALE TAUREN SHAMAN" if the player is online,
-// or just "JOHN" as a fallback.
-// ---------------------------------------------------------------------------
 
 std::string PBC_BuildTargetInfo(const std::string& name)
 {
@@ -618,24 +523,7 @@ std::string PBC_BuildTargetInfo(const std::string& name)
     return upper + ", " + gender + " " + race + " " + cls;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_GetRelationshipsBlock  (thread-safe)
-//
-// Builds the [RELATIONSHIPS] text block for a character's user prompt.
-// Every entry uses the format:
-//   "Your relationship with <name>: <description>"
-//
-// Two scenarios:
-//
-// 1. Character is NOT in a group with a real player (hasRealPlayerInGroup == false):
-//    Only the whispering player's relationship line is emitted (or the
-//    fallback if they are unknown).
-//
-// 2. Character IS in a group with a real player (hasRealPlayerInGroup == true):
-//    One line per party member (excluding this bot). If the whisper target
-//    is not already a party member (i.e. an outside player whispering in),
-//    their relationship line is appended as well.
-// ---------------------------------------------------------------------------
+// Builds the [RELATIONSHIPS] block for a character's prompt.
 
 std::string PBC_GetRelationshipsBlock(const PBC_CharacterSnapshot& snap)
 {
@@ -699,13 +587,6 @@ std::string PBC_GetRelationshipsBlock(const PBC_CharacterSnapshot& snap)
     return result;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_BuildUserPromptFromSnapshot  (thread-safe)
-//
-// Builds a fully-substituted user prompt using only data in the snapshot.
-// The snapshot's local history copy is used for {chat_history}, which means
-// any replies posted to history by earlier bots in the same event are visible.
-// ---------------------------------------------------------------------------
 
 std::string PBC_BuildUserPromptFromSnapshot(const PBC_CharacterSnapshot& snap,
                                              const std::string& eventLine)
@@ -722,13 +603,6 @@ std::string PBC_BuildUserPromptFromSnapshot(const PBC_CharacterSnapshot& snap,
     return out;
 }
 
-// ---------------------------------------------------------------------------
-// PBC_BuildCondensationPromptFromSnapshot  (thread-safe)
-//
-// Builds the user prompt for the condensation LLM call using the snapshot's
-// local history.  All {chat_history} references are fulfilled from the
-// snapshot rather than the global history map.
-// ---------------------------------------------------------------------------
 
 std::string PBC_BuildCondensationPromptFromSnapshot(const PBC_CharacterSnapshot& snap,
                                                      const std::string& tmpl)

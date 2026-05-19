@@ -1,48 +1,31 @@
 #!/usr/bin/env bash
-# pbc_history.sh — Show the last N history messages for PBC characters.
-# Usage: ./pbc_history.sh [N [CharacterName]]
-#        N             — number of messages per character (default: 5)
-#        CharacterName — optional; restrict output to this character only
+# pbc_history.sh — Show the last N history messages for a PBC character.
+# Usage: ./pbc_history.sh <CharacterName> [N]
+#        CharacterName — character to show history for (required)
+#        N             — number of messages (default: 5)
 
-N=${1:-5}
-CHAR_NAME="${2:-}"
+if [[ $# -lt 1 || -z "$1" ]]; then
+    echo "Usage: $0 <CharacterName> [N]"
+    exit 1
+fi
+
+CHAR_NAME="$1"
+N=${2:-5}
 SAFE_NAME="${CHAR_NAME//\'/\'\'}"
 
-if [[ -n "$CHAR_NAME" ]]; then
-    ROWS=$(mysql -NB acore_characters 2>/dev/null <<SQL
+ROWS=$(mysql -NB acore_characters 2>/dev/null <<SQL
 SELECT c.name, h.timestamp, h.message
-FROM mod_pbc_chat_history h
+FROM (
+    SELECT bot_guid, id, timestamp, message
+    FROM mod_pbc_chat_history
+    WHERE bot_guid = (SELECT guid FROM characters WHERE name = '${SAFE_NAME}' LIMIT 1)
+    ORDER BY id DESC
+    LIMIT ${N}
+) h
 JOIN characters c ON c.guid = h.bot_guid
-WHERE c.name = '${SAFE_NAME}'
-  AND (h.bot_guid, h.id) IN (
-      SELECT bot_guid, id FROM (
-          SELECT bot_guid, id,
-                 ROW_NUMBER() OVER (PARTITION BY bot_guid ORDER BY id DESC) AS rn
-          FROM mod_pbc_chat_history
-          WHERE bot_guid = (SELECT guid FROM characters WHERE name = '${SAFE_NAME}' LIMIT 1)
-      ) ranked
-      WHERE rn <= ${N}
-  )
 ORDER BY h.id ASC;
 SQL
-    )
-else
-    ROWS=$(mysql -NB acore_characters 2>/dev/null <<SQL
-SELECT c.name, h.timestamp, h.message
-FROM mod_pbc_chat_history h
-JOIN characters c ON c.guid = h.bot_guid
-WHERE (h.bot_guid, h.id) IN (
-    SELECT bot_guid, id FROM (
-        SELECT bot_guid, id,
-               ROW_NUMBER() OVER (PARTITION BY bot_guid ORDER BY id DESC) AS rn
-        FROM mod_pbc_chat_history
-    ) ranked
-    WHERE rn <= ${N}
 )
-ORDER BY c.name ASC, h.id ASC;
-SQL
-    )
-fi
 
 if [[ -z "$ROWS" ]]; then
     echo "No history found."

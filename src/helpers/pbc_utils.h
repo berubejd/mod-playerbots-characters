@@ -13,13 +13,8 @@
 // Pure string/template helpers and RNG — no game-object dependencies.
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Pointer sanity guard
-//
-// On a 64-bit system, valid heap/stack pointers are always well above the
-// first 64 KiB of address space.  Values in that range are garbage that the
-// playerbots module occasionally passes to hooks during bot packet processing.
-// ---------------------------------------------------------------------------
+// On 64-bit, valid pointers are above first 64 KiB. Values in that range
+// are garbage from playerbots bot packet processing.
 #define PBC_PTR_VALID(p) (reinterpret_cast<uintptr_t>(p) > 0xFFFFu)
 
 // ---------------------------------------------------------------------------
