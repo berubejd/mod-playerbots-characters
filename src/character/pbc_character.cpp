@@ -2,6 +2,7 @@
 #include "pbc_config.h"
 #include "pbc_database.h"
 #include "pbc_http.h"
+#include "pbc_llm.h"
 #include "pbc_utils.h"
 #include "pbc_scene_helpers.h"
 #include "pbc_equipment_helpers.h"
@@ -167,7 +168,7 @@ std::string PBC_GetMemoriesBlock(uint64_t botGuid)
 
     for (const auto& ie : entries)
     {
-        uint32_t entryTokens = static_cast<uint32_t>(ie.entry.text.size()) / 4 + 1;
+        uint32_t entryTokens = static_cast<uint32_t>(PBC_EstimateTokens(ie.entry.text));
         if (usedTokens + entryTokens > budget)
             break;
         usedTokens += entryTokens;
@@ -299,7 +300,7 @@ int PBC_EstimateHistoryTokens(uint64_t botGuid)
 
     int total = 0;
     for (const auto& line : it->second)
-        total += static_cast<int>(line.size()) / 4 + 1;
+        total += PBC_EstimateTokens(line);
     return total;
 }
 

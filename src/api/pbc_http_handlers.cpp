@@ -4,6 +4,7 @@
 #include "pbc_config.h"
 #include "pbc_log.h"
 #include "pbc_database.h"
+#include "pbc_llm.h"
 #include "pbc_utils.h"
 #include "pbc_character.h"
 #include "pbc_event_dispatch.h"
@@ -186,6 +187,78 @@ static Player* ResolveBot(uint64_t charGuid, uint64_t authGuid, httplib::Respons
     }
 
     return bot;
+}
+
+// ===========================================================================
+// Shared mutation-response helpers
+// ===========================================================================
+
+// Map a mutation result (PBC_HistoryResult) to the appropriate HTTP response.
+// Returns true if the result was Ok (caller should continue with success).
+// On NotFound or Desync, the response is already set and false is returned.
+static bool RespondMutationResult(httplib::Response& res, PBC_HistoryResult result,
+                                  const std::string& entityName)
+{
+    if (result == PBC_HistoryResult::NotFound)
+    {
+        res.status = 404;
+        res.set_content("{\"error\":\"" + entityName + " not found\"}", "application/json");
+        return false;
+    }
+    if (result == PBC_HistoryResult::Desync)
+    {
+        res.status = 409;
+        res.set_content("{\"error\":\"desync\"}", "application/json");
+        return false;
+    }
+    return true;
+}
+
+// Extract a required string field from a JSON body.  If the field is missing
+// or empty, sets a 400 error on the response and returns an empty string.
+static std::string ExtractRequiredBodyField(const json& body, const std::string& field,
+                                            httplib::Response& res)
+{
+    std::string value = body.value(field, "");
+    if (value.empty())
+    {
+        res.status = 400;
+        res.set_content("{\"error\":\"Missing or empty '" + field + "' field in request body\"}",
+                        "application/json");
+    }
+    return value;
+}
+
+// Extract an optional 'importance' field from a JSON body (1-10, default 5).
+static uint8_t ExtractOptionalImportance(const json& body)
+{
+    if (!body.contains("importance"))
+        return 5;
+    try { return static_cast<uint8_t>(std::clamp(body["importance"].get<int>(), 1, 10)); }
+    catch (...) { return 5; }
+}
+
+// Parse and validate the 'id' query parameter (1-based, used by history and
+// memory endpoints).  Returns the 0-based index on success, or SIZE_MAX on
+// error (response already set).
+static size_t ParseQueryId(const httplib::Request& req, httplib::Response& res)
+{
+    std::string idStr = req.get_param_value("id");
+    if (idStr.empty())
+    {
+        res.status = 400;
+        res.set_content("{\"error\":\"Missing id parameter\"}", "application/json");
+        return SIZE_MAX;
+    }
+    size_t id = 0;
+    try { id = std::stoull(idStr); } catch (...) {}
+    if (id == 0)
+    {
+        res.status = 400;
+        res.set_content("{\"error\":\"Invalid id parameter (must be >= 1)\"}", "application/json");
+        return SIZE_MAX;
+    }
+    return id - 1; // convert to 0-based index
 }
 
 // ===========================================================================
@@ -440,54 +513,17 @@ void HandlePostCharHistory(const httplib::Request& req, httplib::Response& res, 
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
 
-    std::string idStr = req.get_param_value("id");
-    if (idStr.empty())
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Missing id parameter\"}", "application/json");
-        return;
-    }
-
-    size_t id = 0;
-    try { id = std::stoull(idStr); } catch (...) {}
-    if (id == 0)
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Invalid id parameter (must be >= 1)\"}", "application/json");
-        return;
-    }
-    size_t index = id - 1;
+    size_t index = ParseQueryId(req, res);
+    if (index == SIZE_MAX) return;
 
     json body;
     try { body = json::parse(req.body); } catch (...) {}
-    std::string newMessage = body.value("message", "");
-    if (newMessage.empty())
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Missing or empty 'message' field in request body\"}", "application/json");
-        return;
-    }
-    std::string originalMessage = body.value("original", "");
-    if (originalMessage.empty())
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Missing or empty 'original' field in request body\"}", "application/json");
-        return;
-    }
+    std::string newMessage      = ExtractRequiredBodyField(body, "message", res);
+    std::string originalMessage = ExtractRequiredBodyField(body, "original", res);
+    if (newMessage.empty() || originalMessage.empty()) return;
 
     PBC_HistoryResult result = PBC_UpdateHistoryLine(charGuid, index, newMessage, originalMessage);
-    if (result == PBC_HistoryResult::NotFound)
-    {
-        res.status = 404;
-        res.set_content("{\"error\":\"Message id out of range\"}", "application/json");
-        return;
-    }
-    if (result == PBC_HistoryResult::Desync)
-    {
-        res.status = 409;
-        res.set_content("{\"error\":\"desync\"}", "application/json");
-        return;
-    }
+    if (!RespondMutationResult(res, result, "Message")) return;
 
     PBC_Log(PBC_LogLevel::DEBUG, "API history edit: character GUID={} index={}", charGuid, index);
     res.set_content("{\"status\":\"updated\"}", "application/json");
@@ -501,47 +537,16 @@ void HandleDeleteCharHistory(const httplib::Request& req, httplib::Response& res
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
 
-    std::string idStr = req.get_param_value("id");
-    if (idStr.empty())
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Missing id parameter\"}", "application/json");
-        return;
-    }
-
-    size_t id = 0;
-    try { id = std::stoull(idStr); } catch (...) {}
-    if (id == 0)
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Invalid id parameter (must be >= 1)\"}", "application/json");
-        return;
-    }
-    size_t index = id - 1;
+    size_t index = ParseQueryId(req, res);
+    if (index == SIZE_MAX) return;
 
     json body;
     try { body = json::parse(req.body); } catch (...) {}
-    std::string originalMessage = body.value("original", "");
-    if (originalMessage.empty())
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Missing or empty 'original' field in request body\"}", "application/json");
-        return;
-    }
+    std::string originalMessage = ExtractRequiredBodyField(body, "original", res);
+    if (originalMessage.empty()) return;
 
     PBC_HistoryResult result = PBC_DeleteHistoryLine(charGuid, index, originalMessage);
-    if (result == PBC_HistoryResult::NotFound)
-    {
-        res.status = 404;
-        res.set_content("{\"error\":\"Message id out of range\"}", "application/json");
-        return;
-    }
-    if (result == PBC_HistoryResult::Desync)
-    {
-        res.status = 409;
-        res.set_content("{\"error\":\"desync\"}", "application/json");
-        return;
-    }
+    if (!RespondMutationResult(res, result, "Message")) return;
 
     PBC_Log(PBC_LogLevel::DEBUG, "API history delete: character GUID={} index={}", charGuid, index);
     res.set_content("{\"status\":\"deleted\"}", "application/json");
@@ -702,39 +707,14 @@ void HandlePostCharMemory(const httplib::Request& req, httplib::Response& res, P
 
     json body;
     try { body = json::parse(req.body); } catch (...) {}
-    std::string newText = body.value("memory_text", "");
-    if (newText.empty())
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Missing or empty 'memory_text' field in request body\"}", "application/json");
-        return;
-    }
-    uint8_t newImportance = 5;
-    if (body.contains("importance"))
-    {
-        try { newImportance = static_cast<uint8_t>(std::clamp(body["importance"].get<int>(), 1, 10)); } catch (...) {}
-    }
-    std::string originalText = body.value("original", "");
-    if (originalText.empty())
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Missing or empty 'original' field in request body\"}", "application/json");
-        return;
-    }
+    std::string newText      = ExtractRequiredBodyField(body, "memory_text", res);
+    std::string originalText = ExtractRequiredBodyField(body, "original", res);
+    if (newText.empty() || originalText.empty()) return;
+
+    uint8_t newImportance = ExtractOptionalImportance(body);
 
     PBC_HistoryResult result = PBC_UpdateMemory(charGuid, memId, newText, newImportance, originalText);
-    if (result == PBC_HistoryResult::NotFound)
-    {
-        res.status = 404;
-        res.set_content("{\"error\":\"Memory not found\"}", "application/json");
-        return;
-    }
-    if (result == PBC_HistoryResult::Desync)
-    {
-        res.status = 409;
-        res.set_content("{\"error\":\"desync\"}", "application/json");
-        return;
-    }
+    if (!RespondMutationResult(res, result, "Memory")) return;
 
     PBC_Log(PBC_LogLevel::DEBUG, "API memory edit: character GUID={} memory id={}", charGuid, memId);
     res.set_content("{\"status\":\"updated\"}", "application/json");
@@ -764,27 +744,11 @@ void HandleDeleteCharMemory(const httplib::Request& req, httplib::Response& res,
 
     json body;
     try { body = json::parse(req.body); } catch (...) {}
-    std::string originalText = body.value("original", "");
-    if (originalText.empty())
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Missing or empty 'original' field in request body\"}", "application/json");
-        return;
-    }
+    std::string originalText = ExtractRequiredBodyField(body, "original", res);
+    if (originalText.empty()) return;
 
     PBC_HistoryResult result = PBC_DeleteMemory(charGuid, memId, originalText);
-    if (result == PBC_HistoryResult::NotFound)
-    {
-        res.status = 404;
-        res.set_content("{\"error\":\"Memory not found\"}", "application/json");
-        return;
-    }
-    if (result == PBC_HistoryResult::Desync)
-    {
-        res.status = 409;
-        res.set_content("{\"error\":\"desync\"}", "application/json");
-        return;
-    }
+    if (!RespondMutationResult(res, result, "Memory")) return;
 
     PBC_Log(PBC_LogLevel::DEBUG, "API memory delete: character GUID={} memory id={}", charGuid, memId);
     res.set_content("{\"status\":\"deleted\"}", "application/json");
@@ -830,34 +794,12 @@ void HandlePostCharRelationships(const httplib::Request& req, httplib::Response&
 
     json body;
     try { body = json::parse(req.body); } catch (...) {}
-    std::string newText = body.value("text", "");
-    if (newText.empty())
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Missing or empty 'text' field in request body\"}", "application/json");
-        return;
-    }
-    std::string originalText = body.value("original", "");
-    if (originalText.empty())
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Missing or empty 'original' field in request body\"}", "application/json");
-        return;
-    }
+    std::string newText      = ExtractRequiredBodyField(body, "text", res);
+    std::string originalText = ExtractRequiredBodyField(body, "original", res);
+    if (newText.empty() || originalText.empty()) return;
 
     PBC_HistoryResult result = PBC_UpdateRelationship(charGuid, targetName, newText, originalText);
-    if (result == PBC_HistoryResult::NotFound)
-    {
-        res.status = 404;
-        res.set_content("{\"error\":\"Relationship not found\"}", "application/json");
-        return;
-    }
-    if (result == PBC_HistoryResult::Desync)
-    {
-        res.status = 409;
-        res.set_content("{\"error\":\"desync\"}", "application/json");
-        return;
-    }
+    if (!RespondMutationResult(res, result, "Relationship")) return;
 
     PBC_Log(PBC_LogLevel::DEBUG, "API relationship edit: character GUID={} target={}", charGuid, targetName);
     res.set_content("{\"status\":\"updated\"}", "application/json");
@@ -881,27 +823,11 @@ void HandleDeleteCharRelationships(const httplib::Request& req, httplib::Respons
 
     json body;
     try { body = json::parse(req.body); } catch (...) {}
-    std::string originalText = body.value("original", "");
-    if (originalText.empty())
-    {
-        res.status = 400;
-        res.set_content("{\"error\":\"Missing or empty 'original' field in request body\"}", "application/json");
-        return;
-    }
+    std::string originalText = ExtractRequiredBodyField(body, "original", res);
+    if (originalText.empty()) return;
 
     PBC_HistoryResult result = PBC_DeleteRelationship(charGuid, targetName, originalText);
-    if (result == PBC_HistoryResult::NotFound)
-    {
-        res.status = 404;
-        res.set_content("{\"error\":\"Relationship not found\"}", "application/json");
-        return;
-    }
-    if (result == PBC_HistoryResult::Desync)
-    {
-        res.status = 409;
-        res.set_content("{\"error\":\"desync\"}", "application/json");
-        return;
-    }
+    if (!RespondMutationResult(res, result, "Relationship")) return;
 
     PBC_Log(PBC_LogLevel::DEBUG, "API relationship delete: character GUID={} target={}", charGuid, targetName);
     res.set_content("{\"status\":\"deleted\"}", "application/json");
@@ -1009,7 +935,7 @@ void HandleGetCharDebugRequest(const httplib::Request& req, httplib::Response& r
     response["history_token_limit"] = g_PBC_MaxHistoryCtx;
 
     std::string memoriesBlock = PBC_GetMemoriesBlock(snap.charGuidRaw);
-    int memTokens = static_cast<int>(memoriesBlock.size()) / 4 + (memoriesBlock.empty() ? 0 : 1);
+    int memTokens = memoriesBlock.empty() ? 0 : PBC_EstimateTokens(memoriesBlock);
     response["memory_tokens"]      = memTokens;
     response["memory_token_limit"] = g_PBC_MaxMemoriesCtx;
 
