@@ -1,5 +1,10 @@
 import { getClassColor } from './wow-colors.js';
 
+const genderIcon = {
+  Male: 'bi-gender-male',
+  Female: 'bi-gender-female',
+};
+
 export default function CharacterCard({ name, level, gender, race, cls, selected, onClick, badge }) {
   const nameColor = getClassColor(cls);
   const nameStyle = nameColor ? `color: ${nameColor}` : undefined;
@@ -16,7 +21,9 @@ export default function CharacterCard({ name, level, gender, race, cls, selected
           <span class="badge bg-secondary">{level}</span>
           {badge && <span class="badge bg-info ms-auto">{badge}</span>}
         </div>
-        <small class="text-body-secondary">{gender} {race} {cls}</small>
+        <small class="text-body-secondary">
+          <i class={`bi ${genderIcon[gender] || ''}`}></i> {race} {cls}
+        </small>
       </div>
     </div>
   );
