@@ -138,6 +138,49 @@ void PBC_CleanUnknownTokens(std::string& s)
     // If lastPos == 0, no unknown tokens were found — leave s unchanged.
 }
 
+void PBC_StripEmptyAnnotatedLines(std::string& s)
+{
+    // Annotated lines look like "[token_name]content\n".
+    // If content after stripping the annotation marker is empty/whitespace,
+    // the entire line (including its trailing newline) is removed.
+    static const std::regex annotPattern(R"(\[[a-zA-Z_][a-zA-Z0-9_]*\])");
+
+    std::string result;
+    result.reserve(s.size());
+
+    size_t lineStart = 0;
+    while (lineStart < s.size())
+    {
+        size_t lineEnd = s.find('\n', lineStart);
+        if (lineEnd == std::string::npos)
+            lineEnd = s.size();
+
+        std::string line(s, lineStart, lineEnd - lineStart);
+        std::string stripped = std::regex_replace(line, annotPattern, "");
+
+        // Keep the line if it has visible content after stripping annotations
+        bool hasContent = false;
+        for (char c : stripped)
+        {
+            if (c != ' ' && c != '\t' && c != '\r')
+            {
+                hasContent = true;
+                break;
+            }
+        }
+
+        if (hasContent)
+        {
+            if (!result.empty()) result += '\n';
+            result += line;
+        }
+
+        lineStart = lineEnd + 1; // skip the newline
+    }
+
+    s = std::move(result);
+}
+
 // ---------------------------------------------------------------------------
 // String formatting helpers
 // ---------------------------------------------------------------------------

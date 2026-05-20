@@ -36,6 +36,11 @@ void PBC_ReplaceToken(std::string& s, const std::string& key, const std::string&
 // logging a warning for each unique unknown token found.
 void PBC_CleanUnknownTokens(std::string& s);
 
+// Strip lines from an annotated string that contain only annotation markers
+// with no visible content (e.g. "[pet_info]\n").  Used for API responses
+// to avoid sending empty template slots to the frontend.
+void PBC_StripEmptyAnnotatedLines(std::string& s);
+
 // ---------------------------------------------------------------------------
 // Debug output helpers
 // ---------------------------------------------------------------------------

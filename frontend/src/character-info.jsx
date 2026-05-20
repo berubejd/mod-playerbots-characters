@@ -379,6 +379,7 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
                     const varIconMap = [
                       { vars: ['[char_name]', '[char_gender]', '[char_race]', '[char_class]', '[char_level]', '[char_role]'], icon: 'bi-person-circle' },
                       { vars: ['[scene]'], icon: 'bi-compass-fill' },
+                      { vars: ['[pet_info]'], icon: 'bi-bookmark-heart-fill' },
                       { vars: ['[combat_status]'], icon: 'bi-shield-fill' },
                       { vars: ['[equipment]'], icon: 'bi-bag-fill' },
                       { vars: ['[char_group]'], icon: 'bi-people-fill' },

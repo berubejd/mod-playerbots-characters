@@ -427,7 +427,9 @@ void HandleGetCharContext(const httplib::Request& req, httplib::Response& res, P
     if (!bot) return;
 
     json response;
-    response["context"] = PBC_SubstituteVars(g_PBC_CharacterContext, bot, "", false, true);
+    std::string context = PBC_SubstituteVars(g_PBC_CharacterContext, bot, "", false, true);
+    PBC_StripEmptyAnnotatedLines(context);
+    response["context"] = context;
     res.set_content(response.dump(), "application/json");
 }
 
