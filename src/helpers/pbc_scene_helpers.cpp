@@ -23,6 +23,7 @@
 
 #include <ctime>
 #include <algorithm>
+#include <unordered_map>
 
 // ---------------------------------------------------------------------------
 // Time-of-day helper
@@ -203,7 +204,7 @@ std::string PBC_BuildCombatStatusStr(Player* bot)
 std::string PBC_BuildLosStr(Player* bot)
 {
     constexpr float kLosRadius = 30.0f;
-    std::vector<std::string> entries;
+    std::unordered_map<std::string, int> nameCounts;
 
     for (auto const& pair : ObjectAccessor::GetPlayers())
     {
@@ -213,7 +214,7 @@ std::string PBC_BuildLosStr(Player* bot)
         if (p->GetMap() != bot->GetMap()) continue;
         if (!bot->IsWithinDistInMap(p, kLosRadius)) continue;
         if (!bot->IsWithinLOS(p->GetPositionX(), p->GetPositionY(), p->GetPositionZ())) continue;
-        entries.push_back(std::string(p->GetName()));
+        nameCounts[std::string(p->GetName())]++;
     }
 
     Map* map = bot->GetMap();
@@ -227,8 +228,22 @@ std::string PBC_BuildLosStr(Player* bot)
             if (!bot->IsWithinDistInMap(c, kLosRadius)) continue;
             if (!bot->IsWithinLOS(c->GetPositionX(), c->GetPositionY(), c->GetPositionZ())) continue;
             if (c->IsPet() || c->IsTotem()) continue;
-            entries.push_back(std::string(c->GetName()));
+            nameCounts[std::string(c->GetName())]++;
         }
+    }
+
+    // Build grouped entries, sorted by count descending
+    std::vector<std::pair<std::string, int>> sorted(nameCounts.begin(), nameCounts.end());
+    std::sort(sorted.begin(), sorted.end(),
+        [](auto const& a, auto const& b) { return a.second > b.second; });
+
+    std::vector<std::string> entries;
+    for (auto const& pair : sorted)
+    {
+        if (pair.second > 1)
+            entries.push_back(pair.first + " x" + std::to_string(pair.second));
+        else
+            entries.push_back(pair.first);
     }
 
     return PBC_NaturalList(entries);
