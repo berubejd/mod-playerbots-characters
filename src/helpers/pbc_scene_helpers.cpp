@@ -232,10 +232,10 @@ std::string PBC_BuildLosStr(Player* bot)
         }
     }
 
-    // Build grouped entries, sorted by count descending
+    // Build grouped entries, sorted by count ascending (unique NPCs first)
     std::vector<std::pair<std::string, int>> sorted(nameCounts.begin(), nameCounts.end());
     std::sort(sorted.begin(), sorted.end(),
-        [](auto const& a, auto const& b) { return a.second > b.second; });
+        [](auto const& a, auto const& b) { return a.second < b.second; });
 
     std::vector<std::string> entries;
     for (auto const& pair : sorted)
