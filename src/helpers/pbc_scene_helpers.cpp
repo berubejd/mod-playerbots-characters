@@ -5,6 +5,7 @@
 #include "Log.h"
 #include "Player.h"
 #include "ObjectAccessor.h"
+#include "ObjectMgr.h"
 #include "Creature.h"
 #include "Map.h"
 #include "GameTime.h"
@@ -13,6 +14,8 @@
 #include "SpellAuraDefines.h"
 #include "SpellAuraEffects.h"
 #include "Group.h"
+#include "Pet.h"
+#include "SharedDefines.h"
 
 #ifdef MOD_WEATHER_VIBE
 #include "mod_wv_core.h"
@@ -322,6 +325,259 @@ std::string PBC_RoleStr(Player* bot)
     }
 }
 
+// ---------------------------------------------------------------------------
+// Pet info helpers
+// ---------------------------------------------------------------------------
+
+// Map warlock demon NPC entry to a human-readable demon type name.
+static const char* GetDemonTypeName(uint32 entry)
+{
+    switch (entry)
+    {
+        case 416:   return "imp";
+        case 1860:  return "voidwalker";
+        case 1863:  return "succubus";
+        case 417:   return "felhunter";
+        case 17252: return "felguard";
+        default:    return "demon";
+    }
+}
+
+// Check whether a player is "capable" of having a permanent pet/summon.
+// Returns false for classes that never have pets (warrior, rogue, etc.).
+// For DK and Mage, returns true only when the required talent/glyph is active.
+static bool IsPetCapable(Player* bot)
+{
+    if (!bot) return false;
+
+    switch (bot->getClass())
+    {
+        case CLASS_HUNTER:
+            return bot->HasSpell(1515); // Tame Beast
+        case CLASS_WARLOCK:
+            return bot->HasSpell(688)  // Summon Imp
+                || bot->HasSpell(697)  // Summon Voidwalker
+                || bot->HasSpell(712)  // Summon Succubus
+                || bot->HasSpell(691)  // Summon Felhunter
+                || bot->HasSpell(30146); // Summon Felguard
+        case CLASS_DEATH_KNIGHT:
+            return bot->HasAura(52143); // Master of Ghouls
+        case CLASS_MAGE:
+            return bot->HasAura(70937); // Glyph of Eternal Water
+        default:
+            return false;
+    }
+}
+
+// Check whether a player's class *could* eventually have a permanent pet
+// (i.e. they are the right class, even if not yet capable).
+static bool IsPetClass(Player* bot)
+{
+    if (!bot) return false;
+    switch (bot->getClass())
+    {
+        case CLASS_HUNTER:
+        case CLASS_WARLOCK:
+        case CLASS_DEATH_KNIGHT:
+        case CLASS_MAGE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Build the "not capable" message for hunters and warlocks who haven't
+// learned the required spells yet.
+static std::string BuildNotCapableStr(Player* bot)
+{
+    switch (bot->getClass())
+    {
+        case CLASS_HUNTER:
+            return "You currently don't know how to tame or call a pet.";
+        case CLASS_WARLOCK:
+            return "You currently don't know how to summon a demon.";
+        default:
+            return "";
+    }
+}
+
+// Build the "no pet out" message for capable pet classes.
+static std::string BuildNoPetStr(Player* bot)
+{
+    switch (bot->getClass())
+    {
+        case CLASS_HUNTER:       return "You currently have no pet at your side.";
+        case CLASS_WARLOCK:      return "You currently have no demon at your side.";
+        case CLASS_DEATH_KNIGHT: return "You currently have no risen ghoul at your side.";
+        case CLASS_MAGE:         return "You currently have no water elemental at your side.";
+        default:                 return "";
+    }
+}
+
+// Get the pet family name for a hunter pet from DBC CreatureFamily.
+static std::string GetHunterPetFamilyName(Pet* pet)
+{
+    CreatureTemplate const* ct = sObjectMgr->GetCreatureTemplate(pet->GetEntry());
+    if (!ct || ct->family == 0)
+        return "pet";
+
+    CreatureFamilyEntry const* familyEntry = sCreatureFamilyStore.LookupEntry(ct->family);
+    if (!familyEntry || !familyEntry->Name[0])
+        return "pet";
+
+    return std::string(familyEntry->Name[0]);
+}
+
+// Build the alive-pet string for the owner (pet_info variable).
+static std::string BuildAlivePetStr(Player* bot, Pet* pet)
+{
+    std::string petName = pet->GetName();
+
+    switch (bot->getClass())
+    {
+        case CLASS_HUNTER:
+        {
+            std::string family = GetHunterPetFamilyName(pet);
+            std::transform(family.begin(), family.end(), family.begin(), ::tolower);
+
+            HappinessState happiness = pet->GetHappinessState();
+            switch (happiness)
+            {
+                case HAPPY:
+                    return "Your " + family + " " + petName + " is by your side, happy and alert.";
+                case CONTENT:
+                    return "Your " + family + " " + petName + " is by your side, content.";
+                case UNHAPPY:
+                default:
+                    return "Your " + family + " " + petName + " is by your side, but seems unhappy.";
+            }
+        }
+        case CLASS_WARLOCK:
+        {
+            std::string demonType = GetDemonTypeName(pet->GetEntry());
+            return "Your " + demonType + " " + petName + " is by your side.";
+        }
+        case CLASS_DEATH_KNIGHT:
+            return "Your risen ghoul " + petName + " is by your side.";
+        case CLASS_MAGE:
+            return "Your water elemental is by your side.";
+        default:
+            return "";
+    }
+}
+
+// Build the dead-pet string for the owner (pet_info variable).
+// Only hunters get "seriously wounded" wording for their own pet.
+static std::string BuildDeadPetStr(Player* bott, Pet* pet)
+{
+    switch (bott->getClass())
+    {
+        case CLASS_HUNTER:
+        {
+            std::string family = GetHunterPetFamilyName(pet);
+            std::transform(family.begin(), family.end(), family.begin(), ::tolower);
+            return "Your " + family + " " + pet->GetName() + " is seriously wounded.";
+        }
+        default:
+            // For non-hunters, a dead pet is effectively gone — fall through
+            // to the "no pet" message.
+            return BuildNoPetStr(bott);
+    }
+}
+
+std::string PBC_BuildPetInfoStr(Player* bot)
+{
+    if (!bot) return "";
+
+    // Only handle pet classes
+    if (!IsPetClass(bot))
+        return "";
+
+    // Check capability
+    if (!IsPetCapable(bot))
+        return BuildNotCapableStr(bot);
+
+    // Check if pet is out
+    Pet* pet = bot->GetPet();
+    if (!pet || !pet->IsInWorld())
+        return BuildNoPetStr(bot);
+
+    // Ignore temporary summons (cooldown-based, not permanent companions)
+    if (pet->isTemporarySummoned())
+        return BuildNoPetStr(bot);
+
+    // Check if dead
+    if (pet->isDead())
+        return BuildDeadPetStr(bot, pet);
+
+    // Alive permanent pet
+    return BuildAlivePetStr(bot, pet);
+}
+
+// Build the pet info snippet for a group member's pet (char_group_pets).
+// This is appended to the group status string for other party members.
+static std::string BuildMemberPetSnippet(Player* owner, Pet* pet)
+{
+    std::string ownerName = owner->GetName();
+    std::string petName = pet->GetName();
+
+    switch (owner->getClass())
+    {
+        case CLASS_HUNTER:
+        {
+            std::string family = GetHunterPetFamilyName(pet);
+            std::transform(family.begin(), family.end(), family.begin(), ::tolower);
+            if (pet->isDead())
+                return family + " " + petName + " (" + ownerName + "'s pet, seriously wounded)";
+            return family + " " + petName + " (" + ownerName + "'s pet)";
+        }
+        case CLASS_WARLOCK:
+        {
+            std::string demonType = GetDemonTypeName(pet->GetEntry());
+            if (pet->isDead())
+                return demonType + " " + petName + " (" + ownerName + "'s demon, seriously wounded)";
+            return demonType + " " + petName + " (" + ownerName + "'s demon)";
+        }
+        case CLASS_DEATH_KNIGHT:
+        {
+            if (pet->isDead())
+                return petName + " (" + ownerName + "'s risen ghoul, seriously wounded)";
+            return petName + " (" + ownerName + "'s risen ghoul)";
+        }
+        case CLASS_MAGE:
+        {
+            if (pet->isDead())
+                return "Water Elemental (" + ownerName + "'s summon, seriously wounded)";
+            return "Water Elemental (" + ownerName + "'s summon)";
+        }
+        default:
+            return petName + " (" + ownerName + "'s pet)";
+    }
+}
+
+std::string PBC_BuildPetInfoForMember(Player* member)
+{
+    if (!member) return "";
+
+    // Only handle pet classes
+    if (!IsPetClass(member))
+        return "";
+
+    // Must be capable
+    if (!IsPetCapable(member))
+        return "";
+
+    Pet* pet = member->GetPet();
+    if (!pet || !pet->IsInWorld())
+        return "";
+
+    // Ignore temporary summons
+    if (pet->isTemporarySummoned())
+        return "";
+
+    return BuildMemberPetSnippet(member, pet);
+}
+
 std::string PBC_BuildGroupStatusStr(Player* bot)
 {
     if (!bot) return "You are not currently in a group.";
@@ -340,10 +596,21 @@ std::string PBC_BuildGroupStatusStr(Player* bot)
 
     std::string leaderStr;
     std::string members;
+    std::string groupPets; // Pet info for other party members
+
     for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
         if (!member || member == bot || !member->IsInWorld()) continue;
+
+        // Collect pet info for this member
+        std::string memberPet = PBC_BuildPetInfoForMember(member);
+        if (!memberPet.empty())
+        {
+            if (!groupPets.empty()) groupPets += ", ";
+            groupPets += memberPet;
+        }
+
         if (member->GetGUID() == leaderGuid)
             leaderStr = memberInfo(member);
         else
@@ -353,12 +620,22 @@ std::string PBC_BuildGroupStatusStr(Player* bot)
         }
     }
 
+    // Build the base group string
+    std::string result;
     if (leaderStr.empty() && members.empty())
-        return "You are currently in a group.";
-    if (leaderStr.empty())
-        return "You are currently in a group with the following members: " + members + ".";
-    if (members.empty())
-        return "You are currently in a group led by " + leaderStr + ".";
-    return "You are currently in a group led by " + leaderStr
-         + " with the following members: " + members + ".";
+        result = "You are currently in a group";
+    else if (leaderStr.empty())
+        result = "You are currently in a group with the following members: " + members;
+    else if (members.empty())
+        result = "You are currently in a group led by " + leaderStr;
+    else
+        result = "You are currently in a group led by " + leaderStr
+               + " with the following members: " + members;
+
+    // Append pet info before the closing period
+    if (!groupPets.empty())
+        result += ", " + groupPets;
+
+    result += ".";
+    return result;
 }

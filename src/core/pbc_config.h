@@ -126,6 +126,7 @@ struct PBC_CharacterSnapshot
     std::string charLevel;
     std::string charGold;
     std::string scene;
+    std::string petInfo;
     std::string charGroup;
     std::string charLos;
     std::string combatStatus;

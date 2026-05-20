@@ -43,6 +43,18 @@ std::string PBC_RoleStr(Player* bot);
 // Returns the group status string, e.g.
 // "You are currently in a group led by John (Male Human Warrior) with the
 //  following members: Jane (Female Night Elf Priest)."
+// Pet info for other party members is appended comma-separated before the
+// closing period.
 std::string PBC_BuildGroupStatusStr(Player* bot);
+
+// Returns the pet/summon information string for the character themselves.
+// Empty when the character is not a pet class or not capable.
+// e.g. "Your wolf Fang is by your side, happy and alert."
+std::string PBC_BuildPetInfoStr(Player* bot);
+
+// Returns a pet info snippet for a group member (for appending to group status).
+// Empty when the member has no relevant pet out.
+// e.g. "wolf Fang (Bob's pet)"
+std::string PBC_BuildPetInfoForMember(Player* member);
 
 #endif // MOD_PBC_SCENE_HELPERS_H

@@ -45,6 +45,7 @@ PBC_VarMap PBC_BuildVarMap(Player* bot, const std::string& event)
     vars["char_level"]  = std::to_string(bot->GetLevel());
     { uint32 m = bot->GetMoney(); vars["char_gold"] = std::to_string(m / 10000) + "g " + std::to_string((m % 10000) / 100) + "s"; }
     vars["scene"]        = PBC_BuildSceneStr(bot);
+    vars["pet_info"]     = PBC_BuildPetInfoStr(bot);
     vars["combat_status"] = PBC_BuildCombatStatusStr(bot);
     vars["equipment"]    = PBC_BuildEquipmentStr(bot);
     vars["char_group"]   = PBC_BuildGroupStatusStr(bot);
@@ -67,6 +68,7 @@ PBC_VarMap PBC_BuildVarMapFromSnapshot(const PBC_CharacterSnapshot& snap, const 
     vars["char_level"]  = snap.charLevel;
     vars["char_gold"]   = snap.charGold;
     vars["scene"]        = snap.scene;
+    vars["pet_info"]     = snap.petInfo;
     vars["combat_status"] = snap.combatStatus;
     vars["equipment"]    = snap.equipment;
     vars["char_group"]   = snap.charGroup;
@@ -487,6 +489,9 @@ PBC_CharacterSnapshot PBC_SnapshotCharacter(Player* bot)
 
     // Equipment
     snap.equipment = PBC_BuildEquipmentStr(bot);
+
+    // Pet info
+    snap.petInfo = PBC_BuildPetInfoStr(bot);
 
     // Group status
     snap.charGroup = PBC_BuildGroupStatusStr(bot);
