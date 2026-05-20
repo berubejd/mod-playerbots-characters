@@ -297,6 +297,7 @@ static bool LoadPromptFile(const std::string& customPath,
         else
         {
             target = buf.str();
+            PBC_NormalizeNewlines(target);
             usedCustom = true;
             return true;
         }
@@ -319,6 +320,7 @@ static bool LoadPromptFile(const std::string& customPath,
     }
 
     target = buf.str();
+    PBC_NormalizeNewlines(target);
     return true;
 }
 
@@ -408,7 +410,9 @@ void PBC_LoadCharacterCards()
 
         std::stringstream buf;
         buf << f.rdbuf();
-        g_PBC_CharacterCards[name] = buf.str();
+        std::string cardText = buf.str();
+        PBC_NormalizeNewlines(cardText);
+        g_PBC_CharacterCards[name] = std::move(cardText);
         ++loaded;
 
         PBC_Log(PBC_LogLevel::DEBUG, "Loaded card '{}' ({} chars)", name, g_PBC_CharacterCards[name].size());

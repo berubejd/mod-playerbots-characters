@@ -21,6 +21,11 @@
 // Template substitution helpers
 // ---------------------------------------------------------------------------
 
+// Normalize all line endings to LF (\n). Converts \r\n → \n and standalone \r → \n.
+// Call this once when loading prompt/card text from disk so all downstream code
+// can assume consistent \n line endings.
+void PBC_NormalizeNewlines(std::string& s);
+
 // Expand literal "\n" escape sequences in-place (config prompts use \n for newlines).
 void PBC_ExpandNewlineEscapes(std::string& s);
 

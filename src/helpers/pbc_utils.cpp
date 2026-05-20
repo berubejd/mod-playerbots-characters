@@ -40,6 +40,25 @@ std::string PBC_SanitizeForFmt(const std::string& s)
 // Template substitution helpers
 // ---------------------------------------------------------------------------
 
+void PBC_NormalizeNewlines(std::string& s)
+{
+    // Convert \r\n → \n first (must be done before standalone \r → \n)
+    size_t pos = 0;
+    while ((pos = s.find("\r\n", pos)) != std::string::npos)
+    {
+        s.erase(pos, 1); // remove \r, keep \n
+        // pos unchanged — the next char is now the \n we kept
+    }
+
+    // Convert any remaining standalone \r → \n
+    pos = 0;
+    while ((pos = s.find('\r', pos)) != std::string::npos)
+    {
+        s[pos] = '\n';
+        ++pos;
+    }
+}
+
 void PBC_ExpandNewlineEscapes(std::string& s)
 {
     size_t pos = 0;
@@ -56,6 +75,19 @@ void PBC_ReplaceToken(std::string& s, const std::string& key, const std::string&
     size_t pos = 0;
     while ((pos = s.find(token, pos)) != std::string::npos)
     {
+        // When the value is empty and the token sits alone on its own line
+        // (at start of string or after a newline, followed by a newline),
+        // remove the trailing newline together with the token to avoid
+        // leaving an empty line behind.
+        if (value.empty() && (pos == 0 || s[pos - 1] == '\n'))
+        {
+            size_t after = pos + token.size();
+            if (after < s.size() && s[after] == '\n')
+            {
+                s.erase(pos, token.size() + 1);
+                continue;
+            }
+        }
         s.replace(pos, token.size(), value);
         pos += value.size();
     }
@@ -84,7 +116,16 @@ void PBC_CleanUnknownTokens(std::string& s)
             PBC_Log(PBC_LogLevel::WARNING, "Unknown template token '{{{}}}' — replaced with empty string", tokenName);
 
         // Skip the token (replace with "")
-        lastPos = matchPos + match.length();
+        size_t tokenEnd = matchPos + match.length();
+
+        // If this token sits alone on its own line (at start of string or after
+        // a newline, followed by a newline), remove the trailing newline too
+        // to avoid leaving an empty line behind.
+        if ((matchPos == 0 || s[matchPos - 1] == '\n') && tokenEnd < s.size() && s[tokenEnd] == '\n')
+            lastPos = tokenEnd + 1;
+        else
+            lastPos = tokenEnd;
+
         searchPos = lastPos;
     }
 
