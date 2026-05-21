@@ -73,9 +73,14 @@ export default function PlayerView({ account, party, token, wsEvent, onSubscript
   const [chatReloadKey, setChatReloadKey] = useState(0);
   const [infoReloadKey, setInfoReloadKey] = useState(0);
 
-  // Process WS events forwarded from App
+  // Process WS events forwarded from App.
+  // Events now include "guid" — filter to only act on the selected character.
   useEffect(() => {
     if (!wsEvent) return;
+
+    // Helper: check if this event targets the currently selected character
+    const eventGuid = wsEvent.data && wsEvent.data.guid;
+    const isForSelected = !eventGuid || eventGuid === selectedGuid;
 
     switch (wsEvent.type) {
       case 'connected':
@@ -85,22 +90,29 @@ export default function PlayerView({ account, party, token, wsEvent, onSubscript
         toast(wsEvent.data.message || 'WebSocket error', 'error');
         break;
       case 'history':
-        setChatEvent(wsEvent);
-        setInfoReloadKey((k) => k + 1);
+        if (isForSelected) {
+          setChatEvent(wsEvent);
+          setInfoReloadKey((k) => k + 1);
+        }
         break;
       case 'thinks':
-        setChatEvent(wsEvent);
+        if (isForSelected) {
+          setChatEvent(wsEvent);
+        }
         break;
       case 'relationship':
-        setInfoReloadKey((k) => k + 1);
+        if (isForSelected) {
+          setInfoReloadKey((k) => k + 1);
+        }
         break;
-      case 'memory': {
-        const memCharName = selectedCharName || 'character';
-        toast(`The memory of ${memCharName} was updated`, 'success');
+      case 'memory':
+        if (isForSelected) {
+          const memCharName = selectedCharName || 'character';
+          toast(`The memory of ${memCharName} was updated`, 'success');
+        }
         break;
-      }
     }
-  }, [wsEvent, toast]);
+  }, [wsEvent, toast, selectedGuid, selectedCharName]);
 
   // Build a map of name → class color for chat highlighting and info display.
   // Uses all characters on the account + player name.

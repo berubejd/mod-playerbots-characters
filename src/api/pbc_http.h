@@ -58,14 +58,25 @@ std::string PBC_HttpServerGenerateOTP(uint32_t accountId);
 // WebSocket event notifications (thread-safe, no-op when server is not running)
 //
 // Called from the event thread or main thread to push real-time notifications
-// to WS clients that are subscribed to a specific character GUID.
+// to WS clients that are subscribed to the account that owns the character.
 // ---------------------------------------------------------------------------
 
-// Notify subscribed WS clients of a simple event type ("thinks", "relationship", "additions").
+// Notify WS clients subscribed to the same account as botGuid of a simple
+// event type ("thinks", "relationship", "memory"). The JSON payload includes
+// the guid so the frontend can filter by character.
 void PBC_WsNotify(uint64_t botGuid, const std::string& eventType);
 
-// Notify subscribed WS clients of a history event with message data.
-// messageId is the 1-based history index (matching the "id" field from GET /api/history).
+// Notify WS clients subscribed to the same account as botGuid of a history
+// event with message data. messageId is the 1-based history index.
 void PBC_WsNotifyHistory(uint64_t botGuid, size_t messageId, const std::string& text);
+
+// Notify all WS clients subscribed to a specific account of an account-level
+// event ("online", "offline", "party"). relatedGuid is the character GUID that
+// triggered the event (set to 0 for events like "party" that have no single guid).
+void PBC_WsNotifyAccount(uint32_t accountId, const std::string& eventType, uint64_t relatedGuid = 0);
+
+// Broadcast a "shutdown" event to every connected WS client.
+// Called from PBC_HttpServerStop before the server is stopped.
+void PBC_WsBroadcastShutdown();
 
 #endif // MOD_PBC_HTTP_H

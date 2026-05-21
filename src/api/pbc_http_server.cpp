@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -21,6 +22,7 @@
 #include <fstream>
 #include <regex>
 
+#include "CharacterCache.h"
 #include "ObjectAccessor.h"
 #include "ObjectGuid.h"
 #include "Player.h"
@@ -40,29 +42,31 @@ static std::atomic<bool>                 s_httpRunning{false};
 static std::atomic<bool>                 s_httpShuttingDown{false};
 
 // ===========================================================================
-// WS subscription state
+// WS subscription state — account-based
 // ===========================================================================
 
 static std::mutex s_wsSubMutex;
-static std::unordered_map<httplib::ws::WebSocket*, uint64_t> s_wsConnectionSubs;
-static std::unordered_map<uint64_t, std::unordered_set<httplib::ws::WebSocket*>> s_wsGuidSubs;
+// ws connection → account ID it subscribed to (0 = not yet subscribed)
+static std::unordered_map<httplib::ws::WebSocket*, uint32_t> s_wsConnectionSubs;
+// account ID → set of ws connections subscribed to this account
+static std::unordered_map<uint32_t, std::unordered_set<httplib::ws::WebSocket*>> s_wsAccountSubs;
 
-// Subscribe a WS connection to a character GUID.
-static void WsSubscribe(httplib::ws::WebSocket* ws, uint64_t botGuid)
+// Subscribe a WS connection to an account (no GUID needed).
+static void WsSubscribe(httplib::ws::WebSocket* ws, uint32_t accountId)
 {
     std::lock_guard<std::mutex> lock(s_wsSubMutex);
 
+    // Unsubscribe from any previous account first
     auto it = s_wsConnectionSubs.find(ws);
     if (it != s_wsConnectionSubs.end() && it->second != 0)
     {
-        s_wsGuidSubs[it->second].erase(ws);
-        if (s_wsGuidSubs[it->second].empty())
-            s_wsGuidSubs.erase(it->second);
+        s_wsAccountSubs[it->second].erase(ws);
+        if (s_wsAccountSubs[it->second].empty())
+            s_wsAccountSubs.erase(it->second);
     }
 
-    s_wsConnectionSubs[ws] = botGuid;
-    if (botGuid != 0)
-        s_wsGuidSubs[botGuid].insert(ws);
+    s_wsConnectionSubs[ws] = accountId;
+    s_wsAccountSubs[accountId].insert(ws);
 }
 
 // Remove all subscription state for a WS connection.
@@ -75,21 +79,28 @@ static void WsUnsubscribe(httplib::ws::WebSocket* ws)
     {
         if (it->second != 0)
         {
-            s_wsGuidSubs[it->second].erase(ws);
-            if (s_wsGuidSubs[it->second].empty())
-                s_wsGuidSubs.erase(it->second);
+            s_wsAccountSubs[it->second].erase(ws);
+            if (s_wsAccountSubs[it->second].empty())
+                s_wsAccountSubs.erase(it->second);
         }
         s_wsConnectionSubs.erase(it);
     }
 }
 
-// Send a raw JSON string to all WS subscribers of a character GUID.
-static void WsSendToSubscribers(uint64_t botGuid, const std::string& jsonMessage)
+// Look up the account ID for a character GUID.
+static uint32_t GetAccountIdByGuid(uint64_t guid)
+{
+    uint32_t accountId = sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(guid));
+    return accountId;
+}
+
+// Send a raw JSON string to all WS subscribers of a given account.
+static void WsSendToAccount(uint32_t accountId, const std::string& jsonMessage)
 {
     std::lock_guard<std::mutex> lock(s_wsSubMutex);
 
-    auto it = s_wsGuidSubs.find(botGuid);
-    if (it == s_wsGuidSubs.end())
+    auto it = s_wsAccountSubs.find(accountId);
+    if (it == s_wsAccountSubs.end())
         return;
 
     std::vector<httplib::ws::WebSocket*> toRemove;
@@ -107,7 +118,45 @@ static void WsSendToSubscribers(uint64_t botGuid, const std::string& jsonMessage
     }
 
     if (it->second.empty())
-        s_wsGuidSubs.erase(it);
+        s_wsAccountSubs.erase(it);
+}
+
+// Send a raw JSON string to all WS subscribers of the account that owns botGuid.
+static void WsSendToGuidOwner(uint64_t botGuid, const std::string& jsonMessage)
+{
+    uint32_t accountId = GetAccountIdByGuid(botGuid);
+    if (accountId == 0)
+        return;
+    WsSendToAccount(accountId, jsonMessage);
+}
+
+// Broadcast a raw JSON string to every connected WS client.
+static void WsBroadcast(const std::string& jsonMessage)
+{
+    std::lock_guard<std::mutex> lock(s_wsSubMutex);
+
+    std::vector<httplib::ws::WebSocket*> toRemove;
+
+    for (auto& [ws, accountId] : s_wsConnectionSubs)
+    {
+        if (!ws->send(jsonMessage))
+            toRemove.push_back(ws);
+    }
+
+    for (auto* ws : toRemove)
+    {
+        auto it = s_wsConnectionSubs.find(ws);
+        if (it != s_wsConnectionSubs.end())
+        {
+            if (it->second != 0)
+            {
+                s_wsAccountSubs[it->second].erase(ws);
+                if (s_wsAccountSubs[it->second].empty())
+                    s_wsAccountSubs.erase(it->second);
+            }
+            s_wsConnectionSubs.erase(it);
+        }
+    }
 }
 
 // ===========================================================================
@@ -148,7 +197,8 @@ void PBC_WsNotify(uint64_t botGuid, const std::string& eventType)
 
     json j;
     j["event"] = eventType;
-    WsSendToSubscribers(botGuid, j.dump());
+    j["guid"] = botGuid;
+    WsSendToGuidOwner(botGuid, j.dump());
 }
 
 void PBC_WsNotifyHistory(uint64_t botGuid, size_t messageId, const std::string& text)
@@ -158,8 +208,57 @@ void PBC_WsNotifyHistory(uint64_t botGuid, size_t messageId, const std::string& 
 
     json j;
     j["event"] = "history";
+    j["guid"] = botGuid;
     j["message"] = {{"id", messageId}, {"text", text}};
-    WsSendToSubscribers(botGuid, j.dump());
+    WsSendToGuidOwner(botGuid, j.dump());
+}
+
+// Debounce guard for account-level events ("online", "offline", "party").
+// Bots tend to login/logout in batches and group hooks fire per-member on
+// disband, so we suppress duplicate events to the same (account, type) pair
+// within a 500ms window.
+static std::mutex s_wsDebounceMutex;
+static std::unordered_map<std::string, std::chrono::steady_clock::time_point> s_wsLastSent;
+static std::string DebounceKey(uint32_t accountId, const std::string& eventType)
+{
+    return std::to_string(accountId) + ":" + eventType;
+}
+
+void PBC_WsNotifyAccount(uint32_t accountId, const std::string& eventType, uint64_t relatedGuid)
+{
+    if (!s_httpRunning.load())
+        return;
+
+    // Debounce: at most one event per (account, type) every 500ms.
+    {
+        auto now = std::chrono::steady_clock::now();
+        std::string key = DebounceKey(accountId, eventType);
+        std::lock_guard<std::mutex> lock(s_wsDebounceMutex);
+        auto it = s_wsLastSent.find(key);
+        if (it != s_wsLastSent.end())
+        {
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second).count();
+            if (elapsed < 500)
+                return;
+        }
+        s_wsLastSent[key] = now;
+    }
+
+    json j;
+    j["event"] = eventType;
+    if (relatedGuid != 0)
+        j["guid"] = relatedGuid;
+    WsSendToAccount(accountId, j.dump());
+}
+
+void PBC_WsBroadcastShutdown()
+{
+    if (!s_httpRunning.load())
+        return;
+
+    json j;
+    j["event"] = "shutdown";
+    WsBroadcast(j.dump());
 }
 
 // ===========================================================================
@@ -498,23 +597,11 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 std::string msg;
                 while (ws.read(msg) && !s_httpShuttingDown.load())
                 {
-                    if (msg.compare(0, 10, "subscribe ") == 0)
+                    if (msg == "subscribe")
                     {
-                        std::string guidStr = msg.substr(10);
-                        uint64_t subGuid = 0;
-                        try { subGuid = std::stoull(guidStr); } catch (...) {}
-
-                        if (subGuid != 0)
-                        {
-                            WsSubscribe(&ws, subGuid);
-                            ws.send(json({{"event", "subscribed"}, {"guid", subGuid}}).dump());
-                            PBC_Log(PBC_LogLevel::DEBUG, "WS: account ID={} subscribed to character GUID={}",
-                                     accountId, subGuid);
-                        }
-                        else
-                        {
-                            ws.send(json({{"event", "error"}, {"message", "Invalid GUID"}}).dump());
-                        }
+                        WsSubscribe(&ws, accountId);
+                        ws.send(json({{"event", "subscribed"}}).dump());
+                        PBC_Log(PBC_LogLevel::DEBUG, "WS: account ID={} subscribed", accountId);
                     }
                     else if (msg == "unsubscribe")
                     {
@@ -524,7 +611,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                     }
                     else
                     {
-                        ws.send(json({{"event", "error"}, {"message", "Unknown command. Use: subscribe <GUID> or unsubscribe"}}).dump());
+                        ws.send(json({{"event", "error"}, {"message", "Unknown command. Use: subscribe or unsubscribe"}}).dump());
                     }
                 }
 
@@ -588,6 +675,9 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 void PBC_HttpServerStop()
 {
     s_httpShuttingDown.store(true);
+
+    // Broadcast shutdown event to all connected WS clients before stopping.
+    PBC_WsBroadcastShutdown();
 
     if (s_httpServer)
         s_httpServer->stop();

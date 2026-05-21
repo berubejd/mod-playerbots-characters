@@ -53,8 +53,41 @@ export default function App() {
   const handlingDisconnectRef = useRef(false);
 
   const handleWsEvent = useCallback((event) => {
-    setWsEvent(event);
-  }, []);
+    // Handle account-level events that trigger data refresh
+    switch (event.type) {
+      case 'shutdown':
+        // Server is shutting down — disconnect WS after 3s and go to loading
+        setTimeout(() => {
+          setWsConnectKey(k => k + 1);
+          setView(VIEW.LOADING);
+          setLoadSteps(INITIAL_STEPS.map(s => ({ ...s })));
+          setLoadError('Server is restarting');
+        }, 3000);
+        return; // Don't forward to PlayerView
+      case 'online':
+      case 'offline':
+      case 'party':
+        // Refresh account and party data
+        if (authToken) {
+          fetchAccount(authToken)
+            .then((data) => {
+              setAccount(data);
+              saveAccount(authToken, data);
+            })
+            .catch(() => {});
+          fetchParty(authToken)
+            .then((partyData) => {
+              setParty(partyData);
+            })
+            .catch(() => { setParty({ party: [] }); });
+        }
+        return; // Don't forward to PlayerView
+      default:
+        // Forward character-level events to PlayerView
+        setWsEvent(event);
+        break;
+    }
+  }, [authToken]);
 
   // Full state reset: clears all app state and returns to the loading view
   // so the entire initialization sequence runs again from scratch.

@@ -29,6 +29,10 @@ public:
     bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
                             std::string& msg, Group* group) override;
 
+    // Login/logout — used for WS "online"/"offline" events
+    void OnPlayerLogin(Player* player) override;
+    void OnPlayerLogout(Player* player) override;
+
     // World events bots may react to
     void OnPlayerLootItem(Player* player, Item* item, uint32 count, ObjectGuid lootguid) override;
     void OnPlayerQuestRewardItem(Player* player, Item* item, uint32 count) override;

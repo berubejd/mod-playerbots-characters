@@ -8,8 +8,10 @@
 #include "pbc_group_helpers.h"
 #include "pbc_event_dispatch.h"
 #include "pbc_poll.h"
+#include "pbc_http.h"
 #include "pbc_log.h"
 
+#include "CharacterCache.h"
 #include "Player.h"
 #include "Creature.h"
 #include "Item.h"
@@ -85,6 +87,8 @@ PBC_PlayerEvents::PBC_PlayerEvents() : PlayerScript("PBC_PlayerEvents",
     PLAYERHOOK_CAN_PLAYER_USE_CHAT,
     PLAYERHOOK_CAN_PLAYER_USE_PRIVATE_CHAT,
     PLAYERHOOK_CAN_PLAYER_USE_GROUP_CHAT,
+    PLAYERHOOK_ON_LOGIN,
+    PLAYERHOOK_ON_LOGOUT,
     PLAYERHOOK_ON_LOOT_ITEM,
     PLAYERHOOK_ON_QUEST_REWARD_ITEM,
     PLAYERHOOK_ON_GROUP_ROLL_REWARD_ITEM,
@@ -286,4 +290,34 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     AddTrackedPlayersToEvent(ev, player);
 
     PBC_PushEvent(std::move(ev));
+}
+
+// ---------------------------------------------------------------------------
+// Login / Logout — WS "online" and "offline" events
+// ---------------------------------------------------------------------------
+
+void PBC_PlayerEvents::OnPlayerLogin(Player* player)
+{
+    if (!g_PBC_Enable) return;
+    if (!PBC_PTR_VALID(player)) return;
+
+    uint64_t guid = player->GetGUID().GetCounter();
+    uint32_t accountId = sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(guid));
+    if (accountId == 0) return;
+
+    PBC_WsNotifyAccount(accountId, "online", guid);
+    PBC_Log(PBC_LogLevel::DEBUG, "WS: online event for guid={} account={}", guid, accountId);
+}
+
+void PBC_PlayerEvents::OnPlayerLogout(Player* player)
+{
+    if (!g_PBC_Enable) return;
+    if (!PBC_PTR_VALID(player)) return;
+
+    uint64_t guid = player->GetGUID().GetCounter();
+    uint32_t accountId = sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(guid));
+    if (accountId == 0) return;
+
+    PBC_WsNotifyAccount(accountId, "offline", guid);
+    PBC_Log(PBC_LogLevel::DEBUG, "WS: offline event for guid={} account={}", guid, accountId);
 }

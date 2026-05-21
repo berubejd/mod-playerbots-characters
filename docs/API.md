@@ -349,15 +349,13 @@ Invalid or expired tokens are rejected with `401` before the connection is estab
 
 ### Event Subscriptions
 
-After connecting, subscribe to real-time events for a specific character:
+After connecting, send `subscribe` to start receiving real-time events for all characters on your account:
 
 ```
-subscribe <GUID>
+subscribe
 ```
 
-**You can subscribe to any character GUID on your account, even if the character is offline.** Events will be delivered when the character comes online and generates activity.
-
-Only one subscription per connection — a second `subscribe` replaces the previous one. To unsubscribe:
+Events are delivered for every character on the authenticated account. To unsubscribe:
 
 ```
 unsubscribe
@@ -368,7 +366,7 @@ unsubscribe
 | Event | Description |
 |---|---|
 | `{"event": "connected"}` | Connection established |
-| `{"event": "subscribed", "guid": 12345}` | Subscription confirmed |
+| `{"event": "subscribed"}` | Subscription confirmed |
 | `{"event": "unsubscribed"}` | Unsubscribed |
 | `{"event": "error", "message": "..."}` | Error |
 
@@ -376,9 +374,17 @@ unsubscribe
 
 | Event | Trigger | Payload |
 |---|---|---|
-| `history` | New message in chat history | `{"event":"history","message":{"id":5,"text":"..."}}` |
-| `thinks` | Character is about to respond (LLM call starting) | `{"event":"thinks"}` |
-| `relationship` | Character's relationship updated | `{"event":"relationship"}` |
-| `memory` | Character received new memories from condensation | `{"event":"memory"}` |
+| `history` | New message in chat history | `{"event":"history","guid":12345,"message":{"id":5,"text":"..."}}` |
+| `thinks` | Character is about to respond (LLM call starting) | `{"event":"thinks","guid":12345}` |
+| `relationship` | Character's relationship updated | `{"event":"relationship","guid":12345}` |
+| `memory` | Character received new memories from condensation | `{"event":"memory","guid":12345}` |
+| `online` | A character on the account logged in | `{"event":"online","guid":12345}` |
+| `offline` | A character on the account logged out | `{"event":"offline","guid":12345}` |
+| `party` | Party membership changed for the account | `{"event":"party"}` |
+| `shutdown` | Server is shutting down | `{"event":"shutdown"}` |
 
-`thinks`, `relationship`, and `memory` events are simple triggers — fetch updated data via the REST API when received.
+`thinks`, `relationship`, `memory`, `online`, `offline`, and `party` events are simple triggers — fetch updated data via the REST API when received.
+
+`shutdown` indicates the server is going down.
+
+Account-level events (`online`, `offline`, `party`) are debounced server-side — at most one event per account per type every 500ms to avoid floods during batch login/logout or group disband.
