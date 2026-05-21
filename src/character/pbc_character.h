@@ -60,6 +60,16 @@ void        PBC_AppendHistory(uint64_t botGuid, const std::string& line);
 int         PBC_EstimateHistoryTokens(uint64_t botGuid);
 
 // ---------------------------------------------------------------------------
+// Insert a "Narrator: *some time passes*" line into the character's history
+// if more than 5 minutes have elapsed since the last entry (and the last
+// entry is not already a time-passes line or part of a whisper chain).
+// Updates g_PBC_LastHistoryTime, writes to DB, sends WS notification.
+// Returns true if a line was inserted.
+// Thread-safe.
+// ---------------------------------------------------------------------------
+bool PBC_MaybeInsertTimeGap(uint64_t botGuid);
+
+// ---------------------------------------------------------------------------
 // Mutation result (thread-safe, also updates the database)
 // ---------------------------------------------------------------------------
 enum class PBC_HistoryResult { Ok, NotFound, Desync };

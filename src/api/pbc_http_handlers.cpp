@@ -1132,7 +1132,7 @@ void HandleGetCharDebugRequest(const httplib::Request& req, httplib::Response& r
 
     std::string eventLine = req.get_param_value("event");
     if (eventLine.empty())
-        eventLine = PBC_MakeEventLine(PBC_PickTriggerEventLine(charGuid));
+        eventLine = PBC_MakeEventLine(PBC_PickTriggerEventLine(charGuid, bot->GetName()));
 
     PBC_CharacterSnapshot snap = PBC_SnapshotCharacter(bot);
     std::string userPrompt = PBC_BuildUserPromptFromSnapshot(snap, eventLine);

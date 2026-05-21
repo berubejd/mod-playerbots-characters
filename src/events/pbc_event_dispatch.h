@@ -70,19 +70,23 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
 
 // ---------------------------------------------------------------------------
 // Pick the trigger event line based on the character's last history message.
+// charName is the name of the character being triggered, used to detect
+// whether the last message was spoken by the same character (case 3 fork).
 // Returns the event text (without surrounding asterisks — caller wraps with
-// PBC_MakeEventLine).  The logic is:
+// PBC_MakeEventLine).  Thread-safe.
+//
+// Logic:
 //   1. Last line is "Narrator: *some time passes*" → random pick from four
 //      "you want to …" variants.
-//   2. Last line is from Narrator but NOT "some time passes" →
+//   2. Last line is any other Narrator line →
 //      "you feel the urge to comment on the last thing that happened".
-//   3. Last line is NOT from Narrator and NOT a whisper →
-//      "you feel like answering that".
-//   4. All other cases (no history, last line is whisper) →
+//   3. Last line is not Narrator and not a whisper:
+//      a. Speaker is charName → "you feel like saying more".
+//      b. Speaker is someone else → "you feel like answering that".
+//   4. Otherwise (no history, whisper) →
 //      "you feel the urge to say something".
-// Thread-safe.
 // ---------------------------------------------------------------------------
-std::string PBC_PickTriggerEventLine(uint64_t botGuid);
+std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charName);
 
 // ---------------------------------------------------------------------------
 // Dispatch a trigger event for a single character.

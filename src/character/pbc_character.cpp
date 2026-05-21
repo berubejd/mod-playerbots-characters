@@ -219,55 +219,79 @@ std::string PBC_GetChatHistory(uint64_t botGuid)
 }
 
 
-void PBC_AppendHistory(uint64_t botGuid, const std::string& line)
+bool PBC_MaybeInsertTimeGap(uint64_t botGuid)
 {
     static const std::string kTimePassesLine = "Narrator: *some time passes*";
     static constexpr time_t  kTimeGapThresholdSec = 300; // 5 minutes
 
-    bool needTimePasses = false;
-    bool dedup = false;
+    bool inserted = false;
 
-    // Collect WS history events inside the lock (with correct 1-based ids),
-    // emit them outside the lock to avoid holding g_PBC_HistoryMutex during
-    // network I/O.
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+        auto timeIt = g_PBC_LastHistoryTime.find(botGuid);
+        if (timeIt == g_PBC_LastHistoryTime.end())
+            return false;
+
+        time_t now = time(nullptr);
+        if (now - timeIt->second < kTimeGapThresholdSec)
+            return false;
+
+        auto& hist = g_PBC_ChatHistory[botGuid];
+
+        // Don't insert if the last line is already a time-passes line.
+        if (!hist.empty() && hist.back() == kTimePassesLine)
+            return false;
+
+        // Don't insert if the last line is a whisper — time gaps between
+        // private conversations are not narratively meaningful.
+        auto isPrivateMsg = [](const std::string& s) -> bool {
+            auto privPos = s.find(" (privately to ");
+            if (privPos == std::string::npos || privPos == 0)
+                return false;
+            auto firstSpace = s.find(' ');
+            return firstSpace == privPos;
+        };
+        if (!hist.empty() && isPrivateMsg(hist.back()))
+            return false;
+
+        hist.push_back(kTimePassesLine);
+        g_PBC_LastHistoryTime[botGuid] = now;
+        inserted = true;
+    }
+
+    if (inserted)
+    {
+        DB_InsertHistoryLine(botGuid, kTimePassesLine);
+
+        // Determine the 1-based index for WS notification.
+        size_t idx = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+            auto it = g_PBC_ChatHistory.find(botGuid);
+            if (it != g_PBC_ChatHistory.end())
+                idx = it->second.size();
+        }
+        if (idx > 0)
+            PBC_WsNotifyHistory(botGuid, idx, kTimePassesLine);
+    }
+
+    return inserted;
+}
+
+void PBC_AppendHistory(uint64_t botGuid, const std::string& line)
+{
+    // Time-gap insertion is now handled proactively by callers
+    // (event processor calls PBC_MaybeInsertTimeGap before LLM prompts).
+    // We still call it here as a safety net for callers that don't go through
+    // the event processor (e.g. narrate commands, API endpoints).
+    PBC_MaybeInsertTimeGap(botGuid);
+
+    bool dedup = false;
     std::vector<std::pair<size_t, std::string>> wsHistoryEvents;
 
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
         auto& hist = g_PBC_ChatHistory[botGuid];
-
-        // Check for time gap before the new line.
-        auto timeIt = g_PBC_LastHistoryTime.find(botGuid);
-        if (timeIt != g_PBC_LastHistoryTime.end())
-        {
-            time_t lastTime = timeIt->second;
-            time_t now = time(nullptr);
-            if (now - lastTime >= kTimeGapThresholdSec)
-            {
-                // Check if last line is already "some time passes"
-                bool lastIsTimePasses = !hist.empty() && hist.back() == kTimePassesLine;
-
-                // Check if last line and current line are both private messages.
-                // A private message line starts with "Name (privately to ...", i.e.
-                // the first space in the line must be the one before "(privately to".
-                auto isPrivateMsg = [](const std::string& s) -> bool {
-                    auto privPos = s.find(" (privately to ");
-                    if (privPos == std::string::npos || privPos == 0)
-                        return false;
-                    auto firstSpace = s.find(' ');
-                    return firstSpace == privPos;
-                };
-                bool lastIsPrivate = !hist.empty() && isPrivateMsg(hist.back());
-                bool currentIsPrivate = isPrivateMsg(line);
-
-                if (!lastIsTimePasses && !(lastIsPrivate && currentIsPrivate))
-                {
-                    needTimePasses = true;
-                    hist.push_back(kTimePassesLine);
-                    wsHistoryEvents.emplace_back(hist.size(), kTimePassesLine);
-                }
-            }
-        }
 
         // Dedup check
         if (!hist.empty() && hist.back() == line)
@@ -282,9 +306,7 @@ void PBC_AppendHistory(uint64_t botGuid, const std::string& line)
         g_PBC_LastHistoryTime[botGuid] = time(nullptr);
     }
 
-    // DB writes outside the lock
-    if (needTimePasses)
-        DB_InsertHistoryLine(botGuid, kTimePassesLine);
+    // DB write outside the lock
     if (!dedup)
         DB_InsertHistoryLine(botGuid, line);
 
