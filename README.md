@@ -5,7 +5,7 @@ This is an [AzerothCore](https://www.azerothcore.org) module built around [mod-p
 Think old Bioware games with companions — that's the core idea. The intended use is a fresh start at low rates with a full party of altbots playing alongside you, developing their own stories as you progress through the game together.
 
 > [!IMPORTANT]
-> The module is currently in active development and things could be changing rapidly. Before updating your copy, it's highly recommended to do a database backup, read the commit messages and check your server logs after running the newer version. There should be no hard incompatibilities, but new config variables are getting added, existing ones change their defaults, old routines get replaced and so on.
+> The module is currently in active development and things could be changing rapidly. Before updating your copy, it's highly recommended to do a database backup, read the changes and notes in [the Releases](https://github.com/deseven/mod-playerbots-characters/releases) and check your server logs after running the newer version. There should be no hard incompatibilities, but new config variables are getting added, existing ones change their defaults, old routines get replaced and so on.
 
 
 ## How It Works
@@ -23,10 +23,46 @@ Relationships are tracked between characters and real players, as well as other 
 
 Since mod-playerbots is an obvious hard requirement, follow their [Installation Guide](https://github.com/mod-playerbots/mod-playerbots/wiki/Installation-Guide) until you have a working acore installation with playerbots enabled.
 
-Next, clone this repository into the `modules` directory of your acore sources and rebuild the server normally.
+There are three ways to obtain the module sources:
+
+### Method 1: Latest (bleeding edge)
+
+Clone the repository normally to get the latest changes:
+
+```sh
+cd modules
+git clone git@github.com:deseven/mod-playerbots-characters.git
+```
+
+This gives you the most recent commits from the `main` branch. You can `git pull` at any time to update.
+
+### Method 2: Specific release tag (recommended)
+
+Clone a specific tagged release:
+
+```sh
+cd modules
+git clone --depth 1 --branch <tag_name> git@github.com:deseven/mod-playerbots-characters.git
+```
+
+When you want to upgrade to a newer release tag:
+
+```sh
+cd modules/mod-playerbots-characters
+git fetch --tags
+git checkout <new_tag_name>
+```
+
+A list of all available tags can be found on the [Releases](https://github.com/deseven/mod-playerbots-characters/releases) page.
+
+### Method 3: Source code archive
+
+Download a `.zip` or `.tar.gz` source archive from the [Releases](https://github.com/deseven/mod-playerbots-characters/releases) page and extract it into the `modules` directory. The extracted folder must be named `mod-playerbots-characters`.
+
+After obtaining the sources using any of the methods above, rebuild the server normally.
 
 > [!NOTE]
-> 1. Only Linux is officially supported as a build target. Technically nothing should stop you from using the module on Windows, but this is untested and unsupported.
+> 1. Only Linux is officially supported as a build target. I have no plans to add Windows support, but pull requests that address it are welcome.
 > 2. The module includes bundled copies of [nlohmann/json](https://github.com/nlohmann/json) in `deps/nlohmann/json.hpp` and [yhirose/cpp-httplib](https://github.com/yhirose/cpp-httplib) in `deps/yhirose/cpp-httplib/httplib.h`, so no external libraries are required.
 
 If [mod_weather_vibe](https://github.com/hermensbas/mod_weather_vibe) is also installed, weather states from it will be included in the character's scene description.
