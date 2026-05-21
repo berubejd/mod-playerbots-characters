@@ -387,4 +387,5 @@ unsubscribe
 
 `shutdown` indicates the server is going down.
 
-Account-level events (`online`, `offline`, `party`) are debounced server-side — at most one event per account per type every 500ms to avoid floods during batch login/logout or group disband.
+> [!NOTE]
+> `online`, `offline`, and `party` events may arrive in rapid bursts (e.g. mass logout or group disband). Consumers should batch re-fetches with a short debounce (e.g. 500ms) to avoid redundant API calls.

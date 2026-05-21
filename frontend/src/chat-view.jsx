@@ -13,6 +13,17 @@ const AUTO_SCROLL_THRESHOLD = 100;
 // Characters per estimated token for context usage bar
 const CHARS_PER_TOKEN = 4;
 
+// Build a natural-language "thinking" line from a list of character names.
+// "Jon" → "Jon is thinking"
+// "Jon, Jane" → "Jon and Jane are thinking"
+// "Jon, Jane, Kevin" → "Jon, Jane and Kevin are thinking"
+function formatThinkingLine(names) {
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0] + ' is thinking';
+  if (names.length === 2) return names[0] + ' and ' + names[1] + ' are thinking';
+  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] + ' are thinking';
+}
+
 function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selected, onToggleSelect, isNew }) {
   const text = typeof msg === 'string' ? msg : msg.text;
   const id = typeof msg === 'string' ? null : msg.id;
@@ -472,12 +483,11 @@ function SendMessageInput({ token, selectedGuid, playerGuid, onDesync, onMessage
   );
 }
 
-export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap, charName, playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync, characters, messageMode, onMessageModeChange, maxHistoryCtx, charCategory }) {
+export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap, charName, thinkingNames = [], playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync, characters, messageMode, onMessageModeChange, maxHistoryCtx, charCategory }) {
   const [messages, setMessages] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [thinking, setThinking] = useState(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const toast = useToast();
   const isDesktop = useMediaQuery('(min-width: 768px)');
@@ -555,14 +565,14 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     setShowScrollDown(!atBottom);
   }, [checkIsAtBottom, checkIsNearBottom]);
 
-  // Add a pending message to the chat after successful send
+  // Add a pending message to the chat after successful send.
+  // Narrate/narrate-party are immediate (no LLM call) — the WS history event
+  // arrives fast enough that an optimistic pending entry just causes a race.
   const handleMessageSent = useCallback((message, mode) => {
+    if (mode === 'narrate' || mode === 'narrate-party') return;
+
     let fullText;
     switch (mode) {
-      case 'narrate':
-      case 'narrate-party':
-        fullText = `Narrator: *${message}*`;
-        break;
       case 'party':
         fullText = `${playerName} says: ${message}`;
         break;
@@ -584,7 +594,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     loadingRef.current = true;
     setError(null);
     setMessages(null);
-    setThinking(false);
     lastIdRef.current = 0;
     pendingWhisperRef.current = null;
     shouldAutoScrollRef.current = true;
@@ -628,12 +637,10 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     if (!chatEvent) return;
 
     if (chatEvent.type === 'thinks') {
-      setThinking(true);
       return;
     }
 
     if (chatEvent.type === 'history') {
-      setThinking(false);
 
       if (loadingRef.current) return;
 
@@ -1019,9 +1026,9 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       <div class="d-flex flex-column h-100">
         <div class="d-flex justify-content-center align-items-center flex-grow-1 position-relative">
           <p class="text-body-secondary">No messages yet</p>
-          {thinking && charName && (
+          {thinkingNames.length > 0 && (
             <div class="position-absolute bottom-0 start-0 px-3 pb-1" style="font-size: 0.8rem; color: var(--bs-secondary-color);">
-              {charName} thinks…
+              {formatThinkingLine(thinkingNames)}…
             </div>
           )}
         </div>
@@ -1067,9 +1074,9 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
             />
           ))}
         </div>
-        {thinking && charName && (
+        {thinkingNames.length > 0 && (
           <div class="position-absolute start-0 px-3 pb-1" style={`font-size: 0.8rem; color: var(--bs-secondary-color); bottom: ${inputHeight}px;`}>
-            {charName} thinks…
+            {formatThinkingLine(thinkingNames)}…
           </div>
         )}
         {showScrollDown && (

@@ -33,9 +33,6 @@ static void NotifyGroupAccounts(Group* group)
 
     for (uint32_t accountId : accountIds)
         PBC_WsNotifyAccount(accountId, "party");
-
-    if (!accountIds.empty())
-        PBC_Log(PBC_LogLevel::DEBUG, "WS: party event sent to {} account(s)", accountIds.size());
 }
 
 // ---------------------------------------------------------------------------

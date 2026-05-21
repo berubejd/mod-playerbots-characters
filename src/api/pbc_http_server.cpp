@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -213,36 +212,10 @@ void PBC_WsNotifyHistory(uint64_t botGuid, size_t messageId, const std::string& 
     WsSendToGuidOwner(botGuid, j.dump());
 }
 
-// Debounce guard for account-level events ("online", "offline", "party").
-// Bots tend to login/logout in batches and group hooks fire per-member on
-// disband, so we suppress duplicate events to the same (account, type) pair
-// within a 500ms window.
-static std::mutex s_wsDebounceMutex;
-static std::unordered_map<std::string, std::chrono::steady_clock::time_point> s_wsLastSent;
-static std::string DebounceKey(uint32_t accountId, const std::string& eventType)
-{
-    return std::to_string(accountId) + ":" + eventType;
-}
-
 void PBC_WsNotifyAccount(uint32_t accountId, const std::string& eventType, uint64_t relatedGuid)
 {
     if (!s_httpRunning.load())
         return;
-
-    // Debounce: at most one event per (account, type) every 500ms.
-    {
-        auto now = std::chrono::steady_clock::now();
-        std::string key = DebounceKey(accountId, eventType);
-        std::lock_guard<std::mutex> lock(s_wsDebounceMutex);
-        auto it = s_wsLastSent.find(key);
-        if (it != s_wsLastSent.end())
-        {
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second).count();
-            if (elapsed < 500)
-                return;
-        }
-        s_wsLastSent[key] = now;
-    }
 
     json j;
     j["event"] = eventType;

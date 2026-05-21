@@ -73,14 +73,52 @@ export default function PlayerView({ account, party, token, wsEvent, onSubscript
   const [chatReloadKey, setChatReloadKey] = useState(0);
   const [infoReloadKey, setInfoReloadKey] = useState(0);
 
+  // Track which characters are currently "thinking" (LLM call in progress).
+  // Updated for ALL account characters, not just the selected one.
+  const [thinkingGuids, setThinkingGuids] = useState(new Set());
+
+  // Derive thinking character names from the GUID set
+  const thinkingNames = useMemo(() => {
+    if (thinkingGuids.size === 0) return [];
+    const names = [];
+    for (const char of allCharacters) {
+      if (thinkingGuids.has(char.guid)) names.push(char.name);
+    }
+    return names;
+  }, [thinkingGuids, allCharacters]);
+
+  // Get the name of the currently selected character
+  const selectedChar = useMemo(() => {
+    if (!selectedGuid) return null;
+    return allCharacters.find(c => c.guid === selectedGuid) || null;
+  }, [selectedGuid, allCharacters]);
+
+  const selectedCharName = selectedChar ? selectedChar.name : null;
+
   // Process WS events forwarded from App.
   // Events now include "guid" — filter to only act on the selected character.
   useEffect(() => {
     if (!wsEvent) return;
 
-    // Helper: check if this event targets the currently selected character
     const eventGuid = wsEvent.data && wsEvent.data.guid;
     const isForSelected = !eventGuid || eventGuid === selectedGuid;
+
+    // Track thinking state for ALL characters (not just selected)
+    if (wsEvent.type === 'thinks' && eventGuid) {
+      setThinkingGuids((prev) => {
+        const next = new Set(prev);
+        next.add(eventGuid);
+        return next;
+      });
+    }
+    if ((wsEvent.type === 'history' || wsEvent.type === 'memory') && eventGuid) {
+      setThinkingGuids((prev) => {
+        if (!prev.has(eventGuid)) return prev;
+        const next = new Set(prev);
+        next.delete(eventGuid);
+        return next;
+      });
+    }
 
     switch (wsEvent.type) {
       case 'connected':
@@ -128,14 +166,6 @@ export default function PlayerView({ account, party, token, wsEvent, onSubscript
     }
     return map;
   }, [playerChar, allCharacters]);
-
-  // Get the name of the currently selected character
-  const selectedChar = useMemo(() => {
-    if (!selectedGuid) return null;
-    return allCharacters.find(c => c.guid === selectedGuid) || null;
-  }, [selectedGuid, allCharacters]);
-
-  const selectedCharName = selectedChar ? selectedChar.name : null;
 
   // Determine category of the selected character: 'party', 'online', or 'offline'
   const selectedCategory = useMemo(() => {
@@ -240,6 +270,7 @@ export default function PlayerView({ account, party, token, wsEvent, onSubscript
       selectedGuid={selectedGuid}
       nameColorMap={nameColorMap}
       charName={selectedCharName}
+      thinkingNames={thinkingNames}
       playerName={playerChar ? playerChar.name : account.account}
       playerGuid={playerGuid}
       chatEvent={chatEvent}

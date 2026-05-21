@@ -52,6 +52,34 @@ export default function App() {
   // Guard against multiple disconnect handler invocations
   const handlingDisconnectRef = useRef(false);
 
+  // Debounce timer for account-level events — batches rapid online/offline/party
+  // events (e.g. mass logout, party disband) into a single re-fetch.
+  const accountRefreshTimerRef = useRef(null);
+  const authTokenRef = useRef(authToken);
+  authTokenRef.current = authToken;
+
+  const scheduleAccountRefresh = useCallback(() => {
+    if (accountRefreshTimerRef.current) {
+      clearTimeout(accountRefreshTimerRef.current);
+    }
+    accountRefreshTimerRef.current = setTimeout(() => {
+      accountRefreshTimerRef.current = null;
+      const token = authTokenRef.current;
+      if (!token) return;
+      fetchAccount(token)
+        .then((data) => {
+          setAccount(data);
+          saveAccount(token, data);
+        })
+        .catch(() => {});
+      fetchParty(token)
+        .then((partyData) => {
+          setParty(partyData);
+        })
+        .catch(() => { setParty({ party: [] }); });
+    }, 500);
+  }, []);
+
   const handleWsEvent = useCallback((event) => {
     // Handle account-level events that trigger data refresh
     switch (event.type) {
@@ -67,27 +95,15 @@ export default function App() {
       case 'online':
       case 'offline':
       case 'party':
-        // Refresh account and party data
-        if (authToken) {
-          fetchAccount(authToken)
-            .then((data) => {
-              setAccount(data);
-              saveAccount(authToken, data);
-            })
-            .catch(() => {});
-          fetchParty(authToken)
-            .then((partyData) => {
-              setParty(partyData);
-            })
-            .catch(() => { setParty({ party: [] }); });
-        }
+        // Batch these — defer re-fetch by 500ms, resetting on each new event
+        scheduleAccountRefresh();
         return; // Don't forward to PlayerView
       default:
         // Forward character-level events to PlayerView
         setWsEvent(event);
         break;
     }
-  }, [authToken]);
+  }, [scheduleAccountRefresh]);
 
   // Full state reset: clears all app state and returns to the loading view
   // so the entire initialization sequence runs again from scratch.

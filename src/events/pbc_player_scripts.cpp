@@ -306,7 +306,6 @@ void PBC_PlayerEvents::OnPlayerLogin(Player* player)
     if (accountId == 0) return;
 
     PBC_WsNotifyAccount(accountId, "online", guid);
-    PBC_Log(PBC_LogLevel::DEBUG, "WS: online event for guid={} account={}", guid, accountId);
 }
 
 void PBC_PlayerEvents::OnPlayerLogout(Player* player)
@@ -319,5 +318,4 @@ void PBC_PlayerEvents::OnPlayerLogout(Player* player)
     if (accountId == 0) return;
 
     PBC_WsNotifyAccount(accountId, "offline", guid);
-    PBC_Log(PBC_LogLevel::DEBUG, "WS: offline event for guid={} account={}", guid, accountId);
 }
