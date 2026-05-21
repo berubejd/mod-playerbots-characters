@@ -232,8 +232,8 @@ export function MemoriesModal({ show, token, guid, charName, onClose, onDesync }
       setTotal(data.total || 0);
       setPage(p);
     } catch (err) {
-      if (err.message === 'player_offline') {
-        onDesync('player_offline');
+      if (err.message === 'unauthorized') {
+        onDesync(err.message);
         return;
       }
       setError(formatApiError(err));
@@ -272,7 +272,7 @@ export function MemoriesModal({ show, token, guid, charName, onClose, onDesync }
       setEditMemoryModal({ show: false, memory: null });
       loadMemories(page, orderBy, orderDir);
     } catch (err) {
-      if (err.message === 'desync' || err.message === 'player_offline') {
+      if (err.message === 'desync' || err.message === 'unauthorized') {
         onDesync(err.message);
         return;
       }
@@ -297,7 +297,7 @@ export function MemoriesModal({ show, token, guid, charName, onClose, onDesync }
       setDeleteMemoryModal({ show: false, memory: null });
       loadMemories(page, orderBy, orderDir);
     } catch (err) {
-      if (err.message === 'desync' || err.message === 'player_offline') {
+      if (err.message === 'desync' || err.message === 'unauthorized') {
         onDesync(err.message);
         return;
       }
@@ -593,8 +593,8 @@ export default function ChatToolbar({ token, selectedGuid, charName, isDesktop, 
       if (cancelled) return;
 
       for (const result of [dataResult, countResult]) {
-        if (result.status === 'rejected' && result.reason && result.reason.message === 'player_offline') {
-          onDesync('player_offline');
+        if (result.status === 'rejected' && result.reason && result.reason.message === 'unauthorized') {
+          onDesync(result.reason.message);
           return;
         }
       }
@@ -624,7 +624,7 @@ export default function ChatToolbar({ token, selectedGuid, charName, isDesktop, 
       const data = await fetchDebugRequest(token, selectedGuid);
       setDebugModal({ show: true, data, loading: false, error: null });
     } catch (err) {
-      if (err.message === 'player_offline') {
+      if (err.message === 'unauthorized') {
         onDesync(err.message);
         return;
       }
@@ -651,7 +651,7 @@ export default function ChatToolbar({ token, selectedGuid, charName, isDesktop, 
       toast('Roll modifier updated', 'success');
       setRollModifierModal(false);
     } catch (err) {
-      if (err.message === 'desync' || err.message === 'player_offline') {
+      if (err.message === 'desync' || err.message === 'unauthorized') {
         onDesync(err.message);
         return;
       }

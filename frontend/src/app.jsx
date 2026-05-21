@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { exchangeOtp, fetchPlayer, fetchParty, fetchConfig } from './api.js';
+import { exchangeOtp, fetchAccount, fetchParty, fetchConfig } from './api.js';
 import { getToken, setToken as storeToken, removeToken, saveAccount, removeAccount, hasAccounts, getAccounts } from './account-store.js';
-import { getFaction } from './wow-colors.js';
 import { ToastProvider } from './toast-provider.jsx';
 import { useWebSocket } from './use-websocket.js';
 import OtpInput from './otp-input.jsx';
@@ -12,29 +11,10 @@ import AccountManager from './account-manager.jsx';
 const VIEW = { OTP: 'otp', LOADING: 'loading', MAIN: 'main', ACCOUNT_MANAGER: 'account_manager' };
 
 const INITIAL_STEPS = [
-  { key: 'token', label: 'Validating token', status: 'pending' },
-  { key: 'player', label: 'Checking player status', status: 'pending' },
+  { key: 'token', label: 'Validating session', status: 'pending' },
+  { key: 'account', label: 'Loading account', status: 'pending' },
   { key: 'ws', label: 'Connecting to server', status: 'pending' },
 ];
-
-function getForcedFaction() {
-  const hash = window.location.hash;
-  if (hash === '#force-theme-alliance') return 'alliance';
-  if (hash === '#force-theme-horde') return 'horde';
-  return null;
-}
-
-function applyFactionTheme(race) {
-  const forced = getForcedFaction();
-  const faction = forced || getFaction(race);
-  const html = document.documentElement;
-  if (faction) {
-    html.setAttribute('data-faction', faction);
-  } else {
-    html.removeAttribute('data-faction');
-  }
-  return faction;
-}
 
 function clearFactionTheme() {
   document.documentElement.removeAttribute('data-faction');
@@ -42,10 +22,9 @@ function clearFactionTheme() {
 
 export default function App() {
   const [view, setView] = useState(null);
-  const [player, setPlayer] = useState(null);
+  const [account, setAccount] = useState(null);
   const [party, setParty] = useState(null);
   const [config, setConfig] = useState(null);
-  const [faction, setFaction] = useState(null);
   const [otpError, setOtpError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [loadSteps, setLoadSteps] = useState(INITIAL_STEPS);
@@ -85,7 +64,7 @@ export default function App() {
       setLastSelectedGuid(subscribeParamsRef.current.selectedGuid);
     }
 
-    setPlayer(null);
+    setAccount(null);
     setParty(null);
     setConfig(null);
     setLoadSteps(INITIAL_STEPS.map(s => ({ ...s })));
@@ -109,13 +88,24 @@ export default function App() {
     }, 0);
   }, [handleFullReset]);
 
-  // Desync / player-offline handler: the frontend state no longer matches
-  // the server, or the player went offline.  Reset everything and
+  // Desync / auth-failure handler: the frontend state no longer matches
+  // the server, or the session expired.  Reset everything and
   // re-initialize from scratch so the loading screen reveals the problem.
   const handleDesync = useCallback((reason) => {
     if (viewRef.current !== VIEW.MAIN) return;
+
+    if (reason === 'unauthorized') {
+      // Session expired — clear token and go to OTP
+      removeToken();
+      removeAccount(authToken);
+      setAuthToken(null);
+      clearFactionTheme();
+      setView(VIEW.OTP);
+      return;
+    }
+
     handleFullReset();
-  }, [handleFullReset]);
+  }, [handleFullReset, authToken]);
 
   // Only connect WS when in LOADING or MAIN view — no connection needed
   // on OTP or ACCOUNT_MANAGER screens (no account is active yet).
@@ -141,7 +131,7 @@ export default function App() {
     }
   }, []);
 
-  // Loading process: sequential steps (token validation → player fetch → WS connection)
+  // Loading process: sequential steps (token validation → account fetch → WS connection)
   useEffect(() => {
     if (view !== VIEW.LOADING) return;
 
@@ -155,21 +145,18 @@ export default function App() {
 
     // Step 1: Validate token (instant — getToken already checks format)
     setLoadSteps(prev => prev.map(s => s.key === 'token' ? { ...s, status: 'active' } : s));
-
-    // Token exists and passes format check
     setLoadSteps(prev => prev.map(s => s.key === 'token' ? { ...s, status: 'done' } : s));
 
-    // Step 2: Fetch player
-    setLoadSteps(prev => prev.map(s => s.key === 'player' ? { ...s, status: 'active' } : s));
+    // Step 2: Fetch account
+    setLoadSteps(prev => prev.map(s => s.key === 'account' ? { ...s, status: 'active' } : s));
 
-    fetchPlayer(token)
+    fetchAccount(token)
       .then((data) => {
         if (cancelled) return;
-        setPlayer(data);
-        setFaction(applyFactionTheme(data.race));
+        setAccount(data);
         // Save account info to localStorage for account manager
         saveAccount(token, data);
-        setLoadSteps(prev => prev.map(s => s.key === 'player' ? { ...s, status: 'done' } : s));
+        setLoadSteps(prev => prev.map(s => s.key === 'account' ? { ...s, status: 'done' } : s));
 
         // Step 2b: Fetch party and config in parallel (both non-fatal)
         return Promise.all([
@@ -208,12 +195,8 @@ export default function App() {
           clearFactionTheme();
           setView(VIEW.OTP);
         } else {
-          setLoadSteps(prev => prev.map(s => s.key === 'player' ? { ...s, status: 'error' } : s));
-          setLoadError(
-            err.message === 'offline'
-              ? 'Player is not online'
-              : 'Connection error'
-          );
+          setLoadSteps(prev => prev.map(s => s.key === 'account' ? { ...s, status: 'error' } : s));
+          setLoadError('Connection error');
         }
       });
 
@@ -290,7 +273,7 @@ export default function App() {
   const handleSwitchAccount = useCallback((token) => {
     storeToken(token);
     setAuthToken(token);
-    setPlayer(null);
+    setAccount(null);
     setParty(null);
     setConfig(null);
     clearFactionTheme();
@@ -330,19 +313,17 @@ export default function App() {
             onOpenAccountManager={handleOpenAccountManager}
           />
         )}
-        {view === VIEW.MAIN && player && party && (
+        {view === VIEW.MAIN && account && party && (
           <PlayerView
-            player={player}
+            account={account}
             party={party}
             token={authToken}
-            faction={faction}
             wsEvent={wsEvent}
             onSubscriptionChange={setSubscribeParams}
             initialSelectedGuid={lastSelectedGuid}
             onDesync={handleDesync}
             onOpenAccountManager={handleOpenAccountManager}
             maxHistoryCtx={config ? (config.config.find(c => c.key === 'MaxHistoryCtx')?.value ?? 0) : 0}
-            trackPlayerCharacter={config ? (config.config.find(c => c.key === 'TrackPlayerCharacter')?.value ?? false) : false}
           />
         )}
         {view === VIEW.ACCOUNT_MANAGER && (

@@ -133,10 +133,10 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
         // Only update state if the guid hasn't changed since we started fetching
         if (selectedGuidRef.current !== guid) return;
 
-        // Check for player_offline across all results — triggers full reload
+        // Check for auth failure across all results — triggers re-auth
         for (const result of results) {
-          if (result.status === 'rejected' && result.reason && result.reason.message === 'player_offline') {
-            onDesync('player_offline');
+          if (result.status === 'rejected' && result.reason && result.reason.message === 'unauthorized') {
+            onDesync(result.reason.message);
             return;
           }
         }
@@ -230,7 +230,7 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
       }
       setEditModal({ show: false, type: null, id: null, name: null, text: '' });
     } catch (err) {
-      if (err.message === 'desync' || err.message === 'player_offline') {
+      if (err.message === 'desync' || err.message === 'unauthorized') {
         onDesync(err.message);
         return;
       }
@@ -257,7 +257,7 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
       }
       setDeleteModal({ show: false, type: null, id: null, name: null, text: '' });
     } catch (err) {
-      if (err.message === 'desync' || err.message === 'player_offline') {
+      if (err.message === 'desync' || err.message === 'unauthorized') {
         onDesync(err.message);
         return;
       }

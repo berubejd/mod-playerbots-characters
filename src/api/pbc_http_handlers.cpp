@@ -505,27 +505,33 @@ void HandleGetCharCard(const httplib::Request& req, httplib::Response& res,
     if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
         return;
 
-    // Try to get character name from CharacterCache first
-    std::string charName;
+    // Try CharacterCache first — it holds name, race, class, sex, level
     CharacterCacheEntry const* cacheEntry = sCharacterCache->GetCharacterCacheByGuid(ObjectGuid(charGuid));
+
+    std::string charName;
+    Player* bot = nullptr;
+
     if (cacheEntry)
+    {
         charName = cacheEntry->Name;
-
-    // If not in cache, try to look up the online player
-    if (charName.empty())
-    {
-        Player* bot = FindOnlineCharacter(charGuid);
-        if (bot)
-            charName = bot->GetName();
+        // Also try to get the live Player for full substitution
+        bot = FindOnlineCharacter(charGuid);
     }
-
-    // If still no name, query the database
-    if (charName.empty())
+    else
     {
-        QueryResult result = CharacterDatabase.Query(
-            "SELECT name FROM characters WHERE guid = {}", charGuid);
-        if (result)
-            charName = (*result)[0].Get<std::string>();
+        // Not in cache — try the online player, then DB
+        bot = FindOnlineCharacter(charGuid);
+        if (bot)
+        {
+            charName = bot->GetName();
+        }
+        else
+        {
+            QueryResult result = CharacterDatabase.Query(
+                "SELECT name FROM characters WHERE guid = {}", charGuid);
+            if (result)
+                charName = (*result)[0].Get<std::string>();
+        }
     }
 
     if (charName.empty())
@@ -535,13 +541,38 @@ void HandleGetCharCard(const httplib::Request& req, httplib::Response& res,
         return;
     }
 
-    json response;
+    // Get the raw card text
+    std::string cardText;
     auto cardIt = g_PBC_CharacterCards.find(charName);
     if (cardIt != g_PBC_CharacterCards.end())
-        response["card"] = cardIt->second;
+        cardText = cardIt->second;
     else
-        response["card"] = g_PBC_DefaultCharacterDescription;
+        cardText = g_PBC_DefaultCharacterDescription;
 
+    // Substitute template variables
+    if (bot)
+    {
+        // Online — full substitution via live Player*
+        cardText = PBC_SubstituteVars(cardText, bot, "", false, false);
+    }
+    else if (cacheEntry)
+    {
+        // Offline but cached — substitute static vars from CharacterCache
+        PBC_VarMap vars;
+        vars["char_name"]   = cacheEntry->Name;
+        vars["char_gender"] = PBC_GenderStr(cacheEntry->Sex);
+        vars["char_race"]   = PBC_RaceStr(cacheEntry->Race);
+        vars["char_class"]  = PBC_ClassStr(cacheEntry->Class);
+        vars["char_level"]  = std::to_string(cacheEntry->Level);
+
+        PBC_SubstituteFromMap(cardText, vars, false);
+        PBC_CleanUnknownTokens(cardText);
+    }
+    // else: offline and not in cache (extremely rare) — return raw text,
+    //       which still shows placeholders.  Better than nothing.
+
+    json response;
+    response["card"] = cardText;
     res.set_content(response.dump(), "application/json");
 }
 

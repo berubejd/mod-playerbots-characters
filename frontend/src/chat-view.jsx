@@ -138,7 +138,6 @@ function EditModal({ show, text, onSave, onCancel }) {
       setValue(text);
       const { isWhisper } = parseMessage(text);
       setPropagate(!isWhisper);
-      // Focus input after modal opens
       requestAnimationFrame(() => {
         if (inputRef.current) inputRef.current.focus();
       });
@@ -151,7 +150,6 @@ function EditModal({ show, text, onSave, onCancel }) {
       if (!e.shiftKey) {
         onSave(value, propagate);
       }
-      // Shift+Enter is prevented but doesn't save — no newlines allowed
     } else if (e.key === 'Escape') {
       onCancel();
     }
@@ -174,7 +172,6 @@ function EditModal({ show, text, onSave, onCancel }) {
               rows="5"
               value={value}
               onInput={(e) => {
-                // Prevent newlines
                 const v = e.target.value.replace(/\n/g, '');
                 setValue(v);
               }}
@@ -301,45 +298,62 @@ const MODE_OPTIONS = [
   { value: 'trigger', label: 'Trigger (/tr)', shortcut: '/tr', placeholder: 'Enter character name to trigger…' },
 ];
 
-// Filter out whisper when viewing the player's own character
-function getAvailableModes(playerGuid, selectedGuid) {
-  if (playerGuid && selectedGuid === playerGuid) {
-    return MODE_OPTIONS.filter((m) => m.value !== 'whisper');
+// Filter available modes based on character category and whether it's the player's own character.
+//   'party'  — character is online and in the player's party: all modes
+//   'online' — character is online but not in the party: no /p or /np
+//   'offline' — character is offline: no modes (input disabled)
+// Additionally, whisper is never available when viewing the player's own character.
+function getAvailableModes(playerGuid, selectedGuid, charCategory) {
+  if (charCategory === 'offline') return [];
+
+  let modes;
+  if (charCategory === 'party') {
+    modes = MODE_OPTIONS;
+  } else {
+    // online — exclude party and narrate-party modes
+    modes = MODE_OPTIONS.filter(m => m.value !== 'party' && m.value !== 'narrate-party');
   }
-  return MODE_OPTIONS;
+
+  // Filter out whisper when viewing the player's own character
+  if (playerGuid && selectedGuid === playerGuid) {
+    modes = modes.filter(m => m.value !== 'whisper');
+  }
+
+  return modes;
 }
 
 // Ordered longest-shortcut-first so '/np' is tried before '/n'
 const MODE_SHORTCUTS = [...MODE_OPTIONS].sort((a, b) => b.shortcut.length - a.shortcut.length);
 
-function SendMessageInput({ token, selectedGuid, playerGuid, onDesync, onMessageSent, messageMode, onMessageModeChange, characters }) {
+function SendMessageInput({ token, selectedGuid, playerGuid, onDesync, onMessageSent, messageMode, onMessageModeChange, characters, charCategory }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const textareaRef = useRef(null);
   const toast = useToast();
   const isMobile = useMediaQuery('(max-width: 767px)');
 
-  const availableModes = getAvailableModes(playerGuid, selectedGuid);
-  const modeConfig = availableModes.find((m) => m.value === messageMode) || availableModes[0];
+  const availableModes = getAvailableModes(playerGuid, selectedGuid, charCategory);
+  const modeConfig = availableModes.find((m) => m.value === messageMode) || availableModes[0] || null;
 
   const adjustHeight = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    // Max height = ~3 lines (1 line ≈ 1.5em + padding)
     const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 24;
-    const maxHeight = lineHeight * 3 + 8; // 3 lines + small padding
+    const maxHeight = lineHeight * 3 + 8;
     el.style.height = Math.min(el.scrollHeight, maxHeight) + 'px';
   }, []);
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
+    if (!trimmed || sending || !modeConfig) return;
 
     // Bare slash command (e.g. just "/p") — switch mode and clear input
     const bareMatch = MODE_SHORTCUTS.find((opt) => trimmed.toLowerCase() === opt.shortcut);
     if (bareMatch) {
-      onMessageModeChange(bareMatch.value);
+      if (availableModes.some(m => m.value === bareMatch.value)) {
+        onMessageModeChange(bareMatch.value);
+      }
       setText('');
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
       return;
@@ -377,23 +391,20 @@ function SendMessageInput({ token, selectedGuid, playerGuid, onDesync, onMessage
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
-      // Show pending message in chat — WS events will handle confirmation
-      // (skip for trigger — it doesn't produce a chat message)
       if (onMessageSent && messageMode !== 'trigger') onMessageSent(trimmed, messageMode);
     } catch (err) {
-      if (err.message === 'player_offline') {
+      if (err.message === 'unauthorized') {
         onDesync(err.message);
         return;
       }
       toast(`Failed to send ${modeConfig.label.toLowerCase()}`, 'error');
     } finally {
       setSending(false);
-      // Refocus the textarea after re-enable (state update needs a frame to flush)
       requestAnimationFrame(() => {
         if (textareaRef.current) textareaRef.current.focus();
       });
     }
-  }, [text, sending, token, selectedGuid, toast, onDesync, onMessageSent, messageMode, modeConfig, onMessageModeChange, characters]);
+  }, [text, sending, token, selectedGuid, toast, onDesync, onMessageSent, messageMode, modeConfig, onMessageModeChange, characters, availableModes]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -401,6 +412,17 @@ function SendMessageInput({ token, selectedGuid, playerGuid, onDesync, onMessage
       handleSend();
     }
   };
+
+  // Offline character — disable input entirely
+  if (charCategory === 'offline') {
+    return (
+      <div class="d-flex align-items-end gap-2 p-3 border-top bg-body">
+        <div class="form-control text-body-secondary text-center" style="min-height: 38px; display: flex; align-items: center; justify-content: center;" disabled>
+          Character is offline
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div class="d-flex align-items-end gap-2 p-3 border-top bg-body">
@@ -419,21 +441,17 @@ function SendMessageInput({ token, selectedGuid, playerGuid, onDesync, onMessage
         ref={textareaRef}
         class="form-control"
         rows="1"
-        placeholder={modeConfig.placeholder}
+        placeholder={modeConfig ? modeConfig.placeholder : ''}
         value={text}
         onInput={(e) => {
-          // Prevent newlines
           let v = e.target.value.replace(/\n/g, '');
-          // Check for slash-command mode switching at the start of input
-          // e.g. "/w hello" → switch to whisper, keep "hello"
-          // If already in that mode, just strip the prefix
           const lower = v.toLowerCase();
           const matched = MODE_SHORTCUTS.find((opt) => lower.startsWith(opt.shortcut + ' '));
           if (matched) {
-            if (matched.value !== messageMode) {
+            if (matched.value !== messageMode && availableModes.some(m => m.value === matched.value)) {
               onMessageModeChange(matched.value);
             }
-            v = v.slice(matched.shortcut.length + 1); // strip shortcut + space
+            v = v.slice(matched.shortcut.length + 1);
           }
           setText(v);
           adjustHeight();
@@ -454,7 +472,7 @@ function SendMessageInput({ token, selectedGuid, playerGuid, onDesync, onMessage
   );
 }
 
-export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap, charName, playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync, characters, messageMode, onMessageModeChange, maxHistoryCtx }) {
+export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap, charName, playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync, characters, messageMode, onMessageModeChange, maxHistoryCtx, charCategory }) {
   const [messages, setMessages] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -466,7 +484,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
 
   // Edit modal state
   const [editModal, setEditModal] = useState({ show: false, id: null, text: '' });
-  // Delete modal state (includes original text for desync detection)
+  // Delete modal state
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null, text: '' });
 
   // Selection mode state (desktop only)
@@ -476,16 +494,14 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
 
   // Track newly arrived message IDs for highlight animation
   const [newMessageIds, setNewMessageIds] = useState(new Set());
-  const newTimersRef = useRef(new Map()); // id → timeout
+  const newTimersRef = useRef(new Map());
 
   const containerRef = useRef(null);
   const lastIdRef = useRef(0);
-  const pendingWhisperRef = useRef(null); // pending whisper text, or null
+  const pendingWhisperRef = useRef(null);
   const loadingRef = useRef(false);
   const isAtBottomRef = useRef(true);
-  // Whether the next messages change should auto-scroll to bottom
   const shouldAutoScrollRef = useRef(true);
-  // Previous scrollTop — used to detect user scrolling UP vs content being added
   const prevScrollTopRef = useRef(0);
 
   // Track input overlay height so we can add matching spacer in the scroll area
@@ -521,11 +537,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     return el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD;
   }, []);
 
-  // Handle scroll events — track whether user is at bottom.
-  // Key insight: only disable auto-scroll when the user actively scrolls UP.
-  // When new content is added at the bottom, scrollHeight increases but scrollTop
-  // stays the same — this must NOT disable auto-scrolling, otherwise rapid
-  // messages cause the chat to stop scrolling to the bottom.
+  // Handle scroll events
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -534,14 +546,10 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     const scrollTop = el.scrollTop;
 
     if (scrollTop < prevScrollTopRef.current - 2) {
-      // User scrolled up — update auto-scroll intent based on proximity to bottom
       shouldAutoScrollRef.current = checkIsNearBottom();
     } else if (atBottom) {
-      // Reached the bottom (by scrolling down or programmatically) — enable auto-scroll
       shouldAutoScrollRef.current = true;
     }
-    // Otherwise: new content was added or user scrolled down but not to bottom.
-    // Keep the current auto-scroll decision unchanged.
 
     prevScrollTopRef.current = scrollTop;
     setShowScrollDown(!atBottom);
@@ -579,9 +587,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     setThinking(false);
     lastIdRef.current = 0;
     pendingWhisperRef.current = null;
-    // Always scroll to bottom after a full reload
     shouldAutoScrollRef.current = true;
-    // Reset selection mode on character change
     setSelectionMode(false);
     setSelectedIds(new Set());
 
@@ -604,7 +610,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       })
       .catch((err) => {
         if (!cancelled) {
-          if (err.message === 'player_offline') {
+          if (err.message === 'unauthorized') {
             onDesync(err.message);
             return;
           }
@@ -629,7 +635,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     if (chatEvent.type === 'history') {
       setThinking(false);
 
-      // Skip processing while loading — the fetch will include this message
       if (loadingRef.current) return;
 
       const { id, text } = chatEvent.data.message;
@@ -675,9 +680,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
         }
       } else {
         if (id === expectedId) {
-          // Append message to the end of the chat.
-          // Auto-scroll decision is tracked by handleScroll — don't re-evaluate
-          // here; the messages effect will scroll synchronously if appropriate.
           setMessages((prev) => prev ? [...prev, { id, text }] : prev);
           lastIdRef.current = id;
           markAsNew(id);
@@ -689,12 +691,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     }
   }, [chatEvent]);
 
-  // Scroll to bottom after messages change (if appropriate).
-  // Scroll synchronously — useEffect runs after paint so scrollHeight is
-  // already correct. Using requestAnimationFrame introduced a race condition:
-  // when multiple messages arrive rapidly, a scroll event from a previous
-  // programmatic scroll could fire between the RAF scheduling and execution,
-  // causing handleScroll to disable auto-scroll prematurely.
+  // Scroll to bottom after messages change
   useEffect(() => {
     if (!messages || !containerRef.current) return;
 
@@ -708,10 +705,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     }
   }, [messages]);
 
-  // When the chat container resizes (e.g. virtual keyboard opens/closes),
-  // scroll to the new bottom if the user was at the bottom.
-  // Uses ResizeObserver which fires after the layout has been recalculated,
-  // unlike the visualViewport resize which fires before CSS updates.
+  // ResizeObserver for chat container
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -727,7 +721,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     return () => observer.disconnect();
   }, [loading]);
 
-  // Observe input wrapper height so we can keep a matching spacer in the scroll area
+  // Observe input wrapper height for spacer
   useEffect(() => {
     const el = inputWrapperRef.current;
     if (!el) return;
@@ -747,12 +741,15 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     };
   }, []);
 
-  // Auto-switch from whisper mode when viewing the player's own character
+  // Auto-switch from whisper/invalid mode when viewing player's own character
+  // or when the current mode is not available for the character category
   useEffect(() => {
-    if (playerGuid && selectedGuid === playerGuid && messageMode === 'whisper') {
-      onMessageModeChange('party');
+    const available = getAvailableModes(playerGuid, selectedGuid, charCategory);
+    if (available.length === 0) return; // offline — no modes to switch to
+    if (!available.some(m => m.value === messageMode)) {
+      onMessageModeChange(available[0].value);
     }
-  }, [playerGuid, selectedGuid, messageMode, onMessageModeChange]);
+  }, [playerGuid, selectedGuid, charCategory, messageMode, onMessageModeChange]);
 
   // When the input overlay height changes, scroll to the new bottom if user was at bottom
   useEffect(() => {
@@ -794,12 +791,10 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
   const handleEditSave = useCallback(async (newText, propagate) => {
     const originalText = editModal.text;
     const messageId = editModal.id;
-    // Exit selection mode to avoid stale ID references
     setSelectionMode(false);
     setSelectedIds(new Set());
     try {
       await editMessage(token, selectedGuid, messageId, newText, originalText);
-      // Update the message in local state
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === messageId ? { ...msg, text: newText } : msg
@@ -813,7 +808,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
         const results = await Promise.allSettled(
           otherChars.map(async (char) => {
             const data = await fetchHistory(token, char.guid);
-            // Search from latest to oldest for the same original message
             const msgs = data.messages;
             for (let i = msgs.length - 1; i >= 0; i--) {
               if (msgs[i].text === originalText) {
@@ -829,7 +823,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
 
       toast(propagate ? `${count} message${count !== 1 ? 's' : ''} updated` : 'Message updated', 'success');
     } catch (err) {
-      if (err.message === 'desync' || err.message === 'player_offline') {
+      if (err.message === 'desync' || err.message === 'unauthorized') {
         onDesync(err.message);
         return;
       }
@@ -849,14 +843,10 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
   const handleDeleteConfirm = useCallback(async (propagate) => {
     const originalText = deleteModal.text;
     const messageId = deleteModal.id;
-    // Exit selection mode to avoid stale ID references
     setSelectionMode(false);
     setSelectedIds(new Set());
     try {
       await deleteMessage(token, selectedGuid, messageId, originalText);
-      // Remove the message from local state and re-index remaining messages.
-      // The backend uses 1-based array indices as IDs, so after an element is
-      // erased all subsequent items shift down by one position.
       const deletedId = messageId;
       setMessages((prev) =>
         prev
@@ -872,7 +862,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
         const results = await Promise.allSettled(
           otherChars.map(async (char) => {
             const data = await fetchHistory(token, char.guid);
-            // Search from latest to oldest for the same original message
             const msgs = data.messages;
             for (let i = msgs.length - 1; i >= 0; i--) {
               if (msgs[i].text === originalText) {
@@ -888,7 +877,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
 
       toast(propagate ? `${count} message${count !== 1 ? 's' : ''} deleted` : 'Message deleted', 'success');
     } catch (err) {
-      if (err.message === 'desync' || err.message === 'player_offline') {
+      if (err.message === 'desync' || err.message === 'unauthorized') {
         onDesync(err.message);
         return;
       }
@@ -910,13 +899,11 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
   }, []);
 
   const handleBatchDeleteConfirm = useCallback(async (propagate) => {
-    // Capture selected messages before clearing state
     const toDelete = messages
       .filter((msg) => selectedIds.has(msg.id) && msg.id != null && !msg.pending)
       .map((msg) => ({ id: msg.id, text: msg.text }))
-      .sort((a, b) => b.id - a.id); // Sort descending — delete highest IDs first
+      .sort((a, b) => b.id - a.id);
 
-    // Exit selection mode immediately
     setSelectionMode(false);
     setSelectedIds(new Set());
     setBatchDeleteModal({ show: false, count: 0 });
@@ -928,7 +915,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       try {
         await deleteMessage(token, selectedGuid, msg.id, msg.text);
         deletedTexts.push(msg.text);
-        // Update local state: remove the message and re-index subsequent ones
         setMessages((prev) => {
           const deletedId = msg.id;
           return prev
@@ -937,7 +923,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
         });
         lastIdRef.current -= 1;
       } catch (err) {
-        if (err.message === 'desync' || err.message === 'player_offline') {
+        if (err.message === 'desync' || err.message === 'unauthorized') {
           onDesync(err.message);
           return;
         }
@@ -948,7 +934,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
 
     if (deletedTexts.length === 0) return;
 
-    // Handle propagation
     if (propagate) {
       const otherChars = (characters || []).filter((c) => c.guid !== selectedGuid);
       let propagateCount = 0;
@@ -956,11 +941,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
         try {
           const data = await fetchHistory(token, char.guid);
           const msgs = data.messages;
-          // For each deleted text, find only the MOST RECENT match (highest ID)
-          // in this character's history. Searching from the end ensures we
-          // match the same position in the conversation chain, and stopping
-          // at the first match per text prevents over-deleting duplicate
-          // messages like "Narrator: *some time passes*".
           for (const delText of deletedTexts) {
             for (let i = msgs.length - 1; i >= 0; i--) {
               if (msgs[i].text === delText) {
@@ -970,7 +950,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
                 } catch {
                   // Skip failed propagations for individual messages
                 }
-                break; // Only the most recent match — don't touch older duplicates
+                break;
               }
             }
           }
@@ -1028,10 +1008,10 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
 
   // Progress bar color based on fill level
   const contextBarColor = contextPercent < 40
-    ? '#198754'   // green
+    ? '#198754'
     : contextPercent < 80
-      ? '#ffc107' // yellow
-      : '#dc3545'; // red
+      ? '#ffc107'
+      : '#dc3545';
 
   // Render: empty history
   if (messages && messages.length === 0) {
@@ -1050,7 +1030,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
             <div style={`height: 100%; width: ${contextPercent}%; background: ${contextBarColor}; transition: width 0.3s ease, background-color 0.3s ease;`}></div>
           </div>
         )}
-        <SendMessageInput token={token} selectedGuid={selectedGuid} playerGuid={playerGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} characters={characters} />
+        <SendMessageInput token={token} selectedGuid={selectedGuid} playerGuid={playerGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} characters={characters} charCategory={charCategory} />
       </div>
     );
   }
@@ -1109,7 +1089,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
             <div style={`height: 100%; width: ${contextPercent}%; background: ${contextBarColor}; transition: width 0.3s ease, background-color 0.3s ease;`}></div>
           </div>
         )}
-        <SendMessageInput token={token} selectedGuid={selectedGuid} playerGuid={playerGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} characters={characters} />
+        <SendMessageInput token={token} selectedGuid={selectedGuid} playerGuid={playerGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} characters={characters} charCategory={charCategory} />
       </div>
       <EditModal
         show={editModal.show}

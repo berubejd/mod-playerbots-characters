@@ -2,24 +2,54 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'preact/hooks'
 import CharacterCard from './character-card.jsx';
 import ChatView from './chat-view.jsx';
 import CharacterInfo from './character-info.jsx';
-import { getClassColor } from './wow-colors.js';
+import { getClassColor, getFaction } from './wow-colors.js';
 import { useMediaQuery } from './use-media-query.js';
 import { useToast } from './toast-provider.jsx';
 import { useVisualViewport } from './use-visual-viewport.js';
 
 const TAB = { CHARACTERS: 'characters', CHAT: 'chat', INFO: 'info' };
 
-export default function PlayerView({ player, party, token, faction, wsEvent, onSubscriptionChange, initialSelectedGuid, onDesync, onOpenAccountManager, maxHistoryCtx, trackPlayerCharacter }) {
-  const characters = (party?.party || []).filter((m) => m.character);
-  // Identify the player's own character (set by backend when TrackPlayerCharacter is enabled)
-  const playerChar = (party?.party || []).find((m) => m.is_player === true);
-  const playerGuid = playerChar ? playerChar.guid : null;
-  const [messageMode, setMessageMode] = useState('whisper');
+function applyFactionTheme(race) {
+  const faction = getFaction(race);
+  const html = document.documentElement;
+  if (faction) {
+    html.setAttribute('data-faction', faction);
+  } else {
+    html.removeAttribute('data-faction');
+  }
+  return faction;
+}
 
-  // Initialize selectedGuid from initialSelectedGuid if it's a valid character
+export default function PlayerView({ account, party, token, wsEvent, onSubscriptionChange, initialSelectedGuid, onDesync, onOpenAccountManager, maxHistoryCtx }) {
+  const allCharacters = account.characters || [];
+  const partyGuids = party?.party || [];
+
+  // Categorize characters into three groups
+  const { partyChars, onlineChars, offlineChars } = useMemo(() => {
+    const partySet = new Set(partyGuids);
+    const p = [];
+    const o = [];
+    const f = [];
+    for (const char of allCharacters) {
+      if (char.is_online && partySet.has(char.guid)) {
+        p.push(char);
+      } else if (char.is_online) {
+        o.push(char);
+      } else {
+        f.push(char);
+      }
+    }
+    return { partyChars: p, onlineChars: o, offlineChars: f };
+  }, [allCharacters, partyGuids]);
+
+  // Player character (the real player)
+  const playerChar = useMemo(() => allCharacters.find(c => c.is_player) || null, [allCharacters]);
+  const playerGuid = playerChar ? playerChar.guid : null;
+
+  const [messageMode, setMessageMode] = useState('whisper');
   const [selectedGuid, setSelectedGuid] = useState(() => {
     if (!initialSelectedGuid) return null;
-    return characters.some(c => c.guid === initialSelectedGuid) ? initialSelectedGuid : null;
+    return allCharacters.some(c => c.guid === initialSelectedGuid) ? initialSelectedGuid : null;
   });
   const [activeTab, setActiveTab] = useState(TAB.CHARACTERS);
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -27,8 +57,6 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
   useVisualViewport();
 
   // Track which guid has completed its initial chat data load.
-  // subscribeReady is derived: true only when loadedGuid matches selectedGuid.
-  // This naturally resets to false when selectedGuid changes (loadedGuid lags behind).
   const [loadedGuid, setLoadedGuid] = useState(null);
   const selectedGuidRef = useRef(null);
   selectedGuidRef.current = selectedGuid;
@@ -41,7 +69,7 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
   }, [selectedGuid, subscribeReady, onSubscriptionChange]);
 
   // WS event-driven state
-  const [chatEvent, setChatEvent] = useState(null);     // { type, data, timestamp } — only history/thinks
+  const [chatEvent, setChatEvent] = useState(null);
   const [chatReloadKey, setChatReloadKey] = useState(0);
   const [infoReloadKey, setInfoReloadKey] = useState(0);
 
@@ -57,56 +85,68 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
         toast(wsEvent.data.message || 'WebSocket error', 'error');
         break;
       case 'history':
-        // Forward to ChatView for processing and refresh context
         setChatEvent(wsEvent);
         setInfoReloadKey((k) => k + 1);
         break;
       case 'thinks':
-        // Forward to ChatView for processing
         setChatEvent(wsEvent);
         break;
       case 'relationship':
-        // Re-request character info (includes relationships)
         setInfoReloadKey((k) => k + 1);
         break;
       case 'memory': {
-        // Toast notification — no need to re-request data
         const memCharName = selectedCharName || 'character';
         toast(`The memory of ${memCharName} was updated`, 'success');
         break;
       }
-      // subscribed/unsubscribed are internal only, no action needed
     }
   }, [wsEvent, toast]);
 
-  // Build a map of name → class color for chat highlighting and info display
+  // Build a map of name → class color for chat highlighting and info display.
+  // Uses all characters on the account + player name.
   const nameColorMap = useMemo(() => {
     const map = {};
-    const playerColor = getClassColor(player['class']);
-    if (playerColor) map[player.name] = playerColor;
-    for (const char of characters) {
-      const color = getClassColor(char['class']);
+    if (playerChar) {
+      const playerColor = getClassColor(playerChar.class);
+      if (playerColor) map[playerChar.name] = playerColor;
+    }
+    for (const char of allCharacters) {
+      const color = getClassColor(char.class);
       if (color) map[char.name] = color;
     }
     return map;
-  }, [player, characters]);
+  }, [playerChar, allCharacters]);
 
-  // Get the name of the currently selected character (for thinking indicator)
-  const selectedCharName = useMemo(() => {
+  // Get the name of the currently selected character
+  const selectedChar = useMemo(() => {
     if (!selectedGuid) return null;
-    const char = characters.find((c) => c.guid === selectedGuid);
-    return char ? char.name : null;
-  }, [selectedGuid, characters]);
+    return allCharacters.find(c => c.guid === selectedGuid) || null;
+  }, [selectedGuid, allCharacters]);
+
+  const selectedCharName = selectedChar ? selectedChar.name : null;
+
+  // Determine category of the selected character: 'party', 'online', or 'offline'
+  const selectedCategory = useMemo(() => {
+    if (!selectedChar) return 'offline';
+    if (selectedChar.is_online && partyGuids.includes(selectedChar.guid)) return 'party';
+    if (selectedChar.is_online) return 'online';
+    return 'offline';
+  }, [selectedChar, partyGuids]);
 
   const handleSelect = useCallback((guid) => {
     if (guid !== selectedGuid) {
       setSelectedGuid(guid);
+      // Apply faction theme based on the selected character's race
+      const char = allCharacters.find(c => c.guid === guid);
+      if (char) {
+        applyFactionTheme(char.race);
+      }
       // On mobile, switch to chat tab when selecting a character
       if (isMobile) {
         setActiveTab(TAB.CHAT);
       }
     }
-  }, [selectedGuid, isMobile]);
+  }, [selectedGuid, isMobile, allCharacters]);
 
   // Called by ChatView when initial history load completes successfully
   const handleChatLoadComplete = useCallback(() => {
@@ -115,54 +155,69 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
 
   // --- Shared sub-renders ---
 
-  const factionIcon = faction ? `/images/${faction}.png` : null;
+  // Faction icon based on selected character (or generic if none selected)
+  const selectedFaction = selectedChar ? getFaction(selectedChar.race) : null;
+  const factionIcon = selectedFaction ? `/images/${selectedFaction}.png` : null;
 
-  const playerInfoBar = (
+  const topBar = (
     <div class="p-3 border-bottom player-info-bar d-flex align-items-center justify-content-between">
-      <div style={isMobile ? undefined : 'width: 25%'}>
-        <CharacterCard
-          name={player.name}
-          level={player.level}
-          gender={player.gender}
-          race={player.race}
-          cls={player['class']}
-        />
+      <div class="d-flex align-items-center gap-2">
+        <span
+          class="fw-bold text-decoration-underline"
+          style="font-size: 1.1rem; cursor: pointer"
+          onClick={onOpenAccountManager}
+          title="Account Manager"
+        >{account.account}</span>
+        <span class="badge bg-secondary">{allCharacters.length} character{allCharacters.length !== 1 ? 's' : ''}</span>
       </div>
       {factionIcon && (
         <img
           src={factionIcon}
-          alt={faction === 'horde' ? 'Horde' : 'Alliance'}
+          alt={selectedFaction === 'horde' ? 'Horde' : 'Alliance'}
           class="faction-icon"
           width="48"
           height="48"
-          onClick={onOpenAccountManager}
-          style="cursor: pointer"
-          title="Account Manager"
         />
       )}
     </div>
   );
 
+  const renderSection = (title, chars, category) => {
+    if (chars.length === 0) return null;
+    return (
+      <div class="mb-3">
+        <div class="text-body-secondary small fw-semibold text-uppercase mb-2 px-1">{title}</div>
+        <div class="d-flex flex-column gap-2">
+          {chars.map((char) => {
+            const isPlayer = char.is_player;
+            const isInParty = category === 'party';
+            return (
+              <CharacterCard
+                key={char.guid}
+                name={char.name}
+                level={char.level}
+                gender={char.gender}
+                race={char.race}
+                cls={char.class}
+                selected={selectedGuid === char.guid}
+                onClick={() => handleSelect(char.guid)}
+                badge={isPlayer ? 'Player' : undefined}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const charactersList = (
     <div class={isMobile ? 'overflow-auto flex-grow-1 p-2' : 'border-end overflow-auto p-2'} style={isMobile ? 'min-height: 0' : 'width: 20%'}>
-      <div class="d-flex flex-column gap-2">
-        {characters.length === 0 && (
-          <p class="text-body-secondary text-center mb-0 small">No characters in party</p>
-        )}
-        {characters.map((char) => (
-          <CharacterCard
-            key={char.guid}
-            name={char.name}
-            level={char.level}
-            gender={char.gender}
-            race={char.race}
-            cls={char['class']}
-            selected={selectedGuid === char.guid}
-            onClick={() => handleSelect(char.guid)}
-            badge={char.is_player ? 'You' : undefined}
-          />
-        ))}
-      </div>
+      {allCharacters.length === 0 && (
+        <p class="text-body-secondary text-center mb-0 small">No characters on this account</p>
+      )}
+      {renderSection('Party', partyChars, 'party')}
+      {renderSection('Online', onlineChars, 'online')}
+      {renderSection('Offline', offlineChars, 'offline')}
     </div>
   );
 
@@ -173,16 +228,17 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
       selectedGuid={selectedGuid}
       nameColorMap={nameColorMap}
       charName={selectedCharName}
-      playerName={player.name}
+      playerName={playerChar ? playerChar.name : account.account}
       playerGuid={playerGuid}
       chatEvent={chatEvent}
       chatReloadKey={chatReloadKey}
       onLoadComplete={handleChatLoadComplete}
       onDesync={onDesync}
-      characters={characters}
+      characters={allCharacters}
       messageMode={messageMode}
       onMessageModeChange={setMessageMode}
       maxHistoryCtx={maxHistoryCtx}
+      charCategory={selectedCategory}
     />
   ) : (
     <div class="d-flex justify-content-center align-items-center h-100">
@@ -211,7 +267,7 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
   if (isMobile) {
     return (
       <div class="d-flex flex-column dvh-100">
-        {playerInfoBar}
+        {topBar}
         <ul class="nav nav-tabs nav-justified flex-shrink-0" role="tablist">
           <li class="nav-item" role="presentation">
             <button
@@ -255,7 +311,7 @@ export default function PlayerView({ player, party, token, faction, wsEvent, onS
 
   return (
     <div class="d-flex flex-column dvh-100">
-      {playerInfoBar}
+      {topBar}
       <div class="d-flex flex-grow-1" style="min-height: 0">
         {charactersList}
         <div style="width: 60%; min-height: 0" class="d-flex flex-column">

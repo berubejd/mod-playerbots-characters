@@ -1,13 +1,11 @@
-import { getFaction } from './wow-colors.js';
-
-const ACCOUNTS_KEY = 'pbc_accounts';
+const ACCOUNTS_KEY = 'pbc_accounts_v2';
 const ACTIVE_KEY = 'pbc_active_account';
 
 const TOKEN_FORMAT_RE = /^[A-Za-z0-9-_]+$/;
 
 /**
  * Get all saved accounts from localStorage.
- * @returns {Array<{token: string, name: string, level: number, race: string, cls: string, gender: string, faction: string|null}>}
+ * @returns {Array<{token: string, name: string}>}
  */
 export function getAccounts() {
   try {
@@ -51,20 +49,16 @@ export function removeToken() {
 }
 
 /**
- * Save account info after successful player fetch.
+ * Save account info after successful account fetch.
  * Updates existing account or adds a new one. Also sets as active.
+ * @param {string} token - bearer token
+ * @param {Object} accountData - response from GET /api/account
  */
-export function saveAccount(token, playerData) {
+export function saveAccount(token, accountData) {
   const accounts = getAccounts();
-  const faction = getFaction(playerData.race);
   const account = {
     token,
-    name: playerData.name,
-    level: playerData.level,
-    race: playerData.race,
-    cls: playerData['class'],
-    gender: playerData.gender,
-    faction,
+    name: accountData.account,
   };
   const idx = accounts.findIndex(a => a.token === token);
   if (idx >= 0) {
