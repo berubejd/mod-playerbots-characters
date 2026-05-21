@@ -298,6 +298,67 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
 }
 
 // ---------------------------------------------------------------------------
+// PBC_PickTriggerEventLine
+// ---------------------------------------------------------------------------
+std::string PBC_PickTriggerEventLine(uint64_t botGuid)
+{
+    static const std::string kTimePassesLine = "Narrator: *some time passes*";
+
+    std::string lastLine;
+
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+        auto it = g_PBC_ChatHistory.find(botGuid);
+        if (it != g_PBC_ChatHistory.end() && !it->second.empty())
+            lastLine = it->second.back();
+    }
+
+    // Case: no history → default
+    if (lastLine.empty())
+        return "you feel the urge to say something";
+
+    // Helper: check if a line is a whisper (has " (privately to " immediately
+    // after the speaker name, i.e. the first space in the line).
+    auto isWhisper = [](const std::string& s) -> bool {
+        auto privPos = s.find(" (privately to ");
+        if (privPos == std::string::npos || privPos == 0)
+            return false;
+        auto firstSpace = s.find(' ');
+        return firstSpace == privPos;
+    };
+
+    // Helper: check if a line is from Narrator.
+    auto isNarrator = [](const std::string& s) -> bool {
+        return s.rfind("Narrator:", 0) == 0;  // starts with "Narrator:"
+    };
+
+    // Case 1: "Narrator: *some time passes*"
+    if (lastLine == kTimePassesLine)
+    {
+        static const std::vector<std::string> timePassesTriggers = {
+            "you want to comment on your surroundings",
+            "you want to ask a question",
+            "you want to share something",
+            "you want to comment on how you feel"
+        };
+        static thread_local std::mt19937 rng(std::random_device{}());
+        std::uniform_int_distribution<size_t> dist(0, timePassesTriggers.size() - 1);
+        return timePassesTriggers[dist(rng)];
+    }
+
+    // Case 2: Narrator, but not "some time passes"
+    if (isNarrator(lastLine))
+        return "you feel the urge to comment on the last thing that happened";
+
+    // Case 3: Not from Narrator and not a whisper
+    if (!isWhisper(lastLine))
+        return "you feel like answering that";
+
+    // Case 4: All other cases (whisper, etc.) → default
+    return "you feel the urge to say something";
+}
+
+// ---------------------------------------------------------------------------
 // PBC_DispatchTriggerEvent
 // ---------------------------------------------------------------------------
 void PBC_DispatchTriggerEvent(Player* bot)
@@ -306,9 +367,12 @@ void PBC_DispatchTriggerEvent(Player* bot)
 
     uint32_t chatType = bot->GetGroup() ? CHAT_MSG_PARTY : CHAT_MSG_SAY;
 
+    uint64_t botGuid = bot->GetGUID().GetCounter();
+    std::string eventText = PBC_PickTriggerEventLine(botGuid);
+
     PBC_EventItem ev;
     ev.type             = PBC_EventType::Normal;
-    ev.eventLine        = PBC_MakeEventLine("you feel the urge to say something");
+    ev.eventLine        = PBC_MakeEventLine(eventText);
     ev.histLine         = "";
     ev.chatType         = chatType;
     ev.canCreateEvents  = false;
@@ -325,8 +389,8 @@ void PBC_DispatchTriggerEvent(Player* bot)
 
     AddTrackedPlayersToEvent(ev, bot);
 
-    PBC_Log(PBC_LogLevel::DEBUG, "Trigger event: character={} chatType={} silentChars={}",
-             bot->GetName(), chatType, ev.silentCharGuids.size());
+    PBC_Log(PBC_LogLevel::DEBUG, "Trigger event: character={} chatType={} silentChars={} event=\"{}\"",
+             bot->GetName(), chatType, ev.silentCharGuids.size(), eventText);
 
     PBC_PushEvent(std::move(ev));
 }

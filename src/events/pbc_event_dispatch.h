@@ -69,9 +69,26 @@ void PBC_RollBotsForMessage(PBC_EventItem& ev,
 void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string& msg);
 
 // ---------------------------------------------------------------------------
+// Pick the trigger event line based on the character's last history message.
+// Returns the event text (without surrounding asterisks — caller wraps with
+// PBC_MakeEventLine).  The logic is:
+//   1. Last line is "Narrator: *some time passes*" → random pick from four
+//      "you want to …" variants.
+//   2. Last line is from Narrator but NOT "some time passes" →
+//      "you feel the urge to comment on the last thing that happened".
+//   3. Last line is NOT from Narrator and NOT a whisper →
+//      "you feel like answering that".
+//   4. All other cases (no history, last line is whisper) →
+//      "you feel the urge to say something".
+// Thread-safe.
+// ---------------------------------------------------------------------------
+std::string PBC_PickTriggerEventLine(uint64_t botGuid);
+
+// ---------------------------------------------------------------------------
 // Dispatch a trigger event for a single character.
-// The character always responds (no roll). The event line is
-// "*you feel the urge to say something*" and is NOT written to history.
+// The character always responds (no roll). The event line is picked
+// dynamically based on the last history message (see PBC_PickTriggerEventLine)
+// and is NOT written to history.
 // Chat type is PARTY if the character is in a group, SAY otherwise.
 // ---------------------------------------------------------------------------
 void PBC_DispatchTriggerEvent(Player* bot);

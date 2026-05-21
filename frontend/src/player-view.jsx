@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'preact/hooks';
+import { useState, useMemo, useCallback, useEffect } from 'preact/hooks';
 import CharacterCard from './character-card.jsx';
 import ChatView from './chat-view.jsx';
 import CharacterInfo from './character-info.jsx';
@@ -20,7 +20,7 @@ function applyFactionTheme(race) {
   return faction;
 }
 
-export default function PlayerView({ account, party, token, wsEvent, onSubscriptionChange, initialSelectedGuid, onDesync, onOpenAccountManager, maxHistoryCtx }) {
+export default function PlayerView({ account, party, token, wsEvent, onSelectedGuidChange, initialSelectedGuid, onDesync, onOpenAccountManager, maxHistoryCtx }) {
   const allCharacters = account.characters || [];
   const partyGuids = party?.party || [];
 
@@ -56,17 +56,10 @@ export default function PlayerView({ account, party, token, wsEvent, onSubscript
   const toast = useToast();
   useVisualViewport();
 
-  // Track which guid has completed its initial chat data load.
-  const [loadedGuid, setLoadedGuid] = useState(null);
-  const selectedGuidRef = useRef(null);
-  selectedGuidRef.current = selectedGuid;
-
-  const subscribeReady = loadedGuid === selectedGuid && selectedGuid !== null;
-
-  // Notify App about subscription param changes
+  // Notify App about selected GUID changes (for restoration after reconnect)
   useEffect(() => {
-    onSubscriptionChange({ selectedGuid, subscribeReady });
-  }, [selectedGuid, subscribeReady, onSubscriptionChange]);
+    onSelectedGuidChange(selectedGuid);
+  }, [selectedGuid, onSelectedGuidChange]);
 
   // WS event-driven state
   const [chatEvent, setChatEvent] = useState(null);
@@ -190,11 +183,6 @@ export default function PlayerView({ account, party, token, wsEvent, onSubscript
     }
   }, [selectedGuid, isMobile, allCharacters]);
 
-  // Called by ChatView when initial history load completes successfully
-  const handleChatLoadComplete = useCallback(() => {
-    setLoadedGuid(selectedGuidRef.current);
-  }, []);
-
   // --- Shared sub-renders ---
 
   // Faction icon based on selected character (or generic if none selected)
@@ -275,7 +263,6 @@ export default function PlayerView({ account, party, token, wsEvent, onSubscript
       playerGuid={playerGuid}
       chatEvent={chatEvent}
       chatReloadKey={chatReloadKey}
-      onLoadComplete={handleChatLoadComplete}
       onDesync={onDesync}
       characters={allCharacters}
       messageMode={messageMode}

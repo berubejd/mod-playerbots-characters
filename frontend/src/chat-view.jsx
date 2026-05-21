@@ -483,7 +483,7 @@ function SendMessageInput({ token, selectedGuid, playerGuid, onDesync, onMessage
   );
 }
 
-export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap, charName, thinkingNames = [], playerName, chatEvent, chatReloadKey, onLoadComplete, onDesync, characters, messageMode, onMessageModeChange, maxHistoryCtx, charCategory }) {
+export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap, charName, thinkingNames = [], playerName, chatEvent, chatReloadKey, onDesync, characters, messageMode, onMessageModeChange, maxHistoryCtx, charCategory }) {
   const [messages, setMessages] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -517,10 +517,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
   // Track input overlay height so we can add matching spacer in the scroll area
   const [inputHeight, setInputHeight] = useState(0);
   const inputWrapperRef = useRef(null);
-
-  // Use ref for callback to avoid it being a dependency of the fetch effect
-  const onLoadCompleteRef = useRef(onLoadComplete);
-  onLoadCompleteRef.current = onLoadComplete;
 
   // Check if the scroll container is at the bottom
   const checkIsAtBottom = useCallback(() => {
@@ -614,7 +610,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
           }
           setLoading(false);
           loadingRef.current = false;
-          if (onLoadCompleteRef.current) onLoadCompleteRef.current();
         }
       })
       .catch((err) => {

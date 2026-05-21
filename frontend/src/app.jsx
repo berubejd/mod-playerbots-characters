@@ -35,8 +35,8 @@ export default function App() {
   // Auth token state (synced with localStorage)
   const [authToken, setAuthToken] = useState(() => getToken());
 
-  // WS subscription params (managed by PlayerView via callback)
-  const [subscribeParams, setSubscribeParams] = useState({ selectedGuid: null, subscribeReady: false });
+  // Track selected character GUID for restoration after reconnect
+  const selectedGuidRef = useRef(null);
 
   // WS event forwarding to PlayerView
   const [wsEvent, setWsEvent] = useState(null);
@@ -44,10 +44,6 @@ export default function App() {
   // Track current view in ref for callbacks
   const viewRef = useRef(null);
   viewRef.current = view;
-
-  // Track subscribe params in ref for disconnect handler
-  const subscribeParamsRef = useRef(subscribeParams);
-  subscribeParamsRef.current = subscribeParams;
 
   // Guard against multiple disconnect handler invocations
   const handlingDisconnectRef = useRef(false);
@@ -109,8 +105,8 @@ export default function App() {
   // so the entire initialization sequence runs again from scratch.
   const handleFullReset = useCallback(() => {
     // Save current selected guid for restoration after reconnect
-    if (subscribeParamsRef.current.selectedGuid) {
-      setLastSelectedGuid(subscribeParamsRef.current.selectedGuid);
+    if (selectedGuidRef.current) {
+      setLastSelectedGuid(selectedGuidRef.current);
     }
 
     setAccount(null);
@@ -120,7 +116,6 @@ export default function App() {
     setLoadError('');
     setWsEvent(null);
     setView(VIEW.LOADING);
-    setSubscribeParams({ selectedGuid: null, subscribeReady: false });
     setWsConnectKey(k => k + 1);
   }, []);
 
@@ -161,7 +156,6 @@ export default function App() {
   const wsToken = (view === VIEW.LOADING || view === VIEW.MAIN) ? authToken : null;
 
   const { status: wsStatus } = useWebSocket(wsToken, {
-    ...subscribeParams,
     onEvent: handleWsEvent,
     onDisconnect: handleWsDisconnect,
     connectKey: wsConnectKey,
@@ -329,7 +323,7 @@ export default function App() {
     setLoadSteps(INITIAL_STEPS.map(s => ({ ...s })));
     setLoadError('');
     setWsEvent(null);
-    setSubscribeParams({ selectedGuid: null, subscribeReady: false });
+    selectedGuidRef.current = null;
     setWsConnectKey(k => k + 1);
     setView(VIEW.LOADING);
   }, []);
@@ -368,7 +362,7 @@ export default function App() {
             party={party}
             token={authToken}
             wsEvent={wsEvent}
-            onSubscriptionChange={setSubscribeParams}
+            onSelectedGuidChange={(guid) => { selectedGuidRef.current = guid; }}
             initialSelectedGuid={lastSelectedGuid}
             onDesync={handleDesync}
             onOpenAccountManager={handleOpenAccountManager}

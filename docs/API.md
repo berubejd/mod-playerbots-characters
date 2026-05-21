@@ -266,7 +266,7 @@ Returns the generated user prompt for a character as if an event triggered it. G
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
-| `event` | No | `*you feel the urge to say something*` | Event line text to use as `{event}` in the prompt |
+| `event` | No | dynamic (based on last history) | Event line text to use as `{event}` in the prompt. Defaults to a context-aware trigger picked from the character's last history message. |
 
 The character must be online. Requires auth.
 
@@ -324,7 +324,7 @@ Returns `{"status": "ok", "characters_count": 3}` on success. Returns `400` if n
 
 #### `POST /api/char/:guid/trigger`
 
-Trigger a response from the specified character. The character responds as a party message if they are in a group, or as a say otherwise. The trigger event (`*you feel the urge to say something*`) is not written into the character's history. No request body required.
+Trigger a response from the specified character. The character responds as a party message if they are in a group, or as a say otherwise. The trigger event is not written into the character's history. The event line is picked dynamically based on the character's last history message. No request body required.
 
 The target must be online and must belong to the authenticated account. Returns `403` if the character belongs to a different account.
 
@@ -347,27 +347,12 @@ const ws = new WebSocket('ws://host:8501/ws', ['access_token', token]);
 
 Invalid or expired tokens are rejected with `401` before the connection is established.
 
-### Event Subscriptions
-
-After connecting, send `subscribe` to start receiving real-time events for all characters on your account:
-
-```
-subscribe
-```
-
-Events are delivered for every character on the authenticated account. To unsubscribe:
-
-```
-unsubscribe
-```
 
 ### Server Messages
 
 | Event | Description |
 |---|---|
-| `{"event": "connected"}` | Connection established |
-| `{"event": "subscribed"}` | Subscription confirmed |
-| `{"event": "unsubscribed"}` | Unsubscribed |
+| `{"event": "connected"}` | Connection established — events are now flowing |
 | `{"event": "error", "message": "..."}` | Error |
 
 ### Event Types

@@ -1,26 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 
 /**
- * WebSocket hook with account-level event subscription.
+ * WebSocket hook — the server auto-subscribes on connect, so the client
+ * receives all account-level events (online/offline/party) immediately
+ * without needing to send any subscribe message.
  *
  * Connects to /ws using the access_token subprotocol for authentication.
  * Does NOT auto-reconnect on disconnect — the consumer must increment
  * connectKey (e.g. via a "Retry" button) to trigger a new connection.
- * Automatically sends "subscribe" on connect when subscribeReady is true.
  *
  * @param {string|null} token - Bearer token for authentication. Pass null to disconnect.
  * @param {Object} options
- * @param {boolean} options.subscribeReady - Only subscribe when true (after initial data load).
  * @param {Function|null} options.onEvent - Callback for each WS event: ({ type, data, timestamp }) => void
  * @param {Function|null} options.onDisconnect - Callback when WS connection drops unexpectedly: () => void
  * @param {number} options.connectKey - Increment to force reconnection.
  * @returns {{ status: 'disconnected'|'connecting'|'connected' }}
  */
-export function useWebSocket(token, { subscribeReady = false, onEvent = null, onDisconnect = null, connectKey = 0 } = {}) {
+export function useWebSocket(token, { onEvent = null, onDisconnect = null, connectKey = 0 } = {}) {
   const [status, setStatus] = useState('disconnected');
   const wsRef = useRef(null);
   const mountedRef = useRef(true);
-  const subscribedRef = useRef(false);
 
   // Keep refs in sync with latest prop values (updated during render, before effects run)
   const onEventRef = useRef(onEvent);
@@ -28,29 +27,6 @@ export function useWebSocket(token, { subscribeReady = false, onEvent = null, on
 
   const onDisconnectRef = useRef(onDisconnect);
   onDisconnectRef.current = onDisconnect;
-
-  const subscribeReadyRef = useRef(subscribeReady);
-  subscribeReadyRef.current = subscribeReady;
-
-  /**
-   * Send subscribe/unsubscribe messages based on current refs.
-   * Called from onopen and from the subscription effect.
-   */
-  const updateSubscription = useCallback(() => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-    const ready = subscribeReadyRef.current;
-    const currentlySubbed = subscribedRef.current;
-
-    if (ready && !currentlySubbed) {
-      ws.send('subscribe');
-      subscribedRef.current = true;
-    } else if (!ready && currentlySubbed) {
-      ws.send('unsubscribe');
-      subscribedRef.current = false;
-    }
-  }, []);
 
   const connect = useCallback(() => {
     if (!token || !mountedRef.current) return;
@@ -64,9 +40,6 @@ export function useWebSocket(token, { subscribeReady = false, onEvent = null, on
       wsRef.current.close();
       wsRef.current = null;
     }
-
-    // Reset subscription state on new connection
-    subscribedRef.current = false;
 
     setStatus('connecting');
 
@@ -82,8 +55,6 @@ export function useWebSocket(token, { subscribeReady = false, onEvent = null, on
     ws.onopen = () => {
       if (!mountedRef.current) return;
       setStatus('connected');
-      // Try to subscribe after connection
-      updateSubscription();
     };
 
     ws.onmessage = (event) => {
@@ -102,13 +73,6 @@ export function useWebSocket(token, { subscribeReady = false, onEvent = null, on
 
       const eventType = data.event || 'message';
 
-      // Handle subscription responses internally
-      if (eventType === 'subscribed') {
-        subscribedRef.current = true;
-      } else if (eventType === 'unsubscribed') {
-        subscribedRef.current = false;
-      }
-
       // Forward all events to the callback
       if (onEventRef.current) {
         onEventRef.current({ type: eventType, data, timestamp: Date.now() });
@@ -119,7 +83,6 @@ export function useWebSocket(token, { subscribeReady = false, onEvent = null, on
       if (!mountedRef.current) return;
       setStatus('disconnected');
       wsRef.current = null;
-      subscribedRef.current = false;
 
       // Notify about unexpected disconnection
       if (onDisconnectRef.current) {
@@ -132,12 +95,7 @@ export function useWebSocket(token, { subscribeReady = false, onEvent = null, on
     ws.onerror = () => {
       // onclose will fire after onerror, so cleanup is handled there
     };
-  }, [token, updateSubscription]);
-
-  // Update subscription when subscribeReady changes while connected
-  useEffect(() => {
-    updateSubscription();
-  }, [subscribeReady, updateSubscription]);
+  }, [token]);
 
   // Connect when token becomes available, disconnect when removed
   // connectKey forces reconnection when incremented
@@ -159,7 +117,6 @@ export function useWebSocket(token, { subscribeReady = false, onEvent = null, on
         wsRef.current = null;
       }
       setStatus('disconnected');
-      subscribedRef.current = false;
     };
   }, [token, connectKey, connect]);
 

@@ -565,27 +565,19 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 PBC_Log(PBC_LogLevel::DEBUG, "WS: new connection from {} (account ID={})",
                              req.remote_addr, accountId);
 
+                // Auto-subscribe on connect so account-level events (online/offline/party)
+                // are always delivered regardless of client state.
+                WsSubscribe(&ws, accountId);
+
                 ws.send(json({{"event", "connected"}}).dump());
 
+                // Keep the connection alive — read loop just discards any messages
+                // from the client (the server auto-subscribes, so no explicit commands
+                // are needed).
                 std::string msg;
                 while (ws.read(msg) && !s_httpShuttingDown.load())
                 {
-                    if (msg == "subscribe")
-                    {
-                        WsSubscribe(&ws, accountId);
-                        ws.send(json({{"event", "subscribed"}}).dump());
-                        PBC_Log(PBC_LogLevel::DEBUG, "WS: account ID={} subscribed", accountId);
-                    }
-                    else if (msg == "unsubscribe")
-                    {
-                        WsUnsubscribe(&ws);
-                        ws.send(json({{"event", "unsubscribed"}}).dump());
-                        PBC_Log(PBC_LogLevel::DEBUG, "WS: account ID={} unsubscribed", accountId);
-                    }
-                    else
-                    {
-                        ws.send(json({{"event", "error"}, {"message", "Unknown command. Use: subscribe or unsubscribe"}}).dump());
-                    }
+                    // Client messages are ignored; subscription is handled server-side.
                 }
 
                 WsUnsubscribe(&ws);
