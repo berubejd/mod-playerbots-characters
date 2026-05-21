@@ -48,11 +48,11 @@ bool PBC_HttpServerIsRunning();
 // ---------------------------------------------------------------------------
 // OTP generation (called from the main thread by .chars web command).
 //
-// Generates a random 6-digit one-time password for the given player GUID.
+// Generates a random 6-digit one-time password for the given account ID.
 // The OTP is valid for 2 minutes and can be exchanged for a bearer token
 // via the /api/token endpoint.  Returns the OTP string, or "" on error.
 // ---------------------------------------------------------------------------
-std::string PBC_HttpServerGenerateOTP(uint64_t playerGuid);
+std::string PBC_HttpServerGenerateOTP(uint32_t accountId);
 
 // ---------------------------------------------------------------------------
 // WebSocket event notifications (thread-safe, no-op when server is not running)

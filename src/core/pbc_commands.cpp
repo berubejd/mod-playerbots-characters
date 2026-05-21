@@ -532,8 +532,8 @@ static bool HandleCharsWeb(ChatHandler* handler, Optional<std::string_view>)
         return false;
     }
 
-    uint64_t playerGuid = player->GetGUID().GetCounter();
-    std::string otp = PBC_HttpServerGenerateOTP(playerGuid);
+    uint32_t accountId = handler->GetSession()->GetAccountId();
+    std::string otp = PBC_HttpServerGenerateOTP(accountId);
 
     if (otp.empty())
     {

@@ -12,6 +12,9 @@
 #define httplib pbc_httplib
 #include <httplib.h>
 
+#include "AccountMgr.h"
+#include "CharacterCache.h"
+#include "DatabaseEnv.h"
 #include "ObjectAccessor.h"
 #include "ObjectGuid.h"
 #include "Player.h"
@@ -24,7 +27,7 @@
 using json = nlohmann::json;
 
 // ===========================================================================
-// Player info helpers (for /api/player endpoint)
+// Character info helpers (used by /api/account and /api/party)
 // ===========================================================================
 
 static const char* HttpGenderStr(uint8_t gender)
@@ -89,7 +92,8 @@ static std::string ExtractBearerToken(const httplib::Request& req)
 // Common handler utilities
 // ===========================================================================
 
-Player* AuthenticateRequest(const httplib::Request& req, httplib::Response& res)
+bool AuthenticateRequest(const httplib::Request& req, httplib::Response& res,
+                         PBC_AuthInfo& authInfo)
 {
     // 1. Extract Bearer token
     std::string token = ExtractBearerToken(req);
@@ -99,40 +103,63 @@ Player* AuthenticateRequest(const httplib::Request& req, httplib::Response& res)
         res.set_content("{\"error\":\"Missing Authorization header. "
                         "Use Authorization: Bearer <token>\"}",
                         "application/json");
-        return nullptr;
+        return false;
     }
 
-    // 2. Validate token
-    uint64_t authGuid = PBC_ValidateToken(token);
-    if (authGuid == 0)
+    // 2. Validate token → account ID
+    uint32_t accountId = PBC_ValidateToken(token);
+    if (accountId == 0)
     {
         res.status = 401;
         res.set_content("{\"error\":\"Invalid or expired token\"}", "application/json");
-        return nullptr;
-    }
-
-    // 3. Look up player
-    ObjectGuid playerObjGuid(authGuid);
-    Player* player = ObjectAccessor::FindPlayer(playerObjGuid);
-    if (!player)
-    {
-        res.status = 410;
-        res.set_content("{\"error\":\"player_offline\"}", "application/json");
-        return nullptr;
-    }
-
-    return player;
-}
-
-bool PlayerOnlineGuard(Player* player, httplib::Response& res)
-{
-    if (!player || !player->IsInWorld())
-    {
-        res.status = 410;
-        res.set_content("{\"error\":\"player_offline\"}", "application/json");
         return false;
     }
+
+    // 3. Look up account name
+    std::string accountName = PBC_GetAccountName(accountId);
+    if (accountName.empty())
+    {
+        res.status = 401;
+        res.set_content("{\"error\":\"Account not found\"}", "application/json");
+        return false;
+    }
+
+    authInfo.accountId   = accountId;
+    authInfo.accountName = accountName;
     return true;
+}
+
+Player* FindOnlinePlayerForAccount(uint32_t accountId)
+{
+    // Query characters DB for online characters on this account
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT guid FROM characters WHERE account = {} AND online = 1", accountId);
+    if (!result)
+        return nullptr;
+
+    do
+    {
+        uint32_t guidLow = (*result)[0].Get<uint32_t>();
+        Player* player = ObjectAccessor::FindPlayer(ObjectGuid(HighGuid::Player, guidLow));
+        if (player && player->IsInWorld())
+        {
+            WorldSession* sess = player->GetSession();
+            // Return the first real (non-bot) player
+            if (sess && !sess->IsBot())
+                return player;
+        }
+    } while (result->NextRow());
+
+    return nullptr;
+}
+
+Player* FindOnlineCharacter(uint64_t guid)
+{
+    ObjectGuid objGuid(guid);
+    Player* player = ObjectAccessor::FindPlayer(objGuid);
+    if (!player || !player->IsInWorld())
+        return nullptr;
+    return player;
 }
 
 uint64_t ParseGuidParam(const httplib::Request& req, httplib::Response& res)
@@ -162,14 +189,45 @@ uint64_t ParseGuidParam(const httplib::Request& req, httplib::Response& res)
 }
 
 // ===========================================================================
-// Helper: resolve a bot Player* from a char GUID, with validation.
-// Returns nullptr on failure (response already set).
+// Helper: verify a character GUID belongs to the authenticated account.
+// Uses CharacterCache (works for offline characters too).
+// Returns true if the character belongs to the account.
+// Sets 404 response and returns false if the character doesn't exist or
+// belongs to a different account.
 // ===========================================================================
 
-static Player* ResolveBot(uint64_t charGuid, uint64_t authGuid, httplib::Response& res)
+static bool VerifyCharOwnership(uint64_t charGuid, uint32_t accountId,
+                                httplib::Response& res)
 {
-    ObjectGuid objGuid(charGuid);
-    Player* bot = ObjectAccessor::FindPlayer(objGuid);
+    uint32_t charAccount = sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(charGuid));
+    if (charAccount == 0)
+    {
+        res.status = 404;
+        res.set_content("{\"error\":\"Character not found\"}", "application/json");
+        return false;
+    }
+    if (charAccount != accountId)
+    {
+        res.status = 403;
+        res.set_content("{\"error\":\"Character does not belong to your account\"}", "application/json");
+        return false;
+    }
+    return true;
+}
+
+// ===========================================================================
+// Helper: resolve a bot Player* from a char GUID, with validation.
+// Only works for online characters. Returns nullptr on failure.
+// ===========================================================================
+
+static Player* ResolveOnlineBot(uint64_t charGuid, const PBC_AuthInfo& authInfo,
+                                httplib::Response& res)
+{
+    // First verify ownership
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return nullptr;
+
+    Player* bot = FindOnlineCharacter(charGuid);
     if (!bot)
     {
         res.status = 404;
@@ -178,7 +236,8 @@ static Player* ResolveBot(uint64_t charGuid, uint64_t authGuid, httplib::Respons
     }
 
     WorldSession* session = bot->GetSession();
-    bool isOwnCharacter = (g_PBC_TrackPlayerCharacter && charGuid == authGuid);
+    bool isOwnCharacter = (g_PBC_TrackPlayerCharacter &&
+                           sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(charGuid)) == authInfo.accountId);
     if (!session || (!session->IsBot() && !isOwnCharacter))
     {
         res.status = 400;
@@ -266,7 +325,7 @@ static size_t ParseQueryId(const httplib::Request& req, httplib::Response& res)
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// GET / — health check or static files (handled by server mount point)
+// GET / — health check
 // ---------------------------------------------------------------------------
 void HandleGetRoot(const httplib::Request& req, httplib::Response& res)
 {
@@ -299,77 +358,117 @@ void HandleGetToken(const httplib::Request& req, httplib::Response& res)
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/player
+// GET /api/account
 // ---------------------------------------------------------------------------
-void HandleGetPlayer(const httplib::Request& /*req*/, httplib::Response& res, Player* authenticatedPlayer)
+void HandleGetAccount(const httplib::Request& /*req*/, httplib::Response& res,
+                      const PBC_AuthInfo& authInfo)
 {
-    json response;
-    response["name"]   = authenticatedPlayer->GetName();
-    response["gender"] = HttpGenderStr(authenticatedPlayer->getGender());
-    response["race"]   = HttpRaceStr(authenticatedPlayer->getRace());
-    response["class"]  = HttpClassStr(authenticatedPlayer->getClass());
-    response["level"]  = authenticatedPlayer->GetLevel();
+    // Query characters DB for all characters on this account
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT guid, name, gender, race, class, level, online FROM characters WHERE account = {} ORDER BY name",
+        authInfo.accountId);
 
+    json chars = json::array();
+    if (result)
+    {
+        do
+        {
+            uint32_t guidLow  = (*result)[0].Get<uint32_t>();
+            std::string name  = (*result)[1].Get<std::string>();
+            uint8_t gender    = (*result)[2].Get<uint8_t>();
+            uint8_t race      = (*result)[3].Get<uint8_t>();
+            uint8_t cls       = (*result)[4].Get<uint8_t>();
+            uint8_t level     = (*result)[5].Get<uint8_t>();
+            uint8_t online    = (*result)[6].Get<uint8_t>();
+
+            bool isOnline = (online == 1);
+            bool isPlayer = false;
+
+            if (isOnline)
+            {
+                // Check if this is a real player (not a bot)
+                Player* p = ObjectAccessor::FindPlayer(ObjectGuid(HighGuid::Player, guidLow));
+                if (p && p->IsInWorld())
+                {
+                    WorldSession* sess = p->GetSession();
+                    isPlayer = (sess && !sess->IsBot());
+                }
+            }
+
+            json charJson;
+            charJson["guid"]      = guidLow;
+            charJson["name"]      = name;
+            charJson["gender"]    = HttpGenderStr(gender);
+            charJson["race"]      = HttpRaceStr(race);
+            charJson["class"]     = HttpClassStr(cls);
+            charJson["level"]     = level;
+            charJson["is_online"] = isOnline;
+            charJson["is_player"] = isPlayer;
+
+            chars.push_back(charJson);
+        } while (result->NextRow());
+    }
+
+    json response;
+    response["account"]     = authInfo.accountName;
+    response["account_id"]  = authInfo.accountId;
+    response["characters"]  = chars;
     res.set_content(response.dump(), "application/json");
 }
 
 // ---------------------------------------------------------------------------
 // GET /api/party
 // ---------------------------------------------------------------------------
-void HandleGetParty(const httplib::Request& /*req*/, httplib::Response& res, Player* authenticatedPlayer)
+void HandleGetParty(const httplib::Request& /*req*/, httplib::Response& res,
+                    const PBC_AuthInfo& authInfo)
 {
-    json party = json::array();
-    Group* grp = authenticatedPlayer->GetGroup();
-    if (grp)
+    json partyGuids = json::array();
+
+    // Find the real player for this account
+    Player* player = FindOnlinePlayerForAccount(authInfo.accountId);
+    if (!player)
     {
-        for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
-        {
-            Player* member = ref->GetSource();
-            if (!member || !member->IsInWorld() || member == authenticatedPlayer) continue;
-
-            WorldSession* ms = member->GetSession();
-            if (!ms) continue;
-
-            bool isCharacter = ms->IsBot();
-
-            json memberJson;
-            memberJson["name"]      = member->GetName();
-            memberJson["gender"]    = HttpGenderStr(member->getGender());
-            memberJson["race"]      = HttpRaceStr(member->getRace());
-            memberJson["class"]     = HttpClassStr(member->getClass());
-            memberJson["level"]     = member->GetLevel();
-            memberJson["character"] = isCharacter;
-            if (isCharacter)
-                memberJson["guid"] = member->GetGUID().GetCounter();
-
-            party.push_back(memberJson);
-        }
+        // No real player online → empty party
+        json response;
+        response["party"] = partyGuids;
+        res.set_content(response.dump(), "application/json");
+        return;
     }
 
-    // When PBC.TrackPlayerCharacter is enabled, add the player's own character
-    if (g_PBC_TrackPlayerCharacter)
+    Group* grp = player->GetGroup();
+    if (!grp)
     {
-        json playerJson;
-        playerJson["name"]      = authenticatedPlayer->GetName();
-        playerJson["gender"]    = HttpGenderStr(authenticatedPlayer->getGender());
-        playerJson["race"]      = HttpRaceStr(authenticatedPlayer->getRace());
-        playerJson["class"]     = HttpClassStr(authenticatedPlayer->getClass());
-        playerJson["level"]     = authenticatedPlayer->GetLevel();
-        playerJson["character"] = true;
-        playerJson["guid"]      = authenticatedPlayer->GetGUID().GetCounter();
-        playerJson["is_player"] = true;
-        party.insert(party.begin(), playerJson);
+        json response;
+        response["party"] = partyGuids;
+        res.set_content(response.dump(), "application/json");
+        return;
+    }
+
+    // Collect all party member GUIDs that belong to our account
+    for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || !member->IsInWorld())
+            continue;
+
+        uint64_t memberGuid = member->GetGUID().GetCounter();
+        uint32_t memberAccount = sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(memberGuid));
+
+        // Only include characters belonging to the authenticated account
+        if (memberAccount == authInfo.accountId)
+            partyGuids.push_back(memberGuid);
     }
 
     json response;
-    response["party"] = party;
+    response["party"] = partyGuids;
     res.set_content(response.dump(), "application/json");
 }
 
 // ---------------------------------------------------------------------------
 // GET /api/config
 // ---------------------------------------------------------------------------
-void HandleGetConfig(const httplib::Request& /*req*/, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandleGetConfig(const httplib::Request& /*req*/, httplib::Response& res,
+                     const PBC_AuthInfo& /*authInfo*/)
 {
     json config = json::array();
     config.push_back({{"key", "TrackPlayerCharacter"},     {"value", g_PBC_TrackPlayerCharacter}});
@@ -396,21 +495,52 @@ void HandleGetConfig(const httplib::Request& /*req*/, httplib::Response& res, Pl
 // ---------------------------------------------------------------------------
 // GET /api/char/:guid/card
 // ---------------------------------------------------------------------------
-void HandleGetCharCard(const httplib::Request& req, httplib::Response& res, Player* authenticatedPlayer)
+void HandleGetCharCard(const httplib::Request& req, httplib::Response& res,
+                       const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
 
-    Player* bot = ResolveBot(charGuid, authenticatedPlayer->GetGUID().GetCounter(), res);
-    if (!bot) return;
+    // Verify ownership
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
+
+    // Try to get character name from CharacterCache first
+    std::string charName;
+    CharacterCacheEntry const* cacheEntry = sCharacterCache->GetCharacterCacheByGuid(ObjectGuid(charGuid));
+    if (cacheEntry)
+        charName = cacheEntry->Name;
+
+    // If not in cache, try to look up the online player
+    if (charName.empty())
+    {
+        Player* bot = FindOnlineCharacter(charGuid);
+        if (bot)
+            charName = bot->GetName();
+    }
+
+    // If still no name, query the database
+    if (charName.empty())
+    {
+        QueryResult result = CharacterDatabase.Query(
+            "SELECT name FROM characters WHERE guid = {}", charGuid);
+        if (result)
+            charName = (*result)[0].Get<std::string>();
+    }
+
+    if (charName.empty())
+    {
+        res.status = 404;
+        res.set_content("{\"error\":\"Character not found\"}", "application/json");
+        return;
+    }
 
     json response;
-    const std::string& name = bot->GetName();
-    auto cardIt = g_PBC_CharacterCards.find(name);
+    auto cardIt = g_PBC_CharacterCards.find(charName);
     if (cardIt != g_PBC_CharacterCards.end())
-        response["card"] = PBC_SubstituteVars(cardIt->second, bot, "", false);
+        response["card"] = cardIt->second;
     else
-        response["card"] = PBC_SubstituteVars(g_PBC_DefaultCharacterDescription, bot, "", false);
+        response["card"] = g_PBC_DefaultCharacterDescription;
 
     res.set_content(response.dump(), "application/json");
 }
@@ -418,12 +548,13 @@ void HandleGetCharCard(const httplib::Request& req, httplib::Response& res, Play
 // ---------------------------------------------------------------------------
 // GET /api/char/:guid/context
 // ---------------------------------------------------------------------------
-void HandleGetCharContext(const httplib::Request& req, httplib::Response& res, Player* authenticatedPlayer)
+void HandleGetCharContext(const httplib::Request& req, httplib::Response& res,
+                          const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
 
-    Player* bot = ResolveBot(charGuid, authenticatedPlayer->GetGUID().GetCounter(), res);
+    Player* bot = ResolveOnlineBot(charGuid, authInfo, res);
     if (!bot) return;
 
     json response;
@@ -436,10 +567,15 @@ void HandleGetCharContext(const httplib::Request& req, httplib::Response& res, P
 // ---------------------------------------------------------------------------
 // GET /api/char/:guid/history
 // ---------------------------------------------------------------------------
-void HandleGetCharHistory(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandleGetCharHistory(const httplib::Request& req, httplib::Response& res,
+                          const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    // Verify ownership
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     int page  = 1;
     int limit = 0;
@@ -510,10 +646,14 @@ void HandleGetCharHistory(const httplib::Request& req, httplib::Response& res, P
 // ---------------------------------------------------------------------------
 // POST /api/char/:guid/history
 // ---------------------------------------------------------------------------
-void HandlePostCharHistory(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandlePostCharHistory(const httplib::Request& req, httplib::Response& res,
+                           const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     size_t index = ParseQueryId(req, res);
     if (index == SIZE_MAX) return;
@@ -534,10 +674,14 @@ void HandlePostCharHistory(const httplib::Request& req, httplib::Response& res, 
 // ---------------------------------------------------------------------------
 // DELETE /api/char/:guid/history
 // ---------------------------------------------------------------------------
-void HandleDeleteCharHistory(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandleDeleteCharHistory(const httplib::Request& req, httplib::Response& res,
+                             const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     size_t index = ParseQueryId(req, res);
     if (index == SIZE_MAX) return;
@@ -557,10 +701,14 @@ void HandleDeleteCharHistory(const httplib::Request& req, httplib::Response& res
 // ---------------------------------------------------------------------------
 // GET /api/char/:guid/memory/count
 // ---------------------------------------------------------------------------
-void HandleGetCharMemoryCount(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandleGetCharMemoryCount(const httplib::Request& req, httplib::Response& res,
+                              const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     size_t count = 0;
     {
@@ -578,10 +726,14 @@ void HandleGetCharMemoryCount(const httplib::Request& req, httplib::Response& re
 // ---------------------------------------------------------------------------
 // GET /api/char/:guid/memory
 // ---------------------------------------------------------------------------
-void HandleGetCharMemory(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandleGetCharMemory(const httplib::Request& req, httplib::Response& res,
+                         const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     std::string orderBy  = req.get_param_value("order_by");
     std::string orderDir = req.get_param_value("order_dir");
@@ -688,10 +840,14 @@ void HandleGetCharMemory(const httplib::Request& req, httplib::Response& res, Pl
 // ---------------------------------------------------------------------------
 // POST /api/char/:guid/memory/:id
 // ---------------------------------------------------------------------------
-void HandlePostCharMemory(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandlePostCharMemory(const httplib::Request& req, httplib::Response& res,
+                          const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     std::string memIdStr;
     auto it = req.path_params.find("id");
@@ -725,10 +881,14 @@ void HandlePostCharMemory(const httplib::Request& req, httplib::Response& res, P
 // ---------------------------------------------------------------------------
 // DELETE /api/char/:guid/memory/:id
 // ---------------------------------------------------------------------------
-void HandleDeleteCharMemory(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandleDeleteCharMemory(const httplib::Request& req, httplib::Response& res,
+                            const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     std::string memIdStr;
     auto it = req.path_params.find("id");
@@ -759,10 +919,14 @@ void HandleDeleteCharMemory(const httplib::Request& req, httplib::Response& res,
 // ---------------------------------------------------------------------------
 // GET /api/char/:guid/relationships
 // ---------------------------------------------------------------------------
-void HandleGetCharRelationships(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandleGetCharRelationships(const httplib::Request& req, httplib::Response& res,
+                                const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     json relationships = json::object();
     {
@@ -781,10 +945,14 @@ void HandleGetCharRelationships(const httplib::Request& req, httplib::Response& 
 // ---------------------------------------------------------------------------
 // POST /api/char/:guid/relationships
 // ---------------------------------------------------------------------------
-void HandlePostCharRelationships(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandlePostCharRelationships(const httplib::Request& req, httplib::Response& res,
+                                 const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     std::string targetName = req.get_param_value("name");
     if (targetName.empty())
@@ -810,10 +978,14 @@ void HandlePostCharRelationships(const httplib::Request& req, httplib::Response&
 // ---------------------------------------------------------------------------
 // DELETE /api/char/:guid/relationships
 // ---------------------------------------------------------------------------
-void HandleDeleteCharRelationships(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandleDeleteCharRelationships(const httplib::Request& req, httplib::Response& res,
+                                   const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     std::string targetName = req.get_param_value("name");
     if (targetName.empty())
@@ -838,10 +1010,14 @@ void HandleDeleteCharRelationships(const httplib::Request& req, httplib::Respons
 // ---------------------------------------------------------------------------
 // GET /api/char/:guid/data
 // ---------------------------------------------------------------------------
-void HandleGetCharData(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandleGetCharData(const httplib::Request& req, httplib::Response& res,
+                       const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     int32_t rollMod = 0;
     {
@@ -862,10 +1038,14 @@ void HandleGetCharData(const httplib::Request& req, httplib::Response& res, Play
 // ---------------------------------------------------------------------------
 // POST /api/char/:guid/data
 // ---------------------------------------------------------------------------
-void HandlePostCharData(const httplib::Request& req, httplib::Response& res, Player* /*authenticatedPlayer*/)
+void HandlePostCharData(const httplib::Request& req, httplib::Response& res,
+                        const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     json body;
     try { body = json::parse(req.body); } catch (...) {}
@@ -910,12 +1090,13 @@ void HandlePostCharData(const httplib::Request& req, httplib::Response& res, Pla
 // ---------------------------------------------------------------------------
 // GET /api/char/:guid/debug/request
 // ---------------------------------------------------------------------------
-void HandleGetCharDebugRequest(const httplib::Request& req, httplib::Response& res, Player* authenticatedPlayer)
+void HandleGetCharDebugRequest(const httplib::Request& req, httplib::Response& res,
+                               const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
 
-    Player* bot = ResolveBot(charGuid, authenticatedPlayer->GetGUID().GetCounter(), res);
+    Player* bot = ResolveOnlineBot(charGuid, authInfo, res);
     if (!bot) return;
 
     std::string eventLine = req.get_param_value("event");
@@ -966,15 +1147,25 @@ void HandleGetCharDebugRequest(const httplib::Request& req, httplib::Response& r
 // ---------------------------------------------------------------------------
 // POST /api/char/:guid/whisper
 // ---------------------------------------------------------------------------
-void HandlePostCharWhisper(const httplib::Request& req, httplib::Response& res, Player* authenticatedPlayer)
+void HandlePostCharWhisper(const httplib::Request& req, httplib::Response& res,
+                           const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
 
-    uint64_t authGuid = authenticatedPlayer->GetGUID().GetCounter();
+    // Find the real player for this account (as sender)
+    Player* sender = FindOnlinePlayerForAccount(authInfo.accountId);
+    if (!sender)
+    {
+        res.status = 410;
+        res.set_content("{\"error\":\"No real player from your account is online\"}", "application/json");
+        return;
+    }
+
+    uint64_t senderGuid = sender->GetGUID().GetCounter();
 
     // Block whispering to yourself
-    if (charGuid == authGuid)
+    if (charGuid == senderGuid)
     {
         res.status = 400;
         res.set_content("{\"error\":\"Cannot whisper to yourself\"}", "application/json");
@@ -982,7 +1173,7 @@ void HandlePostCharWhisper(const httplib::Request& req, httplib::Response& res, 
     }
 
     // Verify target is online and a character
-    Player* bot = ResolveBot(charGuid, authGuid, res);
+    Player* bot = ResolveOnlineBot(charGuid, authInfo, res);
     if (!bot) return;
 
     json body;
@@ -999,27 +1190,29 @@ void HandlePostCharWhisper(const httplib::Request& req, httplib::Response& res, 
     {
         PBC_PendingWhisperRequest wr;
         wr.message    = message;
-        wr.senderGuid = authGuid;
+        wr.senderGuid = senderGuid;
         wr.targetGuid = charGuid;
 
         std::lock_guard<std::mutex> lock(g_PBC_PendingWhisperRequestsMutex);
         g_PBC_PendingWhisperRequests.push(std::move(wr));
     }
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API whisper queued: player GUID={} -> character GUID={}", authGuid, charGuid);
+    PBC_Log(PBC_LogLevel::DEBUG, "API whisper queued: player GUID={} -> character GUID={}", senderGuid, charGuid);
     res.set_content("{\"status\":\"queued\"}", "application/json");
 }
 
 // ---------------------------------------------------------------------------
 // POST /api/char/:guid/narrate
 // ---------------------------------------------------------------------------
-void HandlePostCharNarrate(const httplib::Request& req, httplib::Response& res, Player* authenticatedPlayer)
+void HandlePostCharNarrate(const httplib::Request& req, httplib::Response& res,
+                           const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
 
-    Player* bot = ResolveBot(charGuid, authenticatedPlayer->GetGUID().GetCounter(), res);
-    if (!bot) return;
+    // Verify ownership (no online requirement)
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
 
     json body;
     try { body = json::parse(req.body); } catch (...) {}
@@ -1041,7 +1234,8 @@ void HandlePostCharNarrate(const httplib::Request& req, httplib::Response& res, 
 // ---------------------------------------------------------------------------
 // POST /api/party/narrate
 // ---------------------------------------------------------------------------
-void HandlePostPartyNarrate(const httplib::Request& req, httplib::Response& res, Player* authenticatedPlayer)
+void HandlePostPartyNarrate(const httplib::Request& req, httplib::Response& res,
+                            const PBC_AuthInfo& authInfo)
 {
     json body;
     try { body = json::parse(req.body); } catch (...) {}
@@ -1053,7 +1247,16 @@ void HandlePostPartyNarrate(const httplib::Request& req, httplib::Response& res,
         return;
     }
 
-    Group* grp = authenticatedPlayer->GetGroup();
+    // Find the real player for this account
+    Player* player = FindOnlinePlayerForAccount(authInfo.accountId);
+    if (!player)
+    {
+        res.status = 400;
+        res.set_content("{\"error\":\"No real player from your account is online\"}", "application/json");
+        return;
+    }
+
+    Group* grp = player->GetGroup();
     if (!grp)
     {
         res.status = 400;
@@ -1071,15 +1274,22 @@ void HandlePostPartyNarrate(const httplib::Request& req, httplib::Response& res,
         WorldSession* sess = member->GetSession();
         if (!sess || !sess->IsBot()) continue;
 
-        PBC_AppendHistory(member->GetGUID().GetCounter(), histLine);
+        uint64_t memberGuid = member->GetGUID().GetCounter();
+        uint32_t memberAccount = sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(memberGuid));
+
+        // Only narrate to characters belonging to the authenticated account
+        if (memberAccount != authInfo.accountId)
+            continue;
+
+        PBC_AppendHistory(memberGuid, histLine);
         ++count;
     }
 
     // When PBC.TrackPlayerCharacter is enabled, also write the narrator line
-    // to the authenticated player's own character history.
+    // to the player's own character history (if it belongs to the account)
     if (g_PBC_TrackPlayerCharacter)
     {
-        uint64_t playerGuid = authenticatedPlayer->GetGUID().GetCounter();
+        uint64_t playerGuid = player->GetGUID().GetCounter();
         PBC_AppendHistory(playerGuid, histLine);
         ++count;
     }
@@ -1087,12 +1297,12 @@ void HandlePostPartyNarrate(const httplib::Request& req, httplib::Response& res,
     if (count == 0)
     {
         res.status = 400;
-        res.set_content("{\"error\":\"No characters found in your group\"}", "application/json");
+        res.set_content("{\"error\":\"No characters found in your group belonging to your account\"}", "application/json");
         return;
     }
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API party narrate: player GUID={} characters={}",
-             authenticatedPlayer->GetGUID().GetCounter(), count);
+    PBC_Log(PBC_LogLevel::DEBUG, "API party narrate: account={} characters={}",
+             authInfo.accountId, count);
 
     json response;
     response["status"]           = "ok";
@@ -1103,15 +1313,14 @@ void HandlePostPartyNarrate(const httplib::Request& req, httplib::Response& res,
 // ---------------------------------------------------------------------------
 // POST /api/char/:guid/trigger
 // ---------------------------------------------------------------------------
-void HandlePostCharTrigger(const httplib::Request& req, httplib::Response& res, Player* authenticatedPlayer)
+void HandlePostCharTrigger(const httplib::Request& req, httplib::Response& res,
+                           const PBC_AuthInfo& authInfo)
 {
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
 
-    uint64_t authGuid = authenticatedPlayer->GetGUID().GetCounter();
-
     // Verify the target is either a bot or the player's own tracked character
-    Player* target = ObjectAccessor::FindPlayer(ObjectGuid(charGuid));
+    Player* target = FindOnlineCharacter(charGuid);
     if (!target || !target->IsInWorld())
     {
         res.status = 404;
@@ -1127,26 +1336,23 @@ void HandlePostCharTrigger(const httplib::Request& req, httplib::Response& res, 
         return;
     }
 
+    // Verify target belongs to the authenticated account
+    uint32_t targetAccount = sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(charGuid));
+    if (targetAccount != authInfo.accountId)
+    {
+        res.status = 403;
+        res.set_content("{\"error\":\"Character does not belong to your account\"}", "application/json");
+        return;
+    }
+
     bool isBot = ts->IsBot();
-    bool isOwnCharacter = (charGuid == authGuid && g_PBC_TrackPlayerCharacter);
+    bool isOwnCharacter = (g_PBC_TrackPlayerCharacter && !isBot);
 
     if (!isBot && !isOwnCharacter)
     {
         res.status = 400;
         res.set_content("{\"error\":\"Specified guid is not a character\"}", "application/json");
         return;
-    }
-
-    // Security guard: target must be in the same party or be the player themselves
-    if (!isOwnCharacter)
-    {
-        Group* senderGroup = authenticatedPlayer->GetGroup();
-        if (!senderGroup || !senderGroup->IsMember(target->GetGUID()))
-        {
-            res.status = 403;
-            res.set_content("{\"error\":\"Target is not in your party\"}", "application/json");
-            return;
-        }
     }
 
     // Queue the trigger request for the main thread
@@ -1166,7 +1372,8 @@ void HandlePostCharTrigger(const httplib::Request& req, httplib::Response& res, 
 // ---------------------------------------------------------------------------
 // POST /api/party/message
 // ---------------------------------------------------------------------------
-void HandlePostPartyMessage(const httplib::Request& req, httplib::Response& res, Player* authenticatedPlayer)
+void HandlePostPartyMessage(const httplib::Request& req, httplib::Response& res,
+                            const PBC_AuthInfo& authInfo)
 {
     json body;
     try { body = json::parse(req.body); } catch (...) {}
@@ -1178,7 +1385,16 @@ void HandlePostPartyMessage(const httplib::Request& req, httplib::Response& res,
         return;
     }
 
-    Group* grp = authenticatedPlayer->GetGroup();
+    // Find the real player for this account
+    Player* player = FindOnlinePlayerForAccount(authInfo.accountId);
+    if (!player)
+    {
+        res.status = 400;
+        res.set_content("{\"error\":\"No real player from your account is online\"}", "application/json");
+        return;
+    }
+
+    Group* grp = player->GetGroup();
     if (!grp)
     {
         res.status = 400;
@@ -1189,8 +1405,8 @@ void HandlePostPartyMessage(const httplib::Request& req, httplib::Response& res,
     // Queue the party message request for the main thread
     {
         PBC_PendingPartyMessageRequest pm;
-        pm.senderName = authenticatedPlayer->GetName();
-        pm.senderGuid = authenticatedPlayer->GetGUID().GetCounter();
+        pm.senderName = player->GetName();
+        pm.senderGuid = player->GetGUID().GetCounter();
         pm.message    = message;
 
         std::lock_guard<std::mutex> lock(g_PBC_PendingPartyMessageRequestsMutex);
@@ -1198,6 +1414,6 @@ void HandlePostPartyMessage(const httplib::Request& req, httplib::Response& res,
     }
 
     PBC_Log(PBC_LogLevel::DEBUG, "API party message queued: player GUID={}",
-             authenticatedPlayer->GetGUID().GetCounter());
+             player->GetGUID().GetCounter());
     res.set_content("{\"status\":\"queued\"}", "application/json");
 }

@@ -1,5 +1,5 @@
 #include "pbc_http.h"          // PBC_HttpServerGenerateOTP declaration
-#include "pbc_http_auth.h"     // PBC_ExchangeOTP, PBC_ValidateToken, PBC_CleanupExpiredTokens
+#include "pbc_http_auth.h"     // PBC_ExchangeOTP, PBC_ValidateToken, PBC_GetAccountName
 #include "pbc_config.h"        // g_PBC_HttpServerPrivateKey
 #include "pbc_log.h"           // PBC_Log
 #include "pbc_utils.h"         // PBC_GetRNG
@@ -21,12 +21,15 @@
 #include <openssl/err.h>
 #endif
 
+#include "AccountMgr.h"
+#include "DatabaseEnv.h"
+
 // ===========================================================================
 // Constants
 // ===========================================================================
 
-// Token lifetime: 30 days (hardcoded)
-static const int64_t TOKEN_LIFETIME_SEC = 30 * 24 * 3600;
+// Token lifetime: 1 year (hardcoded)
+static const int64_t TOKEN_LIFETIME_SEC = 365 * 24 * 3600;
 
 // OTP validity: 2 minutes
 static const int64_t OTP_LIFETIME_SEC = 120;
@@ -149,15 +152,17 @@ static std::vector<unsigned char> DeriveAESKey(const std::string& privateKey)
     return key;
 }
 
-// Create an encrypted token for a player GUID.
+// Create an encrypted token for an account ID.
+// Token payload: [accountId:4 bytes][reserved:4 bytes][timestamp:8 bytes] = 16 bytes
 // Returns "" if OpenSSL is not available or encryption fails.
-static std::string CreateToken(uint64_t playerGuid)
+static std::string CreateToken(uint32_t accountId)
 {
     auto key = DeriveAESKey(g_PBC_HttpServerPrivateKey);
 
     unsigned char plaintext[16];
     uint64_t now = static_cast<uint64_t>(std::time(nullptr));
-    std::memcpy(plaintext, &playerGuid, 8);
+    std::memcpy(plaintext, &accountId, 4);
+    std::memset(plaintext + 4, 0, 4);  // reserved
     std::memcpy(plaintext + 8, &now, 8);
 
     unsigned char iv[16];
@@ -207,9 +212,9 @@ static std::string CreateToken(uint64_t playerGuid)
     return Base64ToBase64Url(Base64Encode(tokenData.data(), tokenData.size()));
 }
 
-// Validate a token and extract the player GUID.
+// Validate a token and extract the account ID.
 // Returns 0 on failure (invalid token, expired, decryption error).
-static uint64_t ValidateTokenImpl(const std::string& token)
+static uint32_t ValidateTokenImpl(const std::string& token)
 {
     if (token.empty())
         return 0;
@@ -259,27 +264,27 @@ static uint64_t ValidateTokenImpl(const std::string& token)
     if (totalLen < 16)
         return 0;
 
-    uint64_t playerGuid;
+    uint32_t accountId;
     uint64_t timestamp;
-    std::memcpy(&playerGuid, plaintext, 8);
+    std::memcpy(&accountId, plaintext, 4);
     std::memcpy(&timestamp, plaintext + 8, 8);
 
     int64_t now = static_cast<int64_t>(std::time(nullptr));
     if (static_cast<int64_t>(timestamp) + TOKEN_LIFETIME_SEC < now)
         return 0;
 
-    return playerGuid;
+    return accountId;
 }
 
 #else // !CPPHTTPLIB_OPENSSL_SUPPORT
 
-static std::string CreateToken(uint64_t /*playerGuid*/)
+static std::string CreateToken(uint32_t /*accountId*/)
 {
     PBC_Log(PBC_LogLevel::ERROR, "CreateToken: OpenSSL not available — token creation impossible");
     return "";
 }
 
-static uint64_t ValidateTokenImpl(const std::string& /*token*/)
+static uint32_t ValidateTokenImpl(const std::string& /*token*/)
 {
     return 0;
 }
@@ -292,7 +297,7 @@ static uint64_t ValidateTokenImpl(const std::string& /*token*/)
 
 struct OTPEntry
 {
-    uint64_t playerGuid;
+    uint32_t accountId;
     time_t   expiresAt;
 };
 
@@ -315,7 +320,7 @@ static void CleanupExpiredOTPsLocked()
 // Public functions
 // ===========================================================================
 
-std::string PBC_HttpServerGenerateOTP(uint64_t playerGuid)
+std::string PBC_HttpServerGenerateOTP(uint32_t accountId)
 {
     std::lock_guard<std::mutex> lock(s_otpMutex);
     CleanupExpiredOTPsLocked();
@@ -338,7 +343,7 @@ std::string PBC_HttpServerGenerateOTP(uint64_t playerGuid)
     }
 
     time_t expiresAt = std::time(nullptr) + OTP_LIFETIME_SEC;
-    s_otpStore[otp] = {playerGuid, expiresAt};
+    s_otpStore[otp] = {accountId, expiresAt};
     return otp;
 }
 
@@ -348,14 +353,14 @@ std::string PBC_ExchangeOTP(const std::string& otp)
         return "";
 
     // Validate and consume the OTP
-    uint64_t guid;
+    uint32_t accountId;
     {
         std::lock_guard<std::mutex> lock(s_otpMutex);
         auto it = s_otpStore.find(otp);
         if (it == s_otpStore.end())
             return "";
 
-        guid = it->second.playerGuid;
+        accountId = it->second.accountId;
         time_t expiresAt = it->second.expiresAt;
 
         // Remove the OTP (one-time use)
@@ -367,13 +372,21 @@ std::string PBC_ExchangeOTP(const std::string& otp)
     }
 
     // Create the bearer token
-    std::string token = CreateToken(guid);
+    std::string token = CreateToken(accountId);
     return token;
 }
 
-uint64_t PBC_ValidateToken(const std::string& token)
+uint32_t PBC_ValidateToken(const std::string& token)
 {
     return ValidateTokenImpl(token);
+}
+
+std::string PBC_GetAccountName(uint32_t accountId)
+{
+    std::string name;
+    if (AccountMgr::GetName(accountId, name))
+        return name;
+    return "";
 }
 
 void PBC_CleanupExpiredTokens()

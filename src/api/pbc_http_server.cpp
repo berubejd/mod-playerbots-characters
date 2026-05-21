@@ -210,15 +210,15 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                     return httplib::Server::HandlerResponse::Handled;
                 }
 
-                uint64_t guid = PBC_ValidateToken(token);
-                if (guid == 0)
+                uint32_t accountId = PBC_ValidateToken(token);
+                if (accountId == 0)
                 {
                     res.status = 401;
                     res.set_content("{\"error\":\"Invalid or expired token\"}", "application/json");
                     return httplib::Server::HandlerResponse::Handled;
                 }
 
-                PBC_Log(PBC_LogLevel::DEBUG, "WS: authenticated player GUID={}", guid);
+                PBC_Log(PBC_LogLevel::DEBUG, "WS: authenticated account ID={}", accountId);
             }
 
             return httplib::Server::HandlerResponse::Unhandled;
@@ -298,188 +298,188 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
             HandleGetToken(req, res);
         });
 
-        // GET /api/player
-        svr->Get("/api/player", [](const httplib::Request& req, httplib::Response& res) {
+        // GET /api/account
+        svr->Get("/api/account", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleGetPlayer(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleGetAccount(req, res, authInfo);
         });
 
         // GET /api/party
         svr->Get("/api/party", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleGetParty(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleGetParty(req, res, authInfo);
         });
 
         // GET /api/config
         svr->Get("/api/config", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleGetConfig(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleGetConfig(req, res, authInfo);
         });
 
         // GET /api/char/:guid/card
         svr->Get("/api/char/:guid/card", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleGetCharCard(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleGetCharCard(req, res, authInfo);
         });
 
         // GET /api/char/:guid/context
         svr->Get("/api/char/:guid/context", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleGetCharContext(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleGetCharContext(req, res, authInfo);
         });
 
         // GET /api/char/:guid/history
         svr->Get("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleGetCharHistory(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleGetCharHistory(req, res, authInfo);
         });
 
         // POST /api/char/:guid/history
         svr->Post("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandlePostCharHistory(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostCharHistory(req, res, authInfo);
         });
 
         // DELETE /api/char/:guid/history
         svr->Delete("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleDeleteCharHistory(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleDeleteCharHistory(req, res, authInfo);
         });
 
         // GET /api/char/:guid/memory/count
         svr->Get("/api/char/:guid/memory/count", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleGetCharMemoryCount(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleGetCharMemoryCount(req, res, authInfo);
         });
 
         // GET /api/char/:guid/memory
         svr->Get("/api/char/:guid/memory", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleGetCharMemory(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleGetCharMemory(req, res, authInfo);
         });
 
         // POST /api/char/:guid/memory/:id
         svr->Post("/api/char/:guid/memory/:id", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandlePostCharMemory(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostCharMemory(req, res, authInfo);
         });
 
         // DELETE /api/char/:guid/memory/:id
         svr->Delete("/api/char/:guid/memory/:id", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleDeleteCharMemory(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleDeleteCharMemory(req, res, authInfo);
         });
 
         // GET /api/char/:guid/relationships
         svr->Get("/api/char/:guid/relationships", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleGetCharRelationships(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleGetCharRelationships(req, res, authInfo);
         });
 
         // POST /api/char/:guid/relationships
         svr->Post("/api/char/:guid/relationships", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandlePostCharRelationships(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostCharRelationships(req, res, authInfo);
         });
 
         // DELETE /api/char/:guid/relationships
         svr->Delete("/api/char/:guid/relationships", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleDeleteCharRelationships(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleDeleteCharRelationships(req, res, authInfo);
         });
 
         // GET /api/char/:guid/data
         svr->Get("/api/char/:guid/data", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleGetCharData(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleGetCharData(req, res, authInfo);
         });
 
         // POST /api/char/:guid/data
         svr->Post("/api/char/:guid/data", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandlePostCharData(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostCharData(req, res, authInfo);
         });
 
         // GET /api/char/:guid/debug/request
         svr->Get("/api/char/:guid/debug/request", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandleGetCharDebugRequest(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleGetCharDebugRequest(req, res, authInfo);
         });
 
         // POST /api/char/:guid/whisper
         svr->Post("/api/char/:guid/whisper", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandlePostCharWhisper(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostCharWhisper(req, res, authInfo);
         });
 
         // POST /api/char/:guid/narrate
         svr->Post("/api/char/:guid/narrate", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandlePostCharNarrate(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostCharNarrate(req, res, authInfo);
         });
 
         // POST /api/party/narrate
         svr->Post("/api/party/narrate", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandlePostPartyNarrate(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostPartyNarrate(req, res, authInfo);
         });
 
         // POST /api/char/:guid/trigger
         svr->Post("/api/char/:guid/trigger", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandlePostCharTrigger(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostCharTrigger(req, res, authInfo);
         });
 
         // POST /api/party/message
         svr->Post("/api/party/message", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
-            Player* player = AuthenticateRequest(req, res);
-            if (!player) return;
-            HandlePostPartyMessage(req, res, player);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostPartyMessage(req, res, authInfo);
         });
 
         // -------------------------------------------------------------------
@@ -488,10 +488,10 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         svr->WebSocket("/ws",
             [](const httplib::Request& req, httplib::ws::WebSocket& ws) {
                 std::string token = ExtractWebSocketToken(req);
-                uint64_t guid = PBC_ValidateToken(token);
+                uint32_t accountId = PBC_ValidateToken(token);
 
-                PBC_Log(PBC_LogLevel::DEBUG, "WS: new connection from {} (player GUID={})",
-                             req.remote_addr, guid);
+                PBC_Log(PBC_LogLevel::DEBUG, "WS: new connection from {} (account ID={})",
+                             req.remote_addr, accountId);
 
                 ws.send(json({{"event", "connected"}}).dump());
 
@@ -508,8 +508,8 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                         {
                             WsSubscribe(&ws, subGuid);
                             ws.send(json({{"event", "subscribed"}, {"guid", subGuid}}).dump());
-                            PBC_Log(PBC_LogLevel::DEBUG, "WS: player GUID={} subscribed to character GUID={}",
-                                     guid, subGuid);
+                            PBC_Log(PBC_LogLevel::DEBUG, "WS: account ID={} subscribed to character GUID={}",
+                                     accountId, subGuid);
                         }
                         else
                         {
@@ -520,7 +520,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                     {
                         WsUnsubscribe(&ws);
                         ws.send(json({{"event", "unsubscribed"}}).dump());
-                        PBC_Log(PBC_LogLevel::DEBUG, "WS: player GUID={} unsubscribed", guid);
+                        PBC_Log(PBC_LogLevel::DEBUG, "WS: account ID={} unsubscribed", accountId);
                     }
                     else
                     {
@@ -533,7 +533,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 if (s_httpShuttingDown.load())
                     ws.close(httplib::ws::CloseStatus::GoingAway, "server shutting down");
 
-                PBC_Log(PBC_LogLevel::DEBUG, "WS: connection closed (player GUID={})", guid);
+                PBC_Log(PBC_LogLevel::DEBUG, "WS: connection closed (account ID={})", accountId);
             },
             [](const std::vector<std::string>& protocols) -> std::string {
                 for (const auto& proto : protocols)

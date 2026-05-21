@@ -11,12 +11,14 @@ The module can optionally run a built-in HTTP/WS server, providing an API for ex
 All API and WebSocket endpoints (except `GET /` and `/api/token`) require authentication via the `Authorization: Bearer <token>` header. Invalid or missing authentication returns `401`.
 
 1. **Generate an OTP** — use the `.chars web` command in-game to get a 6-digit one-time password (valid for 2 minutes)
-2. **Exchange OTP for a token** — `GET /api/token?otp=XXXXXX` returns a bearer token tied to your character
+2. **Exchange OTP for a token** — `GET /api/token?otp=XXXXXX` returns a bearer token tied to your account
 3. **Use the token** — include `Authorization: Bearer <token>` in HTTP requests, or use the `Sec-WebSocket-Protocol` header for WebSocket connections
 
-Tokens are stateless and encrypted using AES-256-CBC. They survive server restarts as long as the private key remains the same. Tokens expire after 30 days.
+Tokens are stateless and encrypted using AES-256-CBC. They survive server restarts as long as the private key remains the same. Tokens expire after 1 year.
 
-Most endpoints also require the authenticated player to be online. If the player has logged out, the endpoint returns `410` with `{"error":"player_offline"}`.
+Once authenticated, you have access to **all characters on your account**.
+
+Endpoints that read or modify character data (history, memories, relationships, data) work for all characters. Endpoints that require the character to be online (context, debug, whisper, trigger) return `404` with a clear error when the target is offline.
 
 Edit and delete endpoints perform **desync detection**: the request must include the current text in the `original` field. If the server's copy differs, `409` with `{"error":"desync"}` is returned.
 
@@ -30,9 +32,9 @@ Most endpoints share the following response codes:
 | `200` | Success |
 | `400` | Missing or invalid parameter, GUID, or request body field |
 | `401` | Invalid or missing authentication (except `GET /` and `GET /api/token`) |
+| `403` | Character does not belong to your account |
 | `404` | Requested resource not found (character offline, message/relationship ID out of range) |
 | `409` | Desync — `original` text doesn't match server's copy (edit/delete endpoints only) |
-| `410` | Authenticated player is not online |
 
 
 ## API Endpoints
@@ -54,57 +56,74 @@ Exchange a valid one-time password for a bearer token.
 
 Returns `{"token": "<bearer_token>"}` on success. Returns `400` if `otp` is missing, `401` if invalid or expired.
 
-#### `GET /api/player`
+#### `GET /api/account`
 
-Returns basic info about the authenticated player.
-
-```json
-{
-  "name": "John",
-  "gender": "Male",
-  "race": "Human",
-  "class": "Warrior",
-  "level": 80
-}
-```
-
-#### `GET /api/party`
-
-Returns online party members for the authenticated player. Requires the player to be online.
+Returns the authenticated account name and all characters on that account.
 
 ```json
 {
-  "party": [
+  "account": "myaccount",
+  "account_id": 123,
+  "characters": [
     {
-      "name": "Jane",
-      "gender": "Female",
-      "race": "Night Elf",
-      "class": "Priest",
-      "level": 80,
-      "character": true,
-      "guid": 12345
-    },
-    {
+      "guid": 54321,
       "name": "John",
       "gender": "Male",
       "race": "Human",
       "class": "Warrior",
       "level": 80,
-      "character": true,
-      "guid": 54321,
+      "is_online": true,
       "is_player": true
+    },
+    {
+      "guid": 12345,
+      "name": "Jane",
+      "gender": "Female",
+      "race": "Night Elf",
+      "class": "Priest",
+      "level": 78,
+      "is_online": true,
+      "is_player": false
+    },
+    {
+      "guid": 11111,
+      "name": "StorageAlt",
+      "gender": "Male",
+      "race": "Dwarf",
+      "class": "Hunter",
+      "level": 5,
+      "is_online": false,
+      "is_player": false
     }
   ]
 }
 ```
 
-The `party` array contains all online group members. Each member has a `character` flag — `true` for characters (bots managed by the module), `false` for real players. Characters also include their `guid`.
+- `account` — account username
+- `account_id` — numeric account ID
+- `characters` — array of all characters on this account, sorted by name
+  - `guid` — character GUID (use with `GET /api/char/:guid/*` endpoints)
+  - `name`, `gender`, `race`, `class`, `level` — basic character info
+  - `is_online` — whether the character is currently logged in
+  - `is_player` — true only when the character is online and is a real (non-bot) player
 
-When `PBC.TrackPlayerCharacter` is enabled (`1`), the player's own character is also included in the party list with `character: true` and `is_player: true`. This allows the frontend to display the player character alongside bots and enables browsing/editing of their memories and relationships.
+#### `GET /api/party`
+
+Returns an array of party member GUIDs that belong to the authenticated account. Based on the **real player** being online and in a party.
+
+```json
+{
+  "party": [12345, 54321]
+}
+```
+
+- If no real player from the account is online, returns an empty `party` array
+- If the real player is not in a party, returns an empty `party` array
+- Party members from **different accounts** are excluded — only GUIDs belonging to your account are returned
 
 #### `GET /api/config`
 
-Returns current module configuration parameters. Does not require the player to be online.
+Returns current module configuration parameters.
 
 ```json
 {
@@ -133,18 +152,20 @@ Returns current module configuration parameters. Does not require the player to 
 
 #### `GET /api/char/:guid/card`
 
-Returns the character card (base card with variable substitution).
+Returns the character card (base card text with variable placeholders).
 
 #### `GET /api/char/:guid/context`
 
 Returns the fully-built context string for a character with **annotated template variables** — each substituted variable leaves its name before the value (e.g. `[char_name]Jon`). The LLM request uses the non-annotated version.
+
+The character must be online. Returns `404` otherwise.
 
 
 ### Character Chat History
 
 #### `GET /api/char/:guid/history?page=&limit=`
 
-Returns character chat history. Works even when the character is offline.
+Returns character chat history.
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
@@ -166,7 +187,7 @@ Delete a single message from chat history. Query param `id` is the 1-based messa
 
 #### `GET /api/char/:guid/memory/count`
 
-Returns the number of memory entries for a character. Works even when the character is offline.
+Returns the number of memory entries for a character.
 
 ```json
 {"count": 12}
@@ -174,7 +195,7 @@ Returns the number of memory entries for a character. Works even when the charac
 
 #### `GET /api/char/:guid/memory?order_by=&order_dir=&page=&limit=`
 
-Returns character memories. Works even when the character is offline.
+Returns character memories.
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
@@ -196,7 +217,6 @@ Delete a single memory. The memory is identified by its DB row `id`. Body: `{"or
 
 ### Character Relationships
 
-Relationships endpoints work for any GUID — bot characters and player characters alike (as long as the character exists in the in-memory relationships map).
 
 #### `GET /api/char/:guid/relationships`
 
@@ -282,29 +302,39 @@ The character must be online. Requires auth.
 
 Post a private message event for a character. Processed identically to an in-game whisper — the character rolls to respond and the reply is whispered back. Returns immediately with "queued" status. Body: `{"message": "Hello, how are you?"}`.
 
+The authenticated account must have a real (non-bot) player online to act as the sender. The target character must be online and belong to your account.
+
 #### `POST /api/char/:guid/narrate`
 
-Add a Narrator line to the specified character's history without producing any character events (no LLM call, no response). Equivalent to the `.chars narrate` command. Triggers a `history` WS event for the character. The character must be online. Body: `{"message": "A cold wind blows through the forest"}`.
+Add a Narrator line to the specified character's history without producing any character events (no LLM call, no response). Equivalent to the `.chars narrate` command. Triggers a `history` WS event for the character.
+
+Body: `{"message": "A cold wind blows through the forest"}`.
 
 Returns `{"status": "ok"}` on success.
 
 #### `POST /api/party/narrate`
 
-Add a Narrator line to every character in the authenticated player's group without producing any character events. Equivalent to the `.chars narrate-party` command. Triggers a `history` WS event for every character in the group. The player must be online and in a group. Body: `{"message": "The party enters a dark cave"}`.
+Add a Narrator line to every bot character in the real player's group that belongs to the authenticated account. Equivalent to the `.chars narrate-party` command. Triggers a `history` WS event for each affected character.
 
-Returns `{"status": "ok", "characters_count": 3}` on success. Returns `400` if the player is not in a group or no characters are in the group.
+The authenticated account must have a real (non-bot) player online and in a group. Characters from other accounts in the same party are excluded.
+
+Body: `{"message": "The party enters a dark cave"}`.
+
+Returns `{"status": "ok", "characters_count": 3}` on success. Returns `400` if no real player is online or no matching characters are in the group.
 
 #### `POST /api/char/:guid/trigger`
 
 Trigger a response from the specified character. The character responds as a party message if they are in a group, or as a say otherwise. The trigger event (`*you feel the urge to say something*`) is not written into the character's history. No request body required.
 
-The target must be online and must be either a bot character in the same party as the authenticated player, or the player's own character (when `PBC.TrackPlayerCharacter` is enabled). Returns `403` if the target is not in the same party.
+The target must be online and must belong to the authenticated account. Returns `403` if the character belongs to a different account.
 
 Returns `{"status": "queued"}` immediately — the actual LLM call and in-game reply happen asynchronously.
 
 #### `POST /api/party/message`
 
-Emulate a party message sent by the authenticated player. The message is added to the history of all characters in the group and goes through the same answer logic as an in-game party chat message (roll chance, LLM call, in-game reply). The player must be online and in a group. Returns immediately with "queued" status. Body: `{"message": "Let's move forward"}`.
+Emulate a party message sent by the authenticated account's real player. The message is added to the history of all characters in the group and goes through the same answer logic as an in-game party chat message (roll chance, LLM call, in-game reply).
+
+The authenticated account must have a real (non-bot) player online and in a group. Returns immediately with "queued" status. Body: `{"message": "Let's move forward"}`.
 
 
 ## WebSocket
@@ -324,6 +354,8 @@ After connecting, subscribe to real-time events for a specific character:
 ```
 subscribe <GUID>
 ```
+
+**You can subscribe to any character GUID on your account, even if the character is offline.** Events will be delivered when the character comes online and generates activity.
 
 Only one subscription per connection — a second `subscribe` replaces the previous one. To unsubscribe:
 
