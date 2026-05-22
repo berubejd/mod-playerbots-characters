@@ -700,22 +700,24 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     // PBC_MaybeInsertTimeGap updates g_PBC_LastHistoryTime, so later
     // calls from PBC_AppendHistory (safety net) won't double-insert.
     // -------------------------------------------------------------------
+    bool incomingIsWhisper = (ev.chatType == CHAT_MSG_WHISPER);
+
     for (PBC_CharacterSnapshot& snap : ev.respondingChars)
     {
-        if (PBC_MaybeInsertTimeGap(snap.charGuidRaw))
+        if (PBC_MaybeInsertTimeGap(snap.charGuidRaw, incomingIsWhisper))
             snap.history.push_back("Narrator: *some time passes*");
     }
     for (uint64_t guid : ev.silentCharGuids)
-        PBC_MaybeInsertTimeGap(guid);
+        PBC_MaybeInsertTimeGap(guid, incomingIsWhisper);
 
     if (ev.type == PBC_EventType::Condensation)
     {
-        if (PBC_MaybeInsertTimeGap(ev.condensationChar.charGuidRaw))
+        if (PBC_MaybeInsertTimeGap(ev.condensationChar.charGuidRaw, false))
             ev.condensationChar.history.push_back("Narrator: *some time passes*");
     }
     if (ev.type == PBC_EventType::RelationshipUpdate)
     {
-        if (PBC_MaybeInsertTimeGap(ev.relationshipChar.charGuidRaw))
+        if (PBC_MaybeInsertTimeGap(ev.relationshipChar.charGuidRaw, false))
             ev.relationshipChar.history.push_back("Narrator: *some time passes*");
     }
 

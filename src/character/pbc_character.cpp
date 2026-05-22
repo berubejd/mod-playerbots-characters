@@ -220,7 +220,7 @@ std::string PBC_GetChatHistory(uint64_t botGuid)
 }
 
 
-bool PBC_MaybeInsertTimeGap(uint64_t botGuid)
+bool PBC_MaybeInsertTimeGap(uint64_t botGuid, bool incomingIsWhisper)
 {
     static const std::string kTimePassesLine = "Narrator: *some time passes*";
     static constexpr time_t  kTimeGapThresholdSec = 300; // 5 minutes
@@ -243,17 +243,21 @@ bool PBC_MaybeInsertTimeGap(uint64_t botGuid)
         if (!hist.empty() && hist.back() == kTimePassesLine)
             return false;
 
-        // Don't insert if the last line is a whisper — time gaps between
-        // private conversations are not narratively meaningful.
-        auto isPrivateMsg = [](const std::string& s) -> bool {
-            auto privPos = s.find(" (privately to ");
-            if (privPos == std::string::npos || privPos == 0)
+        // Skip the time-gap only when BOTH the last history line is a whisper
+        // AND the incoming event is also a whisper.  A single whisper followed
+        // by a public chat / combat / quest event still warrants a gap marker.
+        if (incomingIsWhisper)
+        {
+            auto isPrivateMsg = [](const std::string& s) -> bool {
+                auto privPos = s.find(" (privately to ");
+                if (privPos == std::string::npos || privPos == 0)
+                    return false;
+                auto firstSpace = s.find(' ');
+                return firstSpace == privPos;
+            };
+            if (!hist.empty() && isPrivateMsg(hist.back()))
                 return false;
-            auto firstSpace = s.find(' ');
-            return firstSpace == privPos;
-        };
-        if (!hist.empty() && isPrivateMsg(hist.back()))
-            return false;
+        }
 
         hist.push_back(kTimePassesLine);
         g_PBC_LastHistoryTime[botGuid] = now;

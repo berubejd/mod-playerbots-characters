@@ -67,7 +67,7 @@ int         PBC_EstimateHistoryTokens(uint64_t botGuid);
 // Returns true if a line was inserted.
 // Thread-safe.
 // ---------------------------------------------------------------------------
-bool PBC_MaybeInsertTimeGap(uint64_t botGuid);
+bool PBC_MaybeInsertTimeGap(uint64_t botGuid, bool incomingIsWhisper = false);
 
 // ---------------------------------------------------------------------------
 // Mutation result (thread-safe, also updates the database)
