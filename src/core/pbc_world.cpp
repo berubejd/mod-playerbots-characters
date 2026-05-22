@@ -371,7 +371,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                             // Respect the sender's leader position in the group.
                             // When PBC.TrackPlayerCharacter is enabled the sender can
                             // be a real player (party leader), not just a bot.
-                            uint32_t msgType = grp->IsLeader(bot->GetGUID())
+                            ChatMsg msgType = grp->IsLeader(bot->GetGUID())
                                 ? CHAT_MSG_PARTY_LEADER
                                 : CHAT_MSG_PARTY;
                             WorldPacket data;
@@ -391,7 +391,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                             // Respect the sender's leader position in the raid.
                             // When PBC.TrackPlayerCharacter is enabled the sender can
                             // be a real player (raid leader/assistant), not just a bot.
-                            uint32_t msgType;
+                            ChatMsg msgType;
                             if (ct == CHAT_MSG_RAID_WARNING)
                                 msgType = CHAT_MSG_RAID_WARNING;
                             else if (grp->IsLeader(bot->GetGUID()))

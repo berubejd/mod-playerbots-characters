@@ -52,8 +52,8 @@ PBC.DisplayNarratorEvents = 1
 #                  triggered as usual when the player's history exceeds the
 #                  token limit. The player's character never reacts to events
 #                  (no LLM calls) — history is written passively.
-#     Default:     0 (false)
-PBC.TrackPlayerCharacter = 0
+#     Default:     1 (true)
+PBC.TrackPlayerCharacter = 1
 
 
 # --------------------------------------------
