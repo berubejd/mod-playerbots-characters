@@ -28,10 +28,8 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
   const text = typeof msg === 'string' ? msg : msg.text;
   const id = typeof msg === 'string' ? null : msg.id;
   const pending = !!(msg && msg.pending);
-  const preview = !!(msg && msg.preview);
-  const isTemporary = pending || preview;
   const { name, message, isWhisper, isNarrator } = parseMessage(text);
-  const canSelect = id != null && !isTemporary;
+  const canSelect = id != null && !pending;
 
   // Narrator messages: horizontal line with centered smaller white text
   if (isNarrator) {
@@ -47,7 +45,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
         )}
         <div class="flex-grow-1 position-relative">
           <div class="message-actions position-absolute top-0 end-0" style="z-index: 1;">
-            {id != null && !isTemporary && (
+            {id != null && !pending && (
               <>
                 <button
                   class="btn btn-sm p-0 px-1"
@@ -71,7 +69,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
             <span style="position: relative; display: inline-block; max-width: 75%; color: #fff; font-size: 0.85rem; padding: 0 0.75rem; background: var(--bs-body-bg);">{message}</span>
           </div>
         </div>
-      {id != null && !isTemporary && (
+      {id != null && !pending && (
         <div class="action-menu position-absolute top-0 end-0">
           <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
         </div>
@@ -95,7 +93,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
       )}
       <div class="flex-grow-1 position-relative">
         <div class="message-actions position-absolute top-0 end-0" style="z-index: 1;">
-          {id != null && !isTemporary && (
+          {id != null && !pending && (
             <>
               <button
                 class="btn btn-sm p-0 px-1"
@@ -132,7 +130,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
           return <span key={j} style="white-space: pre-wrap">{part.text}</span>;
         })}
       </div>
-      {id != null && !isTemporary && (
+      {id != null && !pending && (
         <div class="action-menu position-absolute top-0 end-0">
           <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
         </div>
@@ -514,8 +512,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
   const containerRef = useRef(null);
   const lastIdRef = useRef(0);
   const pendingWhisperRef = useRef(null);
-  const previewTextsRef = useRef([]);
-  const previewCounterRef = useRef(0);
   const loadingRef = useRef(false);
   const isAtBottomRef = useRef(true);
   const shouldAutoScrollRef = useRef(true);
@@ -599,8 +595,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     setMessages(null);
     lastIdRef.current = 0;
     pendingWhisperRef.current = null;
-    previewTextsRef.current = [];
-    previewCounterRef.current = 0;
     shouldAutoScrollRef.current = true;
     setSelectionMode(false);
     setSelectedIds(new Set());
@@ -666,16 +660,8 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
         }, 3000));
       };
 
-      // Preview message (id=0): display immediately at full opacity,
-      // without edit/delete actions.  The real message with proper id
-      // arrives later (from the batch write) and replaces this entry.
-      if (id === 0) {
-        const previewId = 'preview-' + (previewCounterRef.current++);
-        previewTextsRef.current.push({ previewId, text });
-        setMessages((prev) => prev ? [...prev, { id: previewId, text, preview: true }] : prev);
-        markAsNew(previewId);
-        return;
-      }
+      // Ignore preview/temporary messages (id=0) — only process real messages
+      if (id === 0) return;
 
       if (pendingText !== null) {
         if (text === pendingText) {
@@ -685,15 +671,15 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
           lastIdRef.current = id;
           markAsNew(id);
         } else if (id === expectedId) {
-          // Non-matching real message (e.g. time gap, narrator line) —
-          // insert it right before the pending placeholder so the pending
-          // stays alive for later replacement by the player's own message.
+          // Character response / narrator line — insert it right after
+          // the pending placeholder so the player's own message stays
+          // first (the player spoke before characters responded).
           setMessages((prev) => {
             const newMsg = { id, text };
             const pendingIdx = prev.findIndex(m => m.id === 'pending');
             if (pendingIdx !== -1) {
               const newArr = [...prev];
-              newArr.splice(pendingIdx, 0, newMsg);
+              newArr.splice(pendingIdx + 1, 0, newMsg);
               return newArr;
             }
             return [...prev, newMsg];
@@ -707,16 +693,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
           setRetryKey((k) => k + 1);
         }
       } else {
-        // Check if this real message matches a pending preview
-        const previewIdx = previewTextsRef.current.findIndex(p => p.text === text);
-        if (previewIdx !== -1) {
-          const { previewId } = previewTextsRef.current[previewIdx];
-          previewTextsRef.current.splice(previewIdx, 1);
-          // Replace the preview entry with the real message
-          setMessages((prev) => prev.map((m) => m.id === previewId ? { id, text } : m));
-          lastIdRef.current = id;
-          markAsNew(id);
-        } else if (id === expectedId) {
+        if (id === expectedId) {
           setMessages((prev) => prev ? [...prev, { id, text }] : prev);
           lastIdRef.current = id;
           markAsNew(id);
