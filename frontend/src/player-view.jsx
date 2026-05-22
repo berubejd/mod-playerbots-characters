@@ -20,17 +20,20 @@ function applyFactionTheme(race) {
   return faction;
 }
 
-export default function PlayerView({ account, party, token, wsEvent, onSelectedGuidChange, initialSelectedGuid, onDesync, onOpenAccountManager, maxHistoryCtx }) {
+export default function PlayerView({ account, party, token, wsEvent, onSelectedGuidChange, initialSelectedGuid, onDesync, onOpenAccountManager, maxHistoryCtx, trackPlayerCharacter }) {
   const allCharacters = account.characters || [];
   const partyGuids = party?.party || [];
 
-  // Categorize characters into three groups
+  // Categorize characters into three groups.
+  // When PBC.TrackPlayerCharacter is disabled the real player character is
+  // not tracked — skip it so it does not appear in any list.
   const { partyChars, onlineChars, offlineChars } = useMemo(() => {
     const partySet = new Set(partyGuids);
     const p = [];
     const o = [];
     const f = [];
     for (const char of allCharacters) {
+      if (!trackPlayerCharacter && char.is_player) continue;
       if (char.is_online && partySet.has(char.guid)) {
         p.push(char);
       } else if (char.is_online) {
@@ -40,7 +43,7 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
       }
     }
     return { partyChars: p, onlineChars: o, offlineChars: f };
-  }, [allCharacters, partyGuids]);
+  }, [allCharacters, partyGuids, trackPlayerCharacter]);
 
   // Player character (the real player)
   const playerChar = useMemo(() => allCharacters.find(c => c.is_player) || null, [allCharacters]);
@@ -49,7 +52,10 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
   const [messageMode, setMessageMode] = useState('whisper');
   const [selectedGuid, setSelectedGuid] = useState(() => {
     if (!initialSelectedGuid) return null;
-    return allCharacters.some(c => c.guid === initialSelectedGuid) ? initialSelectedGuid : null;
+    const match = allCharacters.find(c => c.guid === initialSelectedGuid);
+    // When PBC.TrackPlayerCharacter is disabled, never select the real player
+    if (!trackPlayerCharacter && match && match.is_player) return null;
+    return match ? initialSelectedGuid : null;
   });
   const [activeTab, setActiveTab] = useState(TAB.CHARACTERS);
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -87,6 +93,16 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
   }, [selectedGuid, allCharacters]);
 
   const selectedCharName = selectedChar ? selectedChar.name : null;
+
+  // When PBC.TrackPlayerCharacter is disabled and the currently selected
+  // character becomes a real player character (e.g. the player logs in as
+  // that character), deselect it — player characters must not be selectable
+  // when they are not tracked.
+  useEffect(() => {
+    if (!trackPlayerCharacter && selectedChar && selectedChar.is_player) {
+      setSelectedGuid(null);
+    }
+  }, [trackPlayerCharacter, selectedChar]);
 
   // Process global WS events forwarded from App.
   // These are not character-specific and must not depend on selectedGuid.
@@ -179,19 +195,18 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
   }, [selectedChar, partyGuids]);
 
   const handleSelect = useCallback((guid) => {
-    if (guid !== selectedGuid) {
-      setSelectedGuid(guid);
-      // Apply faction theme based on the selected character's race
-      const char = allCharacters.find(c => c.guid === guid);
-      if (char) {
-        applyFactionTheme(char.race);
-      }
-      // On mobile, switch to chat tab when selecting a character
-      if (isMobile) {
-        setActiveTab(TAB.CHAT);
-      }
+    if (guid === selectedGuid) return;
+    const char = allCharacters.find(c => c.guid === guid);
+    if (!char) return;
+    // When PBC.TrackPlayerCharacter is disabled, never select the real player
+    if (!trackPlayerCharacter && char.is_player) return;
+    setSelectedGuid(guid);
+    applyFactionTheme(char.race);
+    // On mobile, switch to chat tab when selecting a character
+    if (isMobile) {
+      setActiveTab(TAB.CHAT);
     }
-  }, [selectedGuid, isMobile, allCharacters]);
+  }, [selectedGuid, isMobile, allCharacters, trackPlayerCharacter]);
 
   // --- Shared sub-renders ---
 
