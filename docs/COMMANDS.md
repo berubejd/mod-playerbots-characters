@@ -19,5 +19,5 @@ List of commands that can be used by the player or in the server console.
 | `.chars alt-api-test [query=hi]` | Same as `api-test` but uses the alternative model configuration. |
 | `.chars narrate <name> <message>` | Adds a narrator line to a character's chat history. Does not trigger a response. In-game only. |
 | `.chars narrate-party <message>` | Adds a narrator line to every group character's chat history. Does not trigger responses. In-game only. |
-| `.chars trigger <name>` | Forces a character to respond (party message if grouped, say otherwise). The trigger event is not written into history. When `PBC.TrackPlayerCharacter` is enabled, can also trigger the player's own character. |
+| `.chars trigger <name>` | Forces a character to respond (party message if grouped, say otherwise). The trigger event is not written into history. Can also trigger the player's own character. |
 | `.chars migrate-card-additions` | Console-only. Migrates legacy card additions into discrete memories by feeding each character's card additions through the condensation LLM prompt. The old table is NOT deleted — verify results and drop manually. |

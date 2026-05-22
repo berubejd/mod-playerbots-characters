@@ -64,7 +64,6 @@ void PBC_PushEvent(PBC_EventItem item)
 // ---------------------------------------------------------------------------
 void AddTrackedPlayersToEvent(PBC_EventItem& ev, Player* anchor)
 {
-    if (!g_PBC_TrackPlayerCharacter) return;
     if (!PBC_PTR_VALID(anchor)) return;
 
     auto realPlayers = PBC_FindRealPlayersInGroup(anchor);
@@ -284,7 +283,6 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
         ev.silentCharGuids.push_back(target->GetGUID().GetCounter());
     }
 
-    if (g_PBC_TrackPlayerCharacter)
     {
         WorldSession* senderSess = sender->GetSession();
         if (PBC_PTR_VALID(senderSess) && !senderSess->IsBot())

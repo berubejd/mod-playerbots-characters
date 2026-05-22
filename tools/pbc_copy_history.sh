@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # pbc_copy_history.sh — Copy non-whisper chat history from one character to another.
 #
-# Useful when enabling PBC.TrackPlayerCharacter for an existing character
-# whose events were previously only tracked under their bot counterpart.
-#
 # Usage: ./pbc_copy_history.sh <FromName> <ToName>
 #   FromName — copy history FROM this character (required)
 #   ToName   — copy history TO this character   (required)

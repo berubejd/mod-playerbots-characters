@@ -128,7 +128,6 @@ Returns current module configuration parameters.
 ```json
 {
   "config": [
-    {"key": "TrackPlayerCharacter", "value": false},
     {"key": "MaxResponseLength", "value": 120},
     {"key": "MaxHistoryCtx", "value": 0},
     {"key": "MaxMemoriesCtx", "value": 8192},

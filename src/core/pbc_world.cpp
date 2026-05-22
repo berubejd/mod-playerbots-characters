@@ -103,8 +103,8 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         }
     }
 
-    // 0b. Trigger condensation for tracked player characters (every 30s)
-    if (g_PBC_TrackPlayerCharacter && g_PBC_MaxHistoryCtx > 0)
+    // 0b. Trigger condensation for player characters (every 30s)
+    if (g_PBC_MaxHistoryCtx > 0)
     {
         static time_t s_lastPlayerCondenseCheck = 0;
         time_t now = GameTime::GetGameTime().count();
@@ -309,13 +309,10 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 continue;
             }
 
-            // Allow triggering bot characters OR the player's own character
-            // (when PBC.TrackPlayerCharacter is enabled).
+            // Allow triggering bot characters and the player's own character.
             bool isBot = ts->IsBot();
-            bool isTrackedPlayer = (g_PBC_TrackPlayerCharacter && tr.targetGuid == target->GetGUID().GetCounter() &&
-                                    !isBot);
 
-            if (!isBot && !isTrackedPlayer)
+            if (!isBot)
             {
                 PBC_Log(PBC_LogLevel::DEBUG, "API trigger: target GUID={} is not a character, skipping", tr.targetGuid);
                 localTriggers.pop();
@@ -369,8 +366,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                         if (grp)
                         {
                             // Respect the sender's leader position in the group.
-                            // When PBC.TrackPlayerCharacter is enabled the sender can
-                            // be a real player (party leader), not just a bot.
+                            // The sender can be a real player (party leader), not just a bot.
                             ChatMsg msgType = grp->IsLeader(bot->GetGUID())
                                 ? CHAT_MSG_PARTY_LEADER
                                 : CHAT_MSG_PARTY;
@@ -389,8 +385,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                         if (grp)
                         {
                             // Respect the sender's leader position in the raid.
-                            // When PBC.TrackPlayerCharacter is enabled the sender can
-                            // be a real player (raid leader/assistant), not just a bot.
+                            // The sender can be a real player (raid leader/assistant), not just a bot.
                             ChatMsg msgType;
                             if (ct == CHAT_MSG_RAID_WARNING)
                                 msgType = CHAT_MSG_RAID_WARNING;

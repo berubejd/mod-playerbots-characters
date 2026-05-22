@@ -111,10 +111,10 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
                                     bool canCreateEvents = true);
 
 // ---------------------------------------------------------------------------
-// When PBC.TrackPlayerCharacter is enabled, adds all real (non-bot) players in
-// the anchor's group (including the anchor itself if it's a real player) to the
-// event's silentCharGuids and playerCharGuids.  This ensures player characters
-// receive history passively during play sessions.
+// Adds all real (non-bot) players in the anchor's group (including the anchor
+// itself if it's a real player) to the event's silentCharGuids and
+// playerCharGuids.  This ensures player characters receive history passively
+// during play sessions.
 // ---------------------------------------------------------------------------
 void AddTrackedPlayersToEvent(PBC_EventItem& ev, Player* anchor);
 

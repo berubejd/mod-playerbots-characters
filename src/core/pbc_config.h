@@ -20,7 +20,6 @@ extern bool     g_PBC_Enable;
 extern bool     g_PBC_DebugEnabled;
 extern bool     g_PBC_DebugShowFullRequest;
 extern bool     g_PBC_DisplayNarratorEvents;
-extern bool     g_PBC_TrackPlayerCharacter;
 extern bool     g_PBC_CardAdditionsMigrationNeeded;
 
 // LLM API connection

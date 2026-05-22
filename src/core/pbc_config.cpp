@@ -25,7 +25,6 @@ bool     g_PBC_Enable              = true;
 bool     g_PBC_DebugEnabled        = false;
 bool     g_PBC_DebugShowFullRequest = false;
 bool     g_PBC_DisplayNarratorEvents = true;
-bool     g_PBC_TrackPlayerCharacter  = false;
 bool     g_PBC_CardAdditionsMigrationNeeded = false;
 
 std::string g_PBC_APIType          = "openai";
@@ -150,7 +149,6 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_DebugEnabled        = sConfigMgr->GetOption<bool>("PBC.DebugEnabled", false);
     g_PBC_DebugShowFullRequest = sConfigMgr->GetOption<bool>("PBC.DebugShowFullRequest", false);
     g_PBC_DisplayNarratorEvents = sConfigMgr->GetOption<bool>("PBC.DisplayNarratorEvents", true);
-    g_PBC_TrackPlayerCharacter  = sConfigMgr->GetOption<bool>("PBC.TrackPlayerCharacter", false);
 
     g_PBC_APIType              = sConfigMgr->GetOption<std::string>("PBC.APIType", "openai");
     g_PBC_BaseUrl              = sConfigMgr->GetOption<std::string>("PBC.BaseUrl", "");

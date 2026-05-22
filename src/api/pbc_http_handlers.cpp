@@ -236,8 +236,7 @@ static Player* ResolveOnlineBot(uint64_t charGuid, const PBC_AuthInfo& authInfo,
     }
 
     WorldSession* session = bot->GetSession();
-    bool isOwnCharacter = (g_PBC_TrackPlayerCharacter &&
-                           sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(charGuid)) == authInfo.accountId);
+    bool isOwnCharacter = (sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(charGuid)) == authInfo.accountId);
     if (!session || (!session->IsBot() && !isOwnCharacter))
     {
         res.status = 400;
@@ -471,7 +470,6 @@ void HandleGetConfig(const httplib::Request& /*req*/, httplib::Response& res,
                      const PBC_AuthInfo& /*authInfo*/)
 {
     json config = json::array();
-    config.push_back({{"key", "TrackPlayerCharacter"},     {"value", g_PBC_TrackPlayerCharacter}});
     config.push_back({{"key", "MaxResponseLength"},        {"value", g_PBC_MaxResponseTokens}});
     config.push_back({{"key", "MaxHistoryCtx"},            {"value", g_PBC_MaxHistoryCtx}});
     config.push_back({{"key", "MaxMemoriesCtx"},           {"value", g_PBC_MaxMemoriesCtx}});
@@ -1316,9 +1314,7 @@ void HandlePostPartyNarrate(const httplib::Request& req, httplib::Response& res,
         ++count;
     }
 
-    // When PBC.TrackPlayerCharacter is enabled, also write the narrator line
-    // to the player's own character history (if it belongs to the account)
-    if (g_PBC_TrackPlayerCharacter)
+    // Also write the narrator line to the player's own character history
     {
         uint64_t playerGuid = player->GetGUID().GetCounter();
         PBC_AppendHistory(playerGuid, histLine);
@@ -1377,7 +1373,7 @@ void HandlePostCharTrigger(const httplib::Request& req, httplib::Response& res,
     }
 
     bool isBot = ts->IsBot();
-    bool isOwnCharacter = (g_PBC_TrackPlayerCharacter && !isBot);
+    bool isOwnCharacter = !isBot;
 
     if (!isBot && !isOwnCharacter)
     {

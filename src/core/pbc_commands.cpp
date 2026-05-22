@@ -586,7 +586,7 @@ static bool HandleCharsNarrate(ChatHandler* handler,
     bool isBot = targetSess->IsBot();
     bool isOwnCharacter = false;
 
-    if (!isBot && g_PBC_TrackPlayerCharacter && handler->GetSession())
+    if (!isBot && handler->GetSession())
     {
         Player* callingPlayer = handler->GetSession()->GetPlayer();
         if (callingPlayer && callingPlayer->GetGUID() == target->GetGUID())
@@ -631,8 +631,7 @@ static bool HandleCharsTrigger(ChatHandler* handler, std::string_view charNameAr
         return false;
     }
 
-    // Allow triggering bot characters OR the player's own character
-    // (when PBC.TrackPlayerCharacter is enabled).
+    // Allow triggering bot characters and the player's own character.
     WorldSession* ts = target->GetSession();
     if (!ts)
     {
@@ -643,7 +642,7 @@ static bool HandleCharsTrigger(ChatHandler* handler, std::string_view charNameAr
     bool isBot = ts->IsBot();
     bool isOwnCharacter = false;
 
-    if (!isBot && g_PBC_TrackPlayerCharacter && handler->GetSession())
+    if (!isBot && handler->GetSession())
     {
         Player* callingPlayer = handler->GetSession()->GetPlayer();
         if (callingPlayer && callingPlayer->GetGUID() == target->GetGUID())
@@ -710,13 +709,9 @@ static bool HandleCharsNarrateParty(ChatHandler* handler, Tail messageArg)
         ++count;
     }
 
-    // When PBC.TrackPlayerCharacter is enabled, also write the narrator line
-    // to the calling player's own character history.
-    if (g_PBC_TrackPlayerCharacter)
-    {
-        PBC_AppendHistory(player->GetGUID().GetCounter(), histLine);
-        ++count;
-    }
+    // Also write the narrator line to the calling player's own character history.
+    PBC_AppendHistory(player->GetGUID().GetCounter(), histLine);
+    ++count;
 
     if (count == 0)
     {
