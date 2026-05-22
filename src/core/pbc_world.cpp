@@ -368,10 +368,14 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                         Group* grp = bot->GetGroup();
                         if (grp)
                         {
-                            // Bots are never party leaders — always send as CHAT_MSG_PARTY
-                            // regardless of whether the original message was CHAT_MSG_PARTY_LEADER.
+                            // Respect the sender's leader position in the group.
+                            // When PBC.TrackPlayerCharacter is enabled the sender can
+                            // be a real player (party leader), not just a bot.
+                            uint32_t msgType = grp->IsLeader(bot->GetGUID())
+                                ? CHAT_MSG_PARTY_LEADER
+                                : CHAT_MSG_PARTY;
                             WorldPacket data;
-                            ChatHandler::BuildChatPacket(data, CHAT_MSG_PARTY, LANG_UNIVERSAL, bot, nullptr, action.text);
+                            ChatHandler::BuildChatPacket(data, msgType, LANG_UNIVERSAL, bot, nullptr, action.text);
                             grp->BroadcastPacket(&data, false, grp->GetMemberGroup(bot->GetGUID()));
                         }
                         else
@@ -384,8 +388,18 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                         Group* grp = bot->GetGroup();
                         if (grp)
                         {
+                            // Respect the sender's leader position in the raid.
+                            // When PBC.TrackPlayerCharacter is enabled the sender can
+                            // be a real player (raid leader/assistant), not just a bot.
+                            uint32_t msgType;
+                            if (ct == CHAT_MSG_RAID_WARNING)
+                                msgType = CHAT_MSG_RAID_WARNING;
+                            else if (grp->IsLeader(bot->GetGUID()))
+                                msgType = CHAT_MSG_RAID_LEADER;
+                            else
+                                msgType = CHAT_MSG_RAID;
                             WorldPacket data;
-                            ChatHandler::BuildChatPacket(data, CHAT_MSG_RAID, LANG_UNIVERSAL, bot, nullptr, action.text);
+                            ChatHandler::BuildChatPacket(data, msgType, LANG_UNIVERSAL, bot, nullptr, action.text);
                             grp->BroadcastPacket(&data, false);
                         }
                         else
