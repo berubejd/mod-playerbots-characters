@@ -172,6 +172,10 @@ void ProcessCondensation(PBC_EventItem& ev,
                           const std::string& condenseSysPrompt,
                           const std::string& condenseUsrTmpl)
 {
+    // Notify real players that a lengthy background condensation is starting
+    PBC_PushNarratorSummary(ev.condensationChar.charObjGuid,
+        PBC_MakeEventLine("Condensing " + ev.condensationChar.charName + "'s history..."));
+
     // Capture the full history snapshot BEFORE condensation truncates it
     std::deque<std::string> preCondensationHistory = ev.condensationChar.history;
 
@@ -205,6 +209,10 @@ void ProcessRelationshipUpdate(PBC_EventItem& ev)
         g_PBC_EventThreadDone.store(true);
         return;
     }
+
+    // Notify real players that a lengthy background relationship update is starting
+    PBC_PushNarratorSummary(ev.relationshipChar.charObjGuid,
+        PBC_MakeEventLine("Updating " + ev.relationshipChar.charName + "'s relationships..."));
 
     PBC_Log(PBC_LogLevel::DEBUG, "RelationshipUpdate: character={} target={}",
              ev.relationshipChar.charName, ev.relationshipTargetName);
@@ -418,6 +426,10 @@ void ProcessNormal(PBC_EventItem& ev,
         int histTokens = PBC_EstimateHistoryTokens(snap.charGuidRaw);
         if (histTokens > static_cast<int>(g_PBC_MaxHistoryCtx))
         {
+            // Notify real players that a lengthy background condensation is starting
+            PBC_PushNarratorSummary(snap.charObjGuid,
+                PBC_MakeEventLine("Condensing " + snap.charName + "'s history..."));
+
             std::deque<std::string> preCondensationHistory = snap.history;
 
             bool condensed = PBC_CondenseInline(snap, condenseSysPrompt, condenseUsrTmpl);
