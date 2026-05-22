@@ -4,11 +4,11 @@
 [MEMORIES]
 {memories}
 
-[HISTORY]
-{chat_history}
-
 [RELATIONSHIPS]
 {relationships}
+
+[HISTORY]
+{chat_history}
 
 [CURRENT CONTEXT]
 {context}
