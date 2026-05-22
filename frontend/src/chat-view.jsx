@@ -574,7 +574,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     let fullText;
     switch (mode) {
       case 'party':
-        fullText = `${playerName} says: ${message}`;
+        fullText = `${playerName}: ${message}`;
         break;
       default:
         fullText = `${playerName} (privately to you): ${message}`;
@@ -675,14 +675,34 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       }
 
       if (pendingText !== null) {
-        pendingWhisperRef.current = null;
-        // Always replace the pending message in-place so the player's own
-        // message stays before any preview messages that arrived while the
-        // LLM was generating responses.  The real histLine may differ from
-        // the pending text (e.g. narrator formatting) — that's expected.
-        setMessages((prev) => prev.map((m) => m.id === 'pending' ? { id, text } : m));
-        lastIdRef.current = id;
-        markAsNew(id);
+        if (text === pendingText) {
+          // Exact match — replace pending with real (removes opacity)
+          pendingWhisperRef.current = null;
+          setMessages((prev) => prev.map((m) => m.id === 'pending' ? { id, text } : m));
+          lastIdRef.current = id;
+          markAsNew(id);
+        } else if (id === expectedId) {
+          // Non-matching real message (e.g. time gap, narrator line) —
+          // insert it right before the pending placeholder so the pending
+          // stays alive for later replacement by the player's own message.
+          setMessages((prev) => {
+            const newMsg = { id, text };
+            const pendingIdx = prev.findIndex(m => m.id === 'pending');
+            if (pendingIdx !== -1) {
+              const newArr = [...prev];
+              newArr.splice(pendingIdx, 0, newMsg);
+              return newArr;
+            }
+            return [...prev, newMsg];
+          });
+          lastIdRef.current = id;
+          markAsNew(id);
+        } else {
+          // ID mismatch — remove pending and reload
+          pendingWhisperRef.current = null;
+          setMessages((prev) => prev.filter((m) => m.id !== 'pending'));
+          setRetryKey((k) => k + 1);
+        }
       } else {
         // Check if this real message matches a pending preview
         const previewIdx = previewTextsRef.current.findIndex(p => p.text === text);
