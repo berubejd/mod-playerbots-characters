@@ -88,13 +88,12 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
 
   const selectedCharName = selectedChar ? selectedChar.name : null;
 
-  // Process WS events forwarded from App.
-  // Events now include "guid" — filter to only act on the selected character.
+  // Process global WS events forwarded from App.
+  // These are not character-specific and must not depend on selectedGuid.
   useEffect(() => {
     if (!wsEvent) return;
 
     const eventGuid = wsEvent.data && wsEvent.data.guid;
-    const isForSelected = !eventGuid || eventGuid === selectedGuid;
 
     // Track thinking state for ALL characters (not just selected)
     if (wsEvent.type === 'thinks' && eventGuid) {
@@ -120,6 +119,17 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
       case 'error':
         toast(wsEvent.data.message || 'WebSocket error', 'error');
         break;
+    }
+  }, [wsEvent, toast]);
+
+  // Process character-specific WS events for the currently selected character.
+  useEffect(() => {
+    if (!wsEvent) return;
+
+    const eventGuid = wsEvent.data && wsEvent.data.guid;
+    const isForSelected = !eventGuid || eventGuid === selectedGuid;
+
+    switch (wsEvent.type) {
       case 'history':
         if (isForSelected) {
           setChatEvent(wsEvent);
