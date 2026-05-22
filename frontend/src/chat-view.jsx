@@ -485,6 +485,9 @@ function SendMessageInput({ token, selectedGuid, playerGuid, onDesync, onMessage
   );
 }
 
+// Module-level ref — survives ChatView remounts caused by key={selectedGuid} in player-view.jsx
+const lastManualModeRef = { current: 'whisper' };
+
 export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap, charName, thinkingNames = [], playerName, chatEvent, chatReloadKey, onDesync, characters, messageMode, onMessageModeChange, maxHistoryCtx, charCategory }) {
   const [messages, setMessages] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -775,13 +778,40 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     };
   }, []);
 
+  // Wrapper that remembers the last mode the user explicitly chose.
+  // This is passed to SendMessageInput for manual changes (dropdown, slash commands).
+  // The auto-switch effect below calls onMessageModeChange directly to avoid
+  // overwriting the remembered preference.
+  const handleManualModeChange = useCallback((newMode) => {
+    lastManualModeRef.current = newMode;
+    onMessageModeChange(newMode);
+  }, [onMessageModeChange]);
+
   // Auto-switch from whisper/invalid mode when viewing player's own character
-  // or when the current mode is not available for the character category
+  // or when the current mode is not available for the character category.
+  // When the user's last manual choice becomes available again (e.g. switching
+  // back from the player character to a normal character), restore it.
   useEffect(() => {
     const available = getAvailableModes(playerGuid, selectedGuid, charCategory);
     if (available.length === 0) return; // offline — no modes to switch to
-    if (!available.some(m => m.value === messageMode)) {
-      onMessageModeChange(available[0].value);
+
+    const isCurrentAvailable = available.some(m => m.value === messageMode);
+
+    if (!isCurrentAvailable) {
+      // Current mode not available for this character — auto-switch.
+      // Prefer the user's last manual choice if it fits, otherwise fall back to the first available.
+      if (lastManualModeRef.current && available.some(m => m.value === lastManualModeRef.current)) {
+        onMessageModeChange(lastManualModeRef.current);
+      } else {
+        onMessageModeChange(available[0].value);
+      }
+    } else if (
+      lastManualModeRef.current !== messageMode &&
+      available.some(m => m.value === lastManualModeRef.current)
+    ) {
+      // The user's last manual choice is available again (e.g. switching back
+      // from the player character where whisper was removed) — restore it.
+      onMessageModeChange(lastManualModeRef.current);
     }
   }, [playerGuid, selectedGuid, charCategory, messageMode, onMessageModeChange]);
 
@@ -1064,7 +1094,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
             <div style={`height: 100%; width: ${contextPercent}%; background: ${contextBarColor}; transition: width 0.3s ease, background-color 0.3s ease;`}></div>
           </div>
         )}
-        <SendMessageInput token={token} selectedGuid={selectedGuid} playerGuid={playerGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} characters={characters} charCategory={charCategory} />
+        <SendMessageInput token={token} selectedGuid={selectedGuid} playerGuid={playerGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={handleManualModeChange} characters={characters} charCategory={charCategory} />
       </div>
     );
   }
@@ -1123,7 +1153,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
             <div style={`height: 100%; width: ${contextPercent}%; background: ${contextBarColor}; transition: width 0.3s ease, background-color 0.3s ease;`}></div>
           </div>
         )}
-        <SendMessageInput token={token} selectedGuid={selectedGuid} playerGuid={playerGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={onMessageModeChange} characters={characters} charCategory={charCategory} />
+        <SendMessageInput token={token} selectedGuid={selectedGuid} playerGuid={playerGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={handleManualModeChange} characters={characters} charCategory={charCategory} />
       </div>
       <EditModal
         show={editModal.show}
