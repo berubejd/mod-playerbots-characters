@@ -160,8 +160,11 @@ void PBC_TriggerCondensation(Player* bot);
 
 // ---------------------------------------------------------------------------
 // Build the relationships block for a character's prompt (thread-safe).
-// Returns a multi-line string (one entry per party member) to be substituted
-// into {relationships} in the user prompt template.
+// Returns a multi-line string to be substituted into {relationships} in the
+// user prompt template.  Always emits current party members and the whisper
+// target (with default text if no stored relationship).  Additionally emits
+// ALL other stored relationships that have non-default text, ensuring the
+// character remembers everyone they've formed a meaningful bond with.
 // ---------------------------------------------------------------------------
 std::string PBC_GetRelationshipsBlock(const PBC_CharacterSnapshot& snap);
 

@@ -15,6 +15,7 @@
 #include <fmt/core.h>
 #include <sstream>
 #include <mutex>
+#include <unordered_set>
 #include <ctime>
 #include <algorithm>
 
@@ -590,45 +591,43 @@ std::string PBC_GetRelationshipsBlock(const PBC_CharacterSnapshot& snap)
         }
     }
 
+    std::unordered_set<std::string> emitted;
+
+    // Emit a relationship line for a name ALWAYS (party / whisper target).
+    // Falls back to default text if no stored relationship exists.
     auto emitRelationship = [&](std::ostringstream& oss, const std::string& name)
     {
+        if (emitted.count(name))
+            return;
         auto it = relTexts.find(name);
         if (it != relTexts.end() && !it->second.empty())
             oss << "Your relationship with " << name << ": " << it->second << "\n";
         else
             oss << "Your relationship with " << name << ": " << PBC_DefaultRelationshipText(name) << "\n";
+        emitted.insert(name);
     };
 
-    if (!snap.hasRealPlayerInGroup)
-    {
-        // Solo whisper: only emit the relationship with the whispering player.
-        if (snap.whisperTargetName.empty())
-            return "";
-
-        std::ostringstream oss;
-        emitRelationship(oss, snap.whisperTargetName);
-        std::string result = oss.str();
-        if (!result.empty() && result.back() == '\n')
-            result.pop_back();
-        return result;
-    }
-
-    // Group scenario: emit one line per party member.
-    if (snap.partyMemberNames.empty() && snap.whisperTargetName.empty())
-        return "";
-
     std::ostringstream oss;
+
+    // Always emit current party members (even if default) — the bot should
+    // know who it's travelling with.
     for (const auto& memberName : snap.partyMemberNames)
         emitRelationship(oss, memberName);
 
-    // If the whisper came from a player outside the group, add them too.
+    // Whisper target (if not already covered by party list).
     if (!snap.whisperTargetName.empty())
+        emitRelationship(oss, snap.whisperTargetName);
+
+    // Emit ALL remaining stored relationships with non-default text.
+    // This ensures the character remembers everyone they have a meaningful
+    // relationship with, not just whoever is currently in the party.
+    for (const auto& [name, text] : relTexts)
     {
-        bool alreadyListed = std::find(snap.partyMemberNames.begin(),
-                                       snap.partyMemberNames.end(),
-                                       snap.whisperTargetName) != snap.partyMemberNames.end();
-        if (!alreadyListed)
-            emitRelationship(oss, snap.whisperTargetName);
+        if (emitted.count(name))
+            continue;
+        if (text.empty())
+            continue;   // empty stored text = never set / default, skip
+        oss << "Your relationship with " << name << ": " << text << "\n";
     }
 
     std::string result = oss.str();
