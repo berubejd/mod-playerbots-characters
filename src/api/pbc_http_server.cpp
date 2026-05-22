@@ -212,6 +212,18 @@ void PBC_WsNotifyHistory(uint64_t botGuid, size_t messageId, const std::string& 
     WsSendToGuidOwner(botGuid, j.dump());
 }
 
+void PBC_WsNotifyHistoryPreview(uint64_t botGuid, const std::string& text)
+{
+    if (!s_httpRunning.load())
+        return;
+
+    json j;
+    j["event"] = "history";
+    j["guid"] = botGuid;
+    j["message"] = {{"id", 0}, {"text", text}};
+    WsSendToGuidOwner(botGuid, j.dump());
+}
+
 void PBC_WsNotifyAccount(uint32_t accountId, const std::string& eventType, uint64_t relatedGuid)
 {
     if (!s_httpRunning.load())

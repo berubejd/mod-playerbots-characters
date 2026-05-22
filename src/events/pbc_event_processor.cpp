@@ -455,6 +455,56 @@ void ProcessNormal(PBC_EventItem& ev,
 
         completedReplyLines.push_back(replyLine);
 
+        // -----------------------------------------------------------------
+        // Send immediate WS preview (id=0) so the frontend can display this
+        // reply in real-time, before it is persisted.  When the batch write
+        // at the end of ProcessNormal sends the real PBC_WsNotifyHistory
+        // with the proper id, the frontend replaces the preview entry.
+        // -----------------------------------------------------------------
+        for (const PBC_CharacterSnapshot& rs : ev.respondingChars)
+            PBC_WsNotifyHistoryPreview(rs.charGuidRaw, replyLine);
+
+        if (ev.chatType != CHAT_MSG_WHISPER)
+        {
+            for (uint64_t guid : ev.silentCharGuids)
+                PBC_WsNotifyHistoryPreview(guid, replyLine);
+
+            for (uint64_t guid : ev.replyOnlyCharGuids)
+                PBC_WsNotifyHistoryPreview(guid, replyLine);
+        }
+
+        if (!ev.playerCharGuids.empty())
+        {
+            if (ev.chatType == CHAT_MSG_WHISPER
+                && !ev.whisperSenderName.empty()
+                && !ev.whisperTargetName.empty())
+            {
+                std::string playerReplyLine = AdjustWhisperPerspective(
+                    replyLine,
+                    "(privately to " + ev.whisperSenderName + ")",
+                    "(privately to you)");
+
+                for (uint64_t guid : ev.playerCharGuids)
+                    PBC_WsNotifyHistoryPreview(guid, playerReplyLine);
+            }
+            else
+            {
+                for (uint64_t guid : ev.playerCharGuids)
+                {
+                    bool alreadyCovered = false;
+                    for (uint64_t sg : ev.silentCharGuids)
+                        { if (sg == guid) { alreadyCovered = true; break; } }
+                    if (!alreadyCovered)
+                    {
+                        for (uint64_t rg : ev.replyOnlyCharGuids)
+                            { if (rg == guid) { alreadyCovered = true; break; } }
+                    }
+                    if (alreadyCovered) continue;
+                    PBC_WsNotifyHistoryPreview(guid, replyLine);
+                }
+            }
+        }
+
         // Split reply into narrator/regular segments if narrator events enabled
         if (g_PBC_DisplayNarratorEvents)
         {

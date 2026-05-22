@@ -70,6 +70,12 @@ void PBC_WsNotify(uint64_t botGuid, const std::string& eventType);
 // event with message data. messageId is the 1-based history index.
 void PBC_WsNotifyHistory(uint64_t botGuid, size_t messageId, const std::string& text);
 
+// Send an immediate preview of a pending history line (id=0) to WS clients.
+// Used to stream character replies in real-time before they are persisted.
+// When the real PBC_WsNotifyHistory arrives later with the proper id, the
+// frontend replaces the preview entry.
+void PBC_WsNotifyHistoryPreview(uint64_t botGuid, const std::string& text);
+
 // Notify all WS clients subscribed to a specific account of an account-level
 // event ("online", "offline", "party"). relatedGuid is the character GUID that
 // triggered the event (set to 0 for events like "party" that have no single guid).

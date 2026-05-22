@@ -28,8 +28,10 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
   const text = typeof msg === 'string' ? msg : msg.text;
   const id = typeof msg === 'string' ? null : msg.id;
   const pending = !!(msg && msg.pending);
+  const preview = !!(msg && msg.preview);
+  const isTemporary = pending || preview;
   const { name, message, isWhisper, isNarrator } = parseMessage(text);
-  const canSelect = id != null && !pending;
+  const canSelect = id != null && !isTemporary;
 
   // Narrator messages: horizontal line with centered smaller white text
   if (isNarrator) {
@@ -45,7 +47,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
         )}
         <div class="flex-grow-1 position-relative">
           <div class="message-actions position-absolute top-0 end-0" style="z-index: 1;">
-            {id != null && !pending && (
+            {id != null && !isTemporary && (
               <>
                 <button
                   class="btn btn-sm p-0 px-1"
@@ -69,7 +71,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
             <span style="position: relative; display: inline-block; max-width: 75%; color: #fff; font-size: 0.85rem; padding: 0 0.75rem; background: var(--bs-body-bg);">{message}</span>
           </div>
         </div>
-      {id != null && !pending && (
+      {id != null && !isTemporary && (
         <div class="action-menu position-absolute top-0 end-0">
           <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
         </div>
@@ -93,7 +95,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
       )}
       <div class="flex-grow-1 position-relative">
         <div class="message-actions position-absolute top-0 end-0" style="z-index: 1;">
-          {id != null && !pending && (
+          {id != null && !isTemporary && (
             <>
               <button
                 class="btn btn-sm p-0 px-1"
@@ -130,7 +132,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
           return <span key={j} style="white-space: pre-wrap">{part.text}</span>;
         })}
       </div>
-      {id != null && !pending && (
+      {id != null && !isTemporary && (
         <div class="action-menu position-absolute top-0 end-0">
           <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
         </div>
@@ -509,6 +511,8 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
   const containerRef = useRef(null);
   const lastIdRef = useRef(0);
   const pendingWhisperRef = useRef(null);
+  const previewTextsRef = useRef([]);
+  const previewCounterRef = useRef(0);
   const loadingRef = useRef(false);
   const isAtBottomRef = useRef(true);
   const shouldAutoScrollRef = useRef(true);
@@ -592,6 +596,8 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     setMessages(null);
     lastIdRef.current = 0;
     pendingWhisperRef.current = null;
+    previewTextsRef.current = [];
+    previewCounterRef.current = 0;
     shouldAutoScrollRef.current = true;
     setSelectionMode(false);
     setSelectedIds(new Set());
@@ -657,31 +663,37 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
         }, 3000));
       };
 
+      // Preview message (id=0): display immediately at full opacity,
+      // without edit/delete actions.  The real message with proper id
+      // arrives later (from the batch write) and replaces this entry.
+      if (id === 0) {
+        const previewId = 'preview-' + (previewCounterRef.current++);
+        previewTextsRef.current.push({ previewId, text });
+        setMessages((prev) => prev ? [...prev, { id: previewId, text, preview: true }] : prev);
+        markAsNew(previewId);
+        return;
+      }
+
       if (pendingText !== null) {
         pendingWhisperRef.current = null;
-        if (text === pendingText) {
-          // Same message confirmed — replace pending with real (removes opacity)
-          setMessages((prev) => prev.map((m) => m.id === 'pending' ? { id, text } : m));
+        // Always replace the pending message in-place so the player's own
+        // message stays before any preview messages that arrived while the
+        // LLM was generating responses.  The real histLine may differ from
+        // the pending text (e.g. narrator formatting) — that's expected.
+        setMessages((prev) => prev.map((m) => m.id === 'pending' ? { id, text } : m));
+        lastIdRef.current = id;
+        markAsNew(id);
+      } else {
+        // Check if this real message matches a pending preview
+        const previewIdx = previewTextsRef.current.findIndex(p => p.text === text);
+        if (previewIdx !== -1) {
+          const { previewId } = previewTextsRef.current[previewIdx];
+          previewTextsRef.current.splice(previewIdx, 1);
+          // Replace the preview entry with the real message
+          setMessages((prev) => prev.map((m) => m.id === previewId ? { id, text } : m));
           lastIdRef.current = id;
           markAsNew(id);
-        } else {
-          // Different message — remove pending, add the real one
-          setMessages((prev) => {
-            const withoutPending = prev.filter((m) => m.id !== 'pending');
-            if (id === expectedId) {
-              return [...withoutPending, { id, text }];
-            }
-            return withoutPending;
-          });
-          if (id === expectedId) {
-            lastIdRef.current = id;
-            markAsNew(id);
-          } else {
-            setRetryKey((k) => k + 1);
-          }
-        }
-      } else {
-        if (id === expectedId) {
+        } else if (id === expectedId) {
           setMessages((prev) => prev ? [...prev, { id, text }] : prev);
           lastIdRef.current = id;
           markAsNew(id);
@@ -902,7 +914,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
 
   const handleBatchDeleteConfirm = useCallback(async (propagate) => {
     const toDelete = messages
-      .filter((msg) => selectedIds.has(msg.id) && msg.id != null && !msg.pending)
+      .filter((msg) => selectedIds.has(msg.id) && msg.id != null && !msg.pending && !msg.preview)
       .map((msg) => ({ id: msg.id, text: msg.text }))
       .sort((a, b) => b.id - a.id);
 
@@ -1108,7 +1120,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       <BatchDeleteModal
         show={batchDeleteModal.show}
         count={batchDeleteModal.count}
-        hasNonWhisper={messages.filter((msg) => selectedIds.has(msg.id) && msg.id != null && !msg.pending).some((msg) => !parseMessage(msg.text).isWhisper)}
+        hasNonWhisper={messages.filter((msg) => selectedIds.has(msg.id) && msg.id != null && !msg.pending && !msg.preview).some((msg) => !parseMessage(msg.text).isWhisper)}
         onConfirm={handleBatchDeleteConfirm}
         onCancel={handleBatchDeleteCancel}
       />
