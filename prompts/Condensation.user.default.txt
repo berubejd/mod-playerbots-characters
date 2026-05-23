@@ -1,5 +1,8 @@
 [CHARACTER]
 {character_card}
 
+[MEMORIES]
+{memories}
+
 [HISTORY]
 {chat_history}

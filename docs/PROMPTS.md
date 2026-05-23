@@ -29,7 +29,7 @@ Your custom file will not be overwritten by module updates. To revert to the def
 | `Main.system` | System prompt for the main character reply. Defines the character's behavior and response format. |
 | `Main.user` | User prompt for the main character reply. Structures the character card, history, relationships, context, and event. |
 | `Condensation.system` | System prompt for the condensation LLM call. Instructs the character to reflect on their recent experiences and write down the memories that matter to them personally, each with an importance score. |
-| `Condensation.user` | User prompt for the condensation LLM call. Provides the character card and history for memory extraction. |
+| `Condensation.user` | User prompt for the condensation LLM call. Provides the character card, existing memories, and recent history for memory extraction. |
 | `DefaultCharacterDescription` | Default character description used when no character card file exists. Supports basic template variables. |
 | `CharacterContext` | Current context description appended to every prompt. Contains dynamic variables like location, combat status, etc. |
 | `QuestCompleted.system` | System prompt for the quest completion summary LLM call. |
