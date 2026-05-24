@@ -1,14 +1,13 @@
 if(TARGET modules)
     # Optional mod_weather_vibe integration
-    if(EXISTS "${CMAKE_SOURCE_DIR}/modules/mod_weather_vibe/src/core/mod_wv_core.h")
+    if(NOT "${MODULE_MOD_WEATHER_VIBE}" STREQUAL "disabled" AND EXISTS "${CMAKE_SOURCE_DIR}/modules/mod_weather_vibe/src/core/mod_wv_core.h")
         target_compile_definitions(modules PRIVATE MOD_WEATHER_VIBE)
         target_include_directories(modules PRIVATE
             "${CMAKE_SOURCE_DIR}/modules/mod_weather_vibe/src/core")
-        message(STATUS "[mod-playerbots-characters] mod_weather_vibe found - weather integration enabled")
+        message(STATUS "[mod-playerbots-characters] mod_weather_vibe found and enabled - weather integration enabled")
     else()
-        message(STATUS "[mod-playerbots-characters] mod_weather_vibe not found - weather integration disabled")
+        message(STATUS "[mod-playerbots-characters] mod_weather_vibe not found or disabled - weather integration disabled")
     endif()
-
     # Include nlohmann/json library
     if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/deps/nlohmann/json.hpp")
         target_include_directories(modules PRIVATE ${CMAKE_CURRENT_LIST_DIR}/deps)
