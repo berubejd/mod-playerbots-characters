@@ -164,7 +164,7 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
 
     if (g_PBC_DebugShowFullRequest)
     {
-        PBC_Log(PBC_LogLevel::DEBUG, "LLM request body:\n{}", PBC_SanitizeForFmt(PBC_TruncateForDebug(bodyStr)));
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "LLM request body:\n{}", PBC_SanitizeForFmt(PBC_TruncateForDebug(bodyStr)));
     }
 
     // --- Execute request --------------------------------------------------
@@ -173,7 +173,7 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
     {
         if (attempt > 1)
         {
-            PBC_Log(PBC_LogLevel::DEBUG, "LLM: waiting 3s before retry (attempt {}/{})...", attempt, MAX_ATTEMPTS);
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "LLM: waiting 3s before retry (attempt {}/{})...", attempt, MAX_ATTEMPTS);
             std::this_thread::sleep_for(std::chrono::seconds(3));
         }
 
@@ -183,13 +183,13 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
 
         if (responseBody.empty())
         {
-            PBC_Log(PBC_LogLevel::ERROR, "LLM: empty response from API (attempt {}/{}).", attempt, MAX_ATTEMPTS);
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "LLM: empty response from API (attempt {}/{}).", attempt, MAX_ATTEMPTS);
             continue;
         }
 
         if (g_PBC_DebugShowFullRequest)
         {
-            PBC_Log(PBC_LogLevel::DEBUG, "LLM response body:\n{}", PBC_SanitizeForFmt(PBC_TruncateForDebug(responseBody)));
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "LLM response body:\n{}", PBC_SanitizeForFmt(PBC_TruncateForDebug(responseBody)));
         }
 
         try
@@ -203,7 +203,7 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
                     errMsg = resp["error"]["message"].get<std::string>();
                 else
                     errMsg = responseBody;
-                PBC_Log(PBC_LogLevel::ERROR, "LLM API error (attempt {}/{}): {}",
+                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "LLM API error (attempt {}/{}): {}",
                           attempt, MAX_ATTEMPTS, errMsg);
                 continue;
             }
@@ -216,7 +216,7 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
                 // Anthropic response: content[0].text
                 if (!resp.contains("content") || !resp["content"].is_array() || resp["content"].empty())
                 {
-                    PBC_Log(PBC_LogLevel::ERROR, "LLM: unexpected Anthropic response format (attempt {}/{}).", attempt, MAX_ATTEMPTS);
+                    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "LLM: unexpected Anthropic response format (attempt {}/{}).", attempt, MAX_ATTEMPTS);
                     continue;
                 }
                 text = resp["content"][0]["text"].get<std::string>();
@@ -252,14 +252,14 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
             result.text       = text;
             result.tokensUsed = tokensUsed;
 
-            PBC_Log(PBC_LogLevel::DEBUG, "LLM reply ({} tokens): {}", tokensUsed, PBC_SanitizeForFmt(text));
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "LLM reply ({} tokens): {}", tokensUsed, PBC_SanitizeForFmt(text));
 
             return result;
         }
         catch (const std::exception& ex)
         {
-            PBC_Log(PBC_LogLevel::ERROR, "JSON parse error (attempt {}/{}): {}", attempt, MAX_ATTEMPTS, ex.what());
-            PBC_Log(PBC_LogLevel::DEBUG, "Raw response: {}", PBC_SanitizeForFmt(responseBody));
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "JSON parse error (attempt {}/{}): {}", attempt, MAX_ATTEMPTS, ex.what());
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Raw response: {}", PBC_SanitizeForFmt(responseBody));
         }
     }
 

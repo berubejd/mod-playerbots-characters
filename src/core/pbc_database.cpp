@@ -245,7 +245,7 @@ void PBC_LoadHistoryFromDB()
             g_PBC_LastHistoryTime[botGuid] = ts;
     } while (result->NextRow());
 
-    PBC_Log(PBC_LogLevel::DEFAULT, "Chat history loaded from DB ({} characters with timestamps).",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Chat history loaded from DB ({} characters with timestamps).",
              g_PBC_LastHistoryTime.size());
 }
 
@@ -277,7 +277,7 @@ void PBC_LoadMemoriesFromDB()
         ++count;
     } while (result->NextRow());
 
-    PBC_Log(PBC_LogLevel::DEFAULT, "Character memories loaded from DB ({} entries).", count);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Character memories loaded from DB ({} entries).", count);
 }
 
 void PBC_LoadCharacterDataFromDB()
@@ -291,7 +291,7 @@ void PBC_LoadCharacterDataFromDB()
 
     if (!result)
     {
-        PBC_Log(PBC_LogLevel::DEFAULT, "Characters data loaded from DB (0 entries).");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Characters data loaded from DB (0 entries).");
         return;
     }
 
@@ -304,7 +304,7 @@ void PBC_LoadCharacterDataFromDB()
         ++count;
     } while (result->NextRow());
 
-    PBC_Log(PBC_LogLevel::DEFAULT, "Characters data loaded from DB ({} entries, {} with roll modifier).",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Characters data loaded from DB ({} entries, {} with roll modifier).",
              count, g_PBC_RollChanceModifiers.size());
 }
 
@@ -320,7 +320,7 @@ void PBC_LoadRelationshipsFromDB()
 
     if (!result)
     {
-        PBC_Log(PBC_LogLevel::DEFAULT, "Relationships loaded from DB (0 entries).");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Relationships loaded from DB (0 entries).");
         return;
     }
 
@@ -337,5 +337,5 @@ void PBC_LoadRelationshipsFromDB()
         ++count;
     } while (result->NextRow());
 
-    PBC_Log(PBC_LogLevel::DEFAULT, "Relationships loaded from DB ({} entries).", count);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Relationships loaded from DB ({} entries).", count);
 }

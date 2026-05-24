@@ -164,7 +164,7 @@ void ProcessHistoryReload()
 {
     PBC_LoadHistoryFromDB();
     PBC_LoadRelationshipsFromDB();
-    PBC_Log(PBC_LogLevel::DEFAULT, "HistoryReload: chat history and relationships reloaded from DB.");
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "HistoryReload: chat history and relationships reloaded from DB.");
     g_PBC_EventThreadDone.store(true);
 }
 
@@ -183,7 +183,7 @@ void ProcessCondensation(PBC_EventItem& ev,
 
     if (!condensed)
     {
-        PBC_Log(PBC_LogLevel::WARNING,
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING,
                  "Condensation event failed for character={} — history left untouched, "
                  "will retry when threshold is reached again",
                  ev.condensationChar.charName);
@@ -204,7 +204,7 @@ void ProcessRelationshipUpdate(PBC_EventItem& ev)
 {
     if (ev.relationshipSystemPrompt.empty() || ev.relationshipUserPromptTmpl.empty())
     {
-        PBC_Log(PBC_LogLevel::WARNING, "RelationshipUpdate: prompts not configured, skipping for character={}",
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "RelationshipUpdate: prompts not configured, skipping for character={}",
                  ev.relationshipChar.charName);
         g_PBC_EventThreadDone.store(true);
         return;
@@ -214,7 +214,7 @@ void ProcessRelationshipUpdate(PBC_EventItem& ev)
     PBC_PushNarratorSummary(ev.relationshipChar.charObjGuid,
         PBC_MakeEventLine("Updating " + ev.relationshipChar.charName + "'s relationships..."));
 
-    PBC_Log(PBC_LogLevel::DEBUG, "RelationshipUpdate: character={} target={}",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "RelationshipUpdate: character={} target={}",
              ev.relationshipChar.charName, ev.relationshipTargetName);
 
     std::string userPrompt = ev.relationshipUserPromptTmpl;
@@ -231,7 +231,7 @@ void ProcessRelationshipUpdate(PBC_EventItem& ev)
 
     if (!res.success || res.text.empty())
     {
-        PBC_Log(PBC_LogLevel::WARNING, "RelationshipUpdate: LLM failed for character={} target={}",
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "RelationshipUpdate: LLM failed for character={} target={}",
                  ev.relationshipChar.charName, ev.relationshipTargetName);
         g_PBC_EventThreadDone.store(true);
         return;
@@ -246,7 +246,7 @@ void ProcessRelationshipUpdate(PBC_EventItem& ev)
     DB_UpsertRelationship(ev.relationshipChar.charGuidRaw, ev.relationshipTargetName, res.text);
     PBC_WsNotify(ev.relationshipChar.charGuidRaw, "relationship");
 
-    PBC_Log(PBC_LogLevel::DEBUG, "RelationshipUpdate: updated character={} target={} text=\"{}\"",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "RelationshipUpdate: updated character={} target={} text=\"{}\"",
              ev.relationshipChar.charName, ev.relationshipTargetName,
              PBC_SanitizeForFmt(res.text));
 
@@ -255,7 +255,7 @@ void ProcessRelationshipUpdate(PBC_EventItem& ev)
 
 void ProcessCardAdditionsMigration(PBC_EventItem& ev)
 {
-    PBC_Log(PBC_LogLevel::DEFAULT, "CardAdditionsMigration: starting...");
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "CardAdditionsMigration: starting...");
 
     QueryResult addResult = CharacterDatabase.Query(
         "SELECT bot_guid, addition FROM mod_pbc_character_card_additions ORDER BY bot_guid ASC, id ASC"
@@ -263,7 +263,7 @@ void ProcessCardAdditionsMigration(PBC_EventItem& ev)
 
     if (!addResult)
     {
-        PBC_Log(PBC_LogLevel::DEFAULT, "CardAdditionsMigration: no card additions found, nothing to migrate.");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "CardAdditionsMigration: no card additions found, nothing to migrate.");
         g_PBC_EventThreadDone.store(true);
         return;
     }
@@ -278,7 +278,7 @@ void ProcessCardAdditionsMigration(PBC_EventItem& ev)
         ++totalAdditions;
     } while (addResult->NextRow());
 
-    PBC_Log(PBC_LogLevel::DEFAULT, "CardAdditionsMigration: found {} additions across {} characters",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "CardAdditionsMigration: found {} additions across {} characters",
              totalAdditions, additionsByBot.size());
 
     uint32_t processed = 0;
@@ -319,7 +319,7 @@ void ProcessCardAdditionsMigration(PBC_EventItem& ev)
 
         if (!res.success || res.text.empty())
         {
-            PBC_Log(PBC_LogLevel::WARNING,
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING,
                      "CardAdditionsMigration: LLM failed for character={}, skipping",
                      charName.empty() ? fmt::format("guid:{}", botGuid) : charName);
             processed += additions.size();
@@ -330,7 +330,7 @@ void ProcessCardAdditionsMigration(PBC_EventItem& ev)
         totalMemories += memCount;
         processed += additions.size();
 
-        PBC_Log(PBC_LogLevel::DEFAULT,
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT,
                  "CardAdditionsMigration: character={} additions={} memories_extracted={} progress={}/{}",
                  charName.empty() ? fmt::format("guid:{}", botGuid) : charName,
                  additions.size(), memCount, processed, totalAdditions);
@@ -338,7 +338,7 @@ void ProcessCardAdditionsMigration(PBC_EventItem& ev)
 
     PBC_LoadMemoriesFromDB();
 
-    PBC_Log(PBC_LogLevel::DEFAULT,
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT,
              "CardAdditionsMigration: complete. {} additions processed, {} memories created.",
              totalAdditions, totalMemories);
 
@@ -349,7 +349,7 @@ void ProcessCombatSummarization(PBC_EventItem& ev)
 {
     if (ev.combatSystemPrompt.empty() || ev.combatUserPrompt.empty())
     {
-        PBC_Log(PBC_LogLevel::WARNING, "ProcessEvent: CombatSummarization prompts empty, skipping");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "ProcessEvent: CombatSummarization prompts empty, skipping");
         g_PBC_EventThreadDone.store(true);
         return;
     }
@@ -357,7 +357,7 @@ void ProcessCombatSummarization(PBC_EventItem& ev)
     PBC_LLMResult summary = PBC_CallLLM(ev.combatSystemPrompt, ev.combatUserPrompt);
     if (!summary.success || summary.text.empty())
     {
-        PBC_Log(PBC_LogLevel::WARNING, "ProcessEvent: CombatSummarization LLM failed");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "ProcessEvent: CombatSummarization LLM failed");
         g_PBC_EventThreadDone.store(true);
         return;
     }
@@ -372,7 +372,7 @@ void ProcessQuestSummarization(PBC_EventItem& ev)
 {
     if (ev.questSystemPrompt.empty() || ev.questUserPrompt.empty())
     {
-        PBC_Log(PBC_LogLevel::WARNING, "ProcessEvent: QuestSummarization prompts empty, skipping");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "ProcessEvent: QuestSummarization prompts empty, skipping");
         g_PBC_EventThreadDone.store(true);
         return;
     }
@@ -380,7 +380,7 @@ void ProcessQuestSummarization(PBC_EventItem& ev)
     PBC_LLMResult summary = PBC_CallLLM(ev.questSystemPrompt, ev.questUserPrompt);
     if (!summary.success || summary.text.empty())
     {
-        PBC_Log(PBC_LogLevel::WARNING, "ProcessEvent: QuestSummarization LLM failed");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "ProcessEvent: QuestSummarization LLM failed");
         g_PBC_EventThreadDone.store(true);
         return;
     }
@@ -396,7 +396,7 @@ void ProcessNormal(PBC_EventItem& ev,
                    const std::string& condenseSysPrompt,
                    const std::string& condenseUsrTmpl)
 {
-    PBC_Log(PBC_LogLevel::DEBUG, "ProcessEvent: type={} respondingChars={} silentChars={} event=\"{}\"",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "ProcessEvent: type={} respondingChars={} silentChars={} event=\"{}\"",
              static_cast<int>(ev.type), ev.respondingChars.size(), ev.silentCharGuids.size(), ev.eventLine);
 
     std::string currentEvent = ev.eventLine;
@@ -443,14 +443,14 @@ void ProcessNormal(PBC_EventItem& ev,
         // Build user prompt from snapshot
         std::string userPrompt = PBC_BuildUserPromptFromSnapshot(snap, currentEvent);
 
-        PBC_Log(PBC_LogLevel::DEBUG, "ProcessEvent: calling LLM for character={} event=\"{}\"",
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "ProcessEvent: calling LLM for character={} event=\"{}\"",
                  snap.charName, currentEvent);
 
         PBC_LLMResult res = PBC_CallLLM(sysPrompt, userPrompt);
 
         if (!res.success || res.text.empty())
         {
-            PBC_Log(PBC_LogLevel::WARNING, "ProcessEvent: LLM failed/empty for character={}", snap.charName);
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "ProcessEvent: LLM failed/empty for character={}", snap.charName);
             continue;
         }
 
@@ -545,7 +545,7 @@ void ProcessNormal(PBC_EventItem& ev,
         lastReplyLine     = replyLine;
         lastEventLine     = currentEvent;
 
-        PBC_Log(PBC_LogLevel::DEBUG, "ProcessEvent: character={} replied", snap.charName);
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "ProcessEvent: character={} replied", snap.charName);
     }
 
     // -----------------------------------------------------------------------
@@ -592,7 +592,7 @@ void ProcessNormal(PBC_EventItem& ev,
             g_PBC_PendingEventRequests.push(std::move(req));
         }
 
-        PBC_Log(PBC_LogLevel::DEBUG,
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG,
                  "ProcessEvent: queued secondary event from last responder guid={} "
                  "excluded={} silent={} event=\"{}\"",
                  lastResponderGuid, dbgExcluded, ev.silentCharGuids.size(), dbgEvent);

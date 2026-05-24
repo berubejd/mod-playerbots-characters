@@ -35,7 +35,7 @@ uint32_t PBC_LoadWMOAreaNames()
     std::ifstream file(dbcPath, std::ios::binary);
     if (!file.is_open())
     {
-        PBC_Log(PBC_LogLevel::WARNING, "Could not open WMOAreaTable.dbc at '{}' — WMO area names will not be available.", dbcPath);
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "Could not open WMOAreaTable.dbc at '{}' — WMO area names will not be available.", dbcPath);
         return 0;
     }
 
@@ -46,7 +46,7 @@ uint32_t PBC_LoadWMOAreaNames()
     file.read(magic, 4);
     if (std::memcmp(magic, "WDBC", 4) != 0)
     {
-        PBC_Log(PBC_LogLevel::ERROR, "WMOAreaTable.dbc has invalid magic — skipping.");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "WMOAreaTable.dbc has invalid magic — skipping.");
         return 0;
     }
 
@@ -57,13 +57,13 @@ uint32_t PBC_LoadWMOAreaNames()
 
     if (fieldCount != WMO_DBC_FIELD_COUNT)
     {
-        PBC_Log(PBC_LogLevel::ERROR, "WMOAreaTable.dbc has unexpected field count {} (expected {}) — skipping.", fieldCount, WMO_DBC_FIELD_COUNT);
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "WMOAreaTable.dbc has unexpected field count {} (expected {}) — skipping.", fieldCount, WMO_DBC_FIELD_COUNT);
         return 0;
     }
 
     if (recordSize != WMO_DBC_RECORD_SIZE)
     {
-        PBC_Log(PBC_LogLevel::ERROR, "WMOAreaTable.dbc has unexpected record size {} (expected {}) — skipping.", recordSize, WMO_DBC_RECORD_SIZE);
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "WMOAreaTable.dbc has unexpected record size {} (expected {}) — skipping.", recordSize, WMO_DBC_RECORD_SIZE);
         return 0;
     }
 
@@ -73,7 +73,7 @@ uint32_t PBC_LoadWMOAreaNames()
     file.read(data.data(), data.size());
     if (!file)
     {
-        PBC_Log(PBC_LogLevel::ERROR, "WMOAreaTable.dbc read error — skipping.");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "WMOAreaTable.dbc read error — skipping.");
         return 0;
     }
     file.close();
@@ -114,7 +114,7 @@ uint32_t PBC_LoadWMOAreaNames()
         ++loaded;
     }
 
-    PBC_Log(PBC_LogLevel::DEFAULT, "Loaded {} WMO area names from WMOAreaTable.dbc.", loaded);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Loaded {} WMO area names from WMOAreaTable.dbc.", loaded);
     return loaded;
 }
 

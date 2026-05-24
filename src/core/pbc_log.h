@@ -15,10 +15,10 @@ extern bool g_PBC_DebugEnabled;
 // ---------------------------------------------------------------------------
 enum class PBC_LogLevel
 {
-    DEFAULT,   // Startup, event triggers — no level tag in output
-    DEBUG,     // Detailed event tracking, LLM requests — skipped when PBC.DebugEnabled = 0
-    WARNING,   // Weird situations, migration prompts
-    ERROR      // Errors
+    PBC_LOG_LEVEL_DEFAULT,   // Startup, event triggers — no level tag in output
+    PBC_LOG_LEVEL_DEBUG,     // Detailed event tracking, LLM requests — skipped when PBC.DebugEnabled = 0
+    PBC_LOG_LEVEL_WARNING,   // Weird situations, migration prompts
+    PBC_LOG_LEVEL_ERROR      // Errors
 };
 
 // ---------------------------------------------------------------------------
@@ -32,28 +32,28 @@ enum class PBC_LogLevel
 // - ERROR   uses LOG_ERROR (red in console).
 // - DEFAULT and DEBUG use LOG_INFO.
 //
-// Usage:   PBC_Log(PBC_LogLevel::DEBUG, "LLM reply ({} tokens): {}", tokens, text);
+// Usage:   PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "LLM reply ({} tokens): {}", tokens, text);
 // ---------------------------------------------------------------------------
 template<typename... Args>
 void PBC_Log(PBC_LogLevel level, const char* fmt, Args&&... args)
 {
-    if (level == PBC_LogLevel::DEBUG && !g_PBC_DebugEnabled)
+    if (level == PBC_LogLevel::PBC_LOG_LEVEL_DEBUG && !g_PBC_DebugEnabled)
         return;
 
     std::string message = fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
 
     switch (level)
     {
-        case PBC_LogLevel::DEFAULT:
+        case PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT:
             LOG_INFO("server.loading", "[PBC] {}", message);
             break;
-        case PBC_LogLevel::DEBUG:
+        case PBC_LogLevel::PBC_LOG_LEVEL_DEBUG:
             LOG_INFO("server.loading", "[PBC] [DEBUG] {}", message);
             break;
-        case PBC_LogLevel::WARNING:
+        case PBC_LogLevel::PBC_LOG_LEVEL_WARNING:
             LOG_WARN("server.loading", "[PBC] [WARNING] {}", message);
             break;
-        case PBC_LogLevel::ERROR:
+        case PBC_LogLevel::PBC_LOG_LEVEL_ERROR:
             LOG_ERROR("server.loading", "[PBC] [ERROR] {}", message);
             break;
     }

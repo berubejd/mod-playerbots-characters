@@ -28,7 +28,7 @@ static void HandleQuestTaken(Player* player, Quest const* quest,
 
     if (g_PBC_QuestTakenSystemPrompt.empty() || g_PBC_QuestTakenUserPrompt.empty())
     {
-        PBC_Log(PBC_LogLevel::WARNING, "HandleQuestTaken: prompts not configured, skipping");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "HandleQuestTaken: prompts not configured, skipping");
         return;
     }
 
@@ -37,7 +37,7 @@ static void HandleQuestTaken(Player* player, Quest const* quest,
     std::string questLogDescription = PBC_StripWowTextCodes(quest->GetObjectives());
     std::string questCompletionLog  = PBC_StripWowTextCodes(quest->GetCompletedText());
 
-    PBC_Log(PBC_LogLevel::DEBUG, "HandleQuestTaken: leader={} quest='{}' (id={}) giver='{}' type='{}'",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HandleQuestTaken: leader={} quest='{}' (id={}) giver='{}' type='{}'",
              player->GetName(), questTitle, quest->GetQuestId(), questGiver, questGiverType);
 
     std::string userPrompt = PBC_SubstituteQuestVars(

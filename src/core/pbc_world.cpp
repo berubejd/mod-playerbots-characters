@@ -27,7 +27,7 @@ void PBC_WorldScript::OnStartup()
 
     if (!g_PBC_Enable)
     {
-        PBC_Log(PBC_LogLevel::DEFAULT, "Module is disabled, skipping initialization.");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Module is disabled, skipping initialization.");
         return;
     }
 
@@ -45,7 +45,7 @@ void PBC_WorldScript::OnStartup()
     {
         if (!PBC_HttpServerStart(g_PBC_HttpServerBind, g_PBC_HttpServerPort, g_PBC_HttpServerTimeout))
         {
-            PBC_Log(PBC_LogLevel::ERROR, "HTTP server could not be started on {}:{} — treating as disabled. "
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "HTTP server could not be started on {}:{} — treating as disabled. "
                       "The rest of the module continues normally.",
                       g_PBC_HttpServerBind, g_PBC_HttpServerPort);
             g_PBC_HttpServerPort = 0; // treat as disabled
@@ -53,14 +53,14 @@ void PBC_WorldScript::OnStartup()
     }
     else
     {
-        PBC_Log(PBC_LogLevel::DEFAULT, "HTTP server disabled (PBC.HttpServerPort = 0).");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "HTTP server disabled (PBC.HttpServerPort = 0).");
     }
 
-    PBC_Log(PBC_LogLevel::DEFAULT, "Module started.");
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Module started.");
     if (DB_MemoriesTableEmpty() && DB_CardAdditionsTableNotEmpty())
     {
         g_PBC_CardAdditionsMigrationNeeded = true;
-        PBC_Log(PBC_LogLevel::WARNING, "Legacy card additions detected but no memories found. "
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "Legacy card additions detected but no memories found. "
                  "Run `.chars migrate-card-additions` from the server console to migrate. "
                  "This warning will repeat every 60 seconds until the migration is performed or the `mod_pbc_character_card_additions` table is deleted.");
     }
@@ -70,13 +70,13 @@ void PBC_WorldScript::OnShutdown()
 {
     if (PBC_HttpServerIsRunning())
     {
-        PBC_Log(PBC_LogLevel::DEFAULT, "Stopping HTTP server...");
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Stopping HTTP server...");
         PBC_HttpServerStop();
     }
 
     // History is written to DB on every PBC_AppendHistory call,
     // so no explicit flush is needed on shutdown.
-    PBC_Log(PBC_LogLevel::DEFAULT, "Module shutdown.");
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Module shutdown.");
 }
 
 
@@ -126,7 +126,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 int histTokens = PBC_EstimateHistoryTokens(playerGuid);
                 if (histTokens > static_cast<int>(g_PBC_MaxHistoryCtx))
                 {
-                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: player character={} history tokens={} exceeds limit {}, triggering condensation",
+                    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "OnUpdate: player character={} history tokens={} exceeds limit {}, triggering condensation",
                              player->GetName(), histTokens, g_PBC_MaxHistoryCtx);
                     PBC_TriggerCondensation(player);
                 }
@@ -142,7 +142,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
         if (s_lastMigrationWarn == 0 || (now - s_lastMigrationWarn) >= 60)
         {
             s_lastMigrationWarn = now;
-            PBC_Log(PBC_LogLevel::WARNING, "Legacy card additions detected but no memories found. "
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "Legacy card additions detected but no memories found. "
                      "Run `.chars migrate-card-additions` from the server console to migrate.");
         }
     }
@@ -206,7 +206,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
                 PBC_RollBotsWithPenalty(newEv, targets, startingChance, "SecondaryEvent");
 
-                PBC_Log(PBC_LogLevel::DEBUG,
+                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG,
                              "OnUpdate: secondary event materialised — "
                              "targets={} responding={} silent={} event=\"{}\"",
                              targets.size(),
@@ -238,7 +238,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
             if (!sender || !sender->IsInWorld() || !target || !target->IsInWorld())
             {
-                PBC_Log(PBC_LogLevel::DEBUG, "API whisper: sender or target not online, skipping");
+                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API whisper: sender or target not online, skipping");
                 localWhispers.pop();
                 continue;
             }
@@ -246,7 +246,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             WorldSession* ts = target->GetSession();
             if (!ts || !ts->IsBot())
             {
-                PBC_Log(PBC_LogLevel::DEBUG, "API whisper: target is not a character, skipping");
+                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API whisper: target is not a character, skipping");
                 localWhispers.pop();
                 continue;
             }
@@ -271,7 +271,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             Player* sender = ObjectAccessor::FindPlayer(ObjectGuid(pm.senderGuid));
             if (!sender || !sender->IsInWorld())
             {
-                PBC_Log(PBC_LogLevel::DEBUG, "API party message: sender GUID={} is not online, skipping", pm.senderGuid);
+                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API party message: sender GUID={} is not online, skipping", pm.senderGuid);
                 localMsgs.pop();
                 continue;
             }
@@ -296,7 +296,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             Player* target = ObjectAccessor::FindPlayer(ObjectGuid(tr.targetGuid));
             if (!target || !target->IsInWorld())
             {
-                PBC_Log(PBC_LogLevel::DEBUG, "API trigger: target GUID={} is not online, skipping", tr.targetGuid);
+                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API trigger: target GUID={} is not online, skipping", tr.targetGuid);
                 localTriggers.pop();
                 continue;
             }
@@ -304,7 +304,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             WorldSession* ts = target->GetSession();
             if (!ts)
             {
-                PBC_Log(PBC_LogLevel::DEBUG, "API trigger: target GUID={} has no session, skipping", tr.targetGuid);
+                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API trigger: target GUID={} has no session, skipping", tr.targetGuid);
                 localTriggers.pop();
                 continue;
             }
@@ -314,7 +314,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
             if (!isBot)
             {
-                PBC_Log(PBC_LogLevel::DEBUG, "API trigger: target GUID={} is not a character, skipping", tr.targetGuid);
+                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API trigger: target GUID={} is not a character, skipping", tr.targetGuid);
                 localTriggers.pop();
                 continue;
             }
@@ -411,7 +411,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                         bot->Say(action.text, LANG_UNIVERSAL);
                     }
 
-                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: sent chat for character={} type={}",
+                    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "OnUpdate: sent chat for character={} type={}",
                                  bot->GetName(), ct);
                 }
             }
@@ -444,18 +444,18 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             {
                 case PBC_EventType::Normal:
                 case PBC_EventType::QuestSummarization:
-                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: spawning event thread for type={} event=\"{}\"",
+                    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "OnUpdate: spawning event thread for type={} event=\"{}\"",
                              static_cast<int>(nextEvent.type), nextEvent.eventLine);
                     break;
                 case PBC_EventType::Condensation:
-                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: spawning event thread for type=Condensation character=\"{}\"",
+                    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "OnUpdate: spawning event thread for type=Condensation character=\"{}\"",
                              nextEvent.condensationChar.charName);
                     break;
                 case PBC_EventType::HistoryReload:
-                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: spawning event thread for type=HistoryReload");
+                    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "OnUpdate: spawning event thread for type=HistoryReload");
                     break;
                 case PBC_EventType::RelationshipUpdate:
-                    PBC_Log(PBC_LogLevel::DEBUG, "OnUpdate: spawning event thread for type=RelationshipUpdate character=\"{}\" target=\"{}\"",
+                    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "OnUpdate: spawning event thread for type=RelationshipUpdate character=\"{}\" target=\"{}\"",
                              nextEvent.relationshipChar.charName, nextEvent.relationshipTargetName);
                     break;
             }

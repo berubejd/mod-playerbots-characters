@@ -1,3 +1,8 @@
+#ifdef _WIN32
+#undef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00
+#endif
+
 #include "pbc_http.h"
 #include "pbc_http_handlers.h"
 #include "pbc_http_auth.h"
@@ -328,7 +333,7 @@ static size_t ParseQueryId(const httplib::Request& req, httplib::Response& res)
 // ---------------------------------------------------------------------------
 void HandleGetRoot(const httplib::Request& req, httplib::Response& res)
 {
-    PBC_Log(PBC_LogLevel::DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
     res.set_content("hello", "text/plain");
 }
 
@@ -696,7 +701,7 @@ void HandlePostCharHistory(const httplib::Request& req, httplib::Response& res,
     PBC_HistoryResult result = PBC_UpdateHistoryLine(charGuid, index, newMessage, originalMessage);
     if (!RespondMutationResult(res, result, "Message")) return;
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API history edit: character GUID={} index={}", charGuid, index);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API history edit: character GUID={} index={}", charGuid, index);
     res.set_content("{\"status\":\"updated\"}", "application/json");
 }
 
@@ -723,7 +728,7 @@ void HandleDeleteCharHistory(const httplib::Request& req, httplib::Response& res
     PBC_HistoryResult result = PBC_DeleteHistoryLine(charGuid, index, originalMessage);
     if (!RespondMutationResult(res, result, "Message")) return;
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API history delete: character GUID={} index={}", charGuid, index);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API history delete: character GUID={} index={}", charGuid, index);
     res.set_content("{\"status\":\"deleted\"}", "application/json");
 }
 
@@ -903,7 +908,7 @@ void HandlePostCharMemory(const httplib::Request& req, httplib::Response& res,
     PBC_HistoryResult result = PBC_UpdateMemory(charGuid, memId, newText, newImportance, originalText);
     if (!RespondMutationResult(res, result, "Memory")) return;
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API memory edit: character GUID={} memory id={}", charGuid, memId);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API memory edit: character GUID={} memory id={}", charGuid, memId);
     res.set_content("{\"status\":\"updated\"}", "application/json");
 }
 
@@ -941,7 +946,7 @@ void HandleDeleteCharMemory(const httplib::Request& req, httplib::Response& res,
     PBC_HistoryResult result = PBC_DeleteMemory(charGuid, memId, originalText);
     if (!RespondMutationResult(res, result, "Memory")) return;
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API memory delete: character GUID={} memory id={}", charGuid, memId);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API memory delete: character GUID={} memory id={}", charGuid, memId);
     res.set_content("{\"status\":\"deleted\"}", "application/json");
 }
 
@@ -1000,7 +1005,7 @@ void HandlePostCharRelationships(const httplib::Request& req, httplib::Response&
     PBC_HistoryResult result = PBC_UpdateRelationship(charGuid, targetName, newText, originalText);
     if (!RespondMutationResult(res, result, "Relationship")) return;
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API relationship edit: character GUID={} target={}", charGuid, targetName);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API relationship edit: character GUID={} target={}", charGuid, targetName);
     res.set_content("{\"status\":\"updated\"}", "application/json");
 }
 
@@ -1032,7 +1037,7 @@ void HandleDeleteCharRelationships(const httplib::Request& req, httplib::Respons
     PBC_HistoryResult result = PBC_DeleteRelationship(charGuid, targetName, originalText);
     if (!RespondMutationResult(res, result, "Relationship")) return;
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API relationship delete: character GUID={} target={}", charGuid, targetName);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API relationship delete: character GUID={} target={}", charGuid, targetName);
     res.set_content("{\"status\":\"deleted\"}", "application/json");
 }
 
@@ -1109,7 +1114,7 @@ void HandlePostCharData(const httplib::Request& req, httplib::Response& res,
             }
             DB_UpsertRollChanceModifier(charGuid, value);
 
-            PBC_Log(PBC_LogLevel::DEBUG, "API data update: character GUID={} roll_modifier={}", charGuid, value);
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API data update: character GUID={} roll_modifier={}", charGuid, value);
         }
     }
 
@@ -1226,7 +1231,7 @@ void HandlePostCharWhisper(const httplib::Request& req, httplib::Response& res,
         g_PBC_PendingWhisperRequests.push(std::move(wr));
     }
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API whisper queued: player GUID={} -> character GUID={}", senderGuid, charGuid);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API whisper queued: player GUID={} -> character GUID={}", senderGuid, charGuid);
     res.set_content("{\"status\":\"queued\"}", "application/json");
 }
 
@@ -1256,7 +1261,7 @@ void HandlePostCharNarrate(const httplib::Request& req, httplib::Response& res,
     std::string histLine = PBC_MakeHistLine(message);
     PBC_AppendHistory(charGuid, histLine);
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API narrate: character GUID={} message=\"{}\"", charGuid, message);
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API narrate: character GUID={} message=\"{}\"", charGuid, message);
     res.set_content("{\"status\":\"ok\"}", "application/json");
 }
 
@@ -1328,7 +1333,7 @@ void HandlePostPartyNarrate(const httplib::Request& req, httplib::Response& res,
         return;
     }
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API party narrate: account={} characters={}",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API party narrate: account={} characters={}",
              authInfo.accountId, count);
 
     json response;
@@ -1391,7 +1396,7 @@ void HandlePostCharTrigger(const httplib::Request& req, httplib::Response& res,
         g_PBC_PendingTriggerRequests.push(std::move(tr));
     }
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API trigger queued: character GUID={} (isBot={} isOwnCharacter={})",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API trigger queued: character GUID={} (isBot={} isOwnCharacter={})",
              charGuid, isBot, isOwnCharacter);
     res.set_content("{\"status\":\"queued\"}", "application/json");
 }
@@ -1440,7 +1445,7 @@ void HandlePostPartyMessage(const httplib::Request& req, httplib::Response& res,
         g_PBC_PendingPartyMessageRequests.push(std::move(pm));
     }
 
-    PBC_Log(PBC_LogLevel::DEBUG, "API party message queued: player GUID={}",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "API party message queued: player GUID={}",
              player->GetGUID().GetCounter());
     res.set_content("{\"status\":\"queued\"}", "application/json");
 }

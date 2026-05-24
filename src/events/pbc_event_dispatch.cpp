@@ -101,7 +101,7 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
 
     if (!anchorIsReal && !PBC_BotIsGroupedWithRealPlayer(anchor))
     {
-        PBC_Log(PBC_LogLevel::DEBUG, "DispatchGroupEvent: skipped — no real player in group (anchor={})", anchor->GetName());
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "DispatchGroupEvent: skipped — no real player in group (anchor={})", anchor->GetName());
         return;
     }
 
@@ -113,7 +113,7 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
 
     std::shuffle(bots.begin(), bots.end(), PBC_GetRNG());
 
-    PBC_Log(PBC_LogLevel::DEBUG, "DispatchGroupEvent: anchor={} bots={} chance={}% event=\"{}\"",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "DispatchGroupEvent: anchor={} bots={} chance={}% event=\"{}\"",
              anchor->GetName(), bots.size(), chance, eventLine);
 
     PBC_EventItem ev;
@@ -160,7 +160,7 @@ void PBC_RollBotsWithPenalty(PBC_EventItem& ev,
     {
         if (currentChance == 0)
         {
-            PBC_Log(PBC_LogLevel::DEBUG, "Roll {} character={} chance=0% -> silent (no chance left)",
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Roll {} character={} chance=0% -> silent (no chance left)",
                      debugLabel, bot->GetName());
             ev.silentCharGuids.push_back(bot->GetGUID().GetCounter());
             continue;
@@ -168,7 +168,7 @@ void PBC_RollBotsWithPenalty(PBC_EventItem& ev,
 
         uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), currentChance);
         bool rolled = PBC_RollChance(effectiveChance);
-        PBC_Log(PBC_LogLevel::DEBUG, "Roll {} character={} chance={}% (base={}% mod={}) -> {}",
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Roll {} character={} chance={}% (base={}% mod={}) -> {}",
                  debugLabel, bot->GetName(), effectiveChance, currentChance,
                  static_cast<int32_t>(effectiveChance) - static_cast<int32_t>(currentChance),
                  rolled ? "RESPOND" : "silent");
@@ -219,7 +219,7 @@ void PBC_RollBotsForMessage(PBC_EventItem& ev,
             mentionedGuids.insert(bot->GetGUID().GetCounter());
             uint32_t effectiveChance = PBC_GetEffectiveChance(bot->GetGUID().GetCounter(), g_PBC_ReplyChanceMention);
             bool rolled = PBC_RollChance(effectiveChance);
-            PBC_Log(PBC_LogLevel::DEBUG, "Roll mention character={} chance={}% -> {}",
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Roll mention character={} chance={}% -> {}",
                      bot->GetName(), effectiveChance, rolled ? "RESPOND" : "silent");
             if (rolled)
                 ev.respondingChars.push_back(PBC_SnapshotCharacter(bot));
@@ -259,7 +259,7 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
     std::string eventLine   = senderName + " tells you privately: " + msg;
     std::string historyLine = senderName + " (privately to you): " + msg;
 
-    PBC_Log(PBC_LogLevel::DEBUG, "Whisper event: {} -> {}: \"{}\" (chance={}%)",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Whisper event: {} -> {}: \"{}\" (chance={}%)",
              senderName, targetName, msg, g_PBC_ReplyChanceWhisper);
 
     PBC_EventItem ev;
@@ -316,7 +316,7 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
     // -------------------------------------------------------------------
     if (lastLine.empty())
     {
-        PBC_Log(PBC_LogLevel::DEBUG, "PickTriggerEventLine: guid={} char='{}' — no history, using default",
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PickTriggerEventLine: guid={} char='{}' — no history, using default",
                 botGuid, charName);
         return "you feel the urge to say something";
     }
@@ -359,7 +359,7 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
     bool lastIsOwn       = !charName.empty() && speakerName(lastLine) == charName;
     bool lastIsTimePasses = (lastLine == kTimePassesLine);
 
-    PBC_Log(PBC_LogLevel::DEBUG,
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG,
             "PickTriggerEventLine: guid={} char='{}' lastLine_len={} "
             "isNarrator={} isWhisper={} isOwn={} isTimePasses={} "
             "lastLine==kTimePassesLine={} speaker='{}'",
@@ -372,7 +372,7 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
     // -------------------------------------------------------------------
     if (lastIsTimePasses)
     {
-        PBC_Log(PBC_LogLevel::DEBUG,
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG,
                 "PickTriggerEventLine: guid={} char='{}' → case 1 (time passes) — random you_want_to variant",
                 botGuid, charName);
 
@@ -392,7 +392,7 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
     // -------------------------------------------------------------------
     if (lastIsNarrator)
     {
-        PBC_Log(PBC_LogLevel::DEBUG,
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG,
                 "PickTriggerEventLine: guid={} char='{}' → case 2 (narrator, not time passes) — urge_to_comment",
                 botGuid, charName);
         return "you feel the urge to comment on the last thing that happened";
@@ -405,14 +405,14 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
     {
         if (lastIsOwn)
         {
-            PBC_Log(PBC_LogLevel::DEBUG,
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG,
                     "PickTriggerEventLine: guid={} char='{}' → case 3a (own reply) — saying_more",
                     botGuid, charName);
             return "you feel like saying more";
         }
         else
         {
-            PBC_Log(PBC_LogLevel::DEBUG,
+            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG,
                     "PickTriggerEventLine: guid={} char='{}' → case 3b (other reply) — answering_that",
                     botGuid, charName);
             return "you feel like answering that";
@@ -422,7 +422,7 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
     // -------------------------------------------------------------------
     // Case 4: Whisper or other → default
     // -------------------------------------------------------------------
-    PBC_Log(PBC_LogLevel::DEBUG,
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG,
             "PickTriggerEventLine: guid={} char='{}' → case 4 (whisper/fallthrough) — default",
             botGuid, charName);
     return "you feel the urge to say something";
@@ -467,7 +467,7 @@ void PBC_DispatchTriggerEvent(Player* bot)
 
     AddTrackedPlayersToEvent(ev, bot);
 
-    PBC_Log(PBC_LogLevel::DEBUG, "Trigger event: character={} chatType={} silentChars={} event=\"{}\"",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Trigger event: character={} chatType={} silentChars={} event=\"{}\"",
              bot->GetName(), chatType, ev.silentCharGuids.size(), eventText);
 
     PBC_PushEvent(std::move(ev));
@@ -494,12 +494,12 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
     std::vector<Player*> bots = isGroupChat ? PBC_FindGroupBots(sender) : PBC_FindNearbyBots(sender);
     if (bots.empty())
     {
-        PBC_Log(PBC_LogLevel::DEBUG, "Chat message event from {} type={} discarded — no bots found ({})",
+        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Chat message event from {} type={} discarded — no bots found ({})",
                  senderName, chatType, isGroupChat ? "group empty" : "none nearby");
         return;
     }
 
-    PBC_Log(PBC_LogLevel::DEBUG, "Chat message event from {} type={} ({} bots): \"{}\"",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Chat message event from {} type={} ({} bots): \"{}\"",
              senderName, chatType, bots.size(), msg);
 
     PBC_EventItem ev;
@@ -513,7 +513,7 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
 
     AddTrackedPlayersToEvent(ev, sender);
 
-    PBC_Log(PBC_LogLevel::DEBUG, "Chat from {} type={} -> {}/{} bots will respond",
+    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Chat from {} type={} -> {}/{} bots will respond",
              senderName, chatType, ev.respondingChars.size(), bots.size());
 
     PBC_PushEvent(std::move(ev));
