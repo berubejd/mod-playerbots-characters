@@ -10,7 +10,6 @@ class Group;
 class Item;
 class Creature;
 class Quest;
-struct Quest const;
 class Roll;
 
 // ---------------------------------------------------------------------------

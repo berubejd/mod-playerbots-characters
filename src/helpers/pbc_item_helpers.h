@@ -4,7 +4,7 @@
 #include <string>
 #include "Define.h"
 
-class ItemTemplate;
+struct ItemTemplate;
 
 // ---------------------------------------------------------------------------
 // Shared item description helpers
