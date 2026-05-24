@@ -219,27 +219,27 @@ void PBC_LoadConfig(bool /*isStartup*/)
         {
             if (check.value.empty())
             {
-                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "{} is not set. This is a required setting when the module is enabled.", check.key);
+                PBC_Log(PBC_LogLevel::PBC_ERROR, "{} is not set. This is a required setting when the module is enabled.", check.key);
                 configValid = false;
             }
         }
 
         if (g_PBC_MaxHistoryCtx == 0)
         {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "PBC.MaxHistoryCtx is not set (or is 0). This is a required setting when the module is enabled.");
+            PBC_Log(PBC_LogLevel::PBC_ERROR, "PBC.MaxHistoryCtx is not set (or is 0). This is a required setting when the module is enabled.");
             configValid = false;
         }
 
         if (!configValid)
         {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "Required configuration is missing or empty. Module DISABLED — fix your playerbots_characters.conf and reload with .chars reload.");
+            PBC_Log(PBC_LogLevel::PBC_ERROR, "Required configuration is missing or empty. Module DISABLED — fix your playerbots_characters.conf and reload with .chars reload.");
             g_PBC_Enable = false;
             return;
         }
 
         if (g_PBC_HttpServerPort > 0 && g_PBC_HttpServerPrivateKey.empty())
         {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "PBC.HttpServerPrivateKey is not set but PBC.HttpServerPort is {}. "
+            PBC_Log(PBC_LogLevel::PBC_ERROR, "PBC.HttpServerPrivateKey is not set but PBC.HttpServerPort is {}. "
                       "The private key is required for the authorization layer when the HTTP server is enabled. "
                       "HTTP server will NOT start.", g_PBC_HttpServerPort);
         }
@@ -247,12 +247,12 @@ void PBC_LoadConfig(bool /*isStartup*/)
 
     if (g_PBC_Enable && !PBC_LoadPrompts())
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "Failed to load prompts. Module DISABLED — fix prompt path and reload with .chars reload.");
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Failed to load prompts. Module DISABLED — fix prompt path and reload with .chars reload.");
         g_PBC_Enable = false;
         return;
     }
 
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT,
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT,
         "Config: Enable={} APIType='{}' Model='{}' Url='{}' MaxHistoryCtx={} MaxMemoriesCtx={} Timeout={}s "
         "Chances: Whisper={}% Mention={}% Message={}% RollPenalty={}% "
         "Item={}% Duel={}% LevelUp={}% HardCombat={}% QuestCompleted={}% QuestTaken={}%",
@@ -264,12 +264,12 @@ void PBC_LoadConfig(bool /*isStartup*/)
         g_PBC_ReplyChanceDuel, g_PBC_ReplyChanceLevelUp,
         g_PBC_ReplyChanceHardCombat, g_PBC_ReplyChanceQuestCompleted, g_PBC_ReplyChanceQuestTaken);
 
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT,
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT,
         "HTTP Server: Port={} Bind='{}' Timeout={}s BaseUrl='{}' PrivateKey={} FrontendPath='{}'",
         g_PBC_HttpServerPort, g_PBC_HttpServerBind, g_PBC_HttpServerTimeout, g_PBC_HttpServerBaseUrl,
         g_PBC_HttpServerPrivateKey.empty() ? "(not set)" : "(set)", g_PBC_HttpServerFrontendPath);
 
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT,
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT,
         "Alt Model: Condensation={} RelationshipUpdate={} APIType='{}' Model='{}' Url='{}' Timeout={}s",
         g_PBC_UseAltModelForCondensation, g_PBC_UseAltModelForRelationshipUpdate,
         g_PBC_AltModelAPIType, g_PBC_AltModel, g_PBC_AltModelBaseUrl, g_PBC_AltModelRequestTimeoutSec);
@@ -290,7 +290,7 @@ static bool LoadPromptFile(const std::string& customPath,
         buf << fCustom.rdbuf();
         if (buf.str().empty())
         {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "Custom prompt file is empty: {}", customPath);
+            PBC_Log(PBC_LogLevel::PBC_WARNING, "Custom prompt file is empty: {}", customPath);
         }
         else
         {
@@ -304,7 +304,7 @@ static bool LoadPromptFile(const std::string& customPath,
     std::ifstream fDefault(defaultPath);
     if (!fDefault)
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "Cannot open prompt file: {}",
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Cannot open prompt file: {}",
                   defaultPath);
         return false;
     }
@@ -313,7 +313,7 @@ static bool LoadPromptFile(const std::string& customPath,
     buf << fDefault.rdbuf();
     if (buf.str().empty())
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "Default prompt file is empty: {}", defaultPath);
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Default prompt file is empty: {}", defaultPath);
         return false;
     }
 
@@ -327,7 +327,7 @@ bool PBC_LoadPrompts()
     std::filesystem::path dir(g_PBC_PromptsPath);
     if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "Prompts directory not found: {}", g_PBC_PromptsPath);
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Prompts directory not found: {}", g_PBC_PromptsPath);
         return false;
     }
 
@@ -365,14 +365,14 @@ bool PBC_LoadPrompts()
         else if (usedCustom)
         {
             ++customCount;
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Loaded custom prompt '{}' ({} chars)", entry.filename, entry.target.size());
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "Loaded custom prompt '{}' ({} chars)", entry.filename, entry.target.size());
         }
     }
 
     if (!allOk)
         return false;
 
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Loaded {} prompt(s) from '{}' ({} custom)",
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Loaded {} prompt(s) from '{}' ({} custom)",
              static_cast<int>(sizeof(prompts) / sizeof(prompts[0])), g_PBC_PromptsPath, customCount);
     return true;
 }
@@ -385,7 +385,7 @@ void PBC_LoadCharacterCards()
     std::filesystem::path dir(g_PBC_CharacterCardsPath);
     if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "Character cards directory not found: {}", g_PBC_CharacterCardsPath);
+        PBC_Log(PBC_LogLevel::PBC_WARNING, "Character cards directory not found: {}", g_PBC_CharacterCardsPath);
         return;
     }
 
@@ -404,7 +404,7 @@ void PBC_LoadCharacterCards()
         std::string name = filename.substr(0, filename.size() - cardSuffix.size());
 
         std::ifstream f(path);
-        if (!f) { PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "Cannot open card file: {}", path.string()); continue; }
+        if (!f) { PBC_Log(PBC_LogLevel::PBC_WARNING, "Cannot open card file: {}", path.string()); continue; }
 
         std::stringstream buf;
         buf << f.rdbuf();
@@ -413,10 +413,10 @@ void PBC_LoadCharacterCards()
         g_PBC_CharacterCards[name] = std::move(cardText);
         ++loaded;
 
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Loaded card '{}' ({} chars)", name, g_PBC_CharacterCards[name].size());
+        PBC_Log(PBC_LogLevel::PBC_DEBUG, "Loaded card '{}' ({} chars)", name, g_PBC_CharacterCards[name].size());
     }
 
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Loaded {} character card(s) from '{}'", loaded, g_PBC_CharacterCardsPath);
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Loaded {} character card(s) from '{}'", loaded, g_PBC_CharacterCardsPath);
 }
 
 uint32_t PBC_GetEffectiveChance(uint64_t botGuid, uint32_t baseChance)

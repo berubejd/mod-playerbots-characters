@@ -254,7 +254,7 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
 
     if (g_PBC_QuestCompletedSystemPrompt.empty() || g_PBC_QuestCompletedUserPrompt.empty())
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "OnPlayerCompleteQuest: prompts not configured, skipping");
+        PBC_Log(PBC_LogLevel::PBC_WARNING, "OnPlayerCompleteQuest: prompts not configured, skipping");
         return;
     }
 
@@ -268,7 +268,7 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     std::string questGiverType      = PBC_GetQuestStarterType(quest->GetQuestId());
     std::string questEnderType      = PBC_GetQuestEnderType(quest->GetQuestId());
 
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "OnPlayerCompleteQuest: leader={} quest='{}' (id={})",
+    PBC_Log(PBC_LogLevel::PBC_DEBUG, "OnPlayerCompleteQuest: leader={} quest='{}' (id={})",
              player->GetName(), questTitle, quest->GetQuestId());
 
     std::string userPrompt = PBC_SubstituteQuestVars(

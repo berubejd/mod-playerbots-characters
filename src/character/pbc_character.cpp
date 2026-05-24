@@ -85,7 +85,7 @@ void PBC_TriggerCondensation(Player* bot)
 {
     if (!bot) return;
 
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "TriggerCondensation: queuing condensation for character={}", bot->GetName());
+    PBC_Log(PBC_LogLevel::PBC_DEBUG, "TriggerCondensation: queuing condensation for character={}", bot->GetName());
 
     PBC_EventItem ev;
     ev.type                      = PBC_EventType::Condensation;

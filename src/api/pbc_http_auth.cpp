@@ -168,21 +168,21 @@ static std::string CreateToken(uint32_t accountId)
     unsigned char iv[16];
     if (RAND_bytes(iv, 16) != 1)
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "CreateToken: RAND_bytes failed");
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "CreateToken: RAND_bytes failed");
         return "";
     }
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx)
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "CreateToken: EVP_CIPHER_CTX_new failed");
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "CreateToken: EVP_CIPHER_CTX_new failed");
         return "";
     }
 
     if (EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(), iv) != 1)
     {
         EVP_CIPHER_CTX_free(ctx);
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "CreateToken: EVP_EncryptInit_ex failed");
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "CreateToken: EVP_EncryptInit_ex failed");
         return "";
     }
 
@@ -191,7 +191,7 @@ static std::string CreateToken(uint32_t accountId)
     if (EVP_EncryptUpdate(ctx, ciphertext, &outLen1, plaintext, 16) != 1)
     {
         EVP_CIPHER_CTX_free(ctx);
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "CreateToken: EVP_EncryptUpdate failed");
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "CreateToken: EVP_EncryptUpdate failed");
         return "";
     }
 
@@ -199,7 +199,7 @@ static std::string CreateToken(uint32_t accountId)
     if (EVP_EncryptFinal_ex(ctx, ciphertext + outLen1, &outLen2) != 1)
     {
         EVP_CIPHER_CTX_free(ctx);
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "CreateToken: EVP_EncryptFinal_ex failed");
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "CreateToken: EVP_EncryptFinal_ex failed");
         return "";
     }
 
@@ -280,7 +280,7 @@ static uint32_t ValidateTokenImpl(const std::string& token)
 
 static std::string CreateToken(uint32_t /*accountId*/)
 {
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "CreateToken: OpenSSL not available — token creation impossible");
+    PBC_Log(PBC_LogLevel::PBC_ERROR, "CreateToken: OpenSSL not available — token creation impossible");
     return "";
 }
 
@@ -338,7 +338,7 @@ std::string PBC_HttpServerGenerateOTP(uint32_t accountId)
 
     if (attempts >= 10)
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "Failed to generate unique OTP after 10 attempts");
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Failed to generate unique OTP after 10 attempts");
         return "";
     }
 

@@ -223,7 +223,7 @@ void PBC_PollPartyState()
                 std::string eventLine = PBC_MakeEventLine("The party has started a flight to " + dest);
                 std::string histLine  = PBC_MakeHistLine("The party started a flight to " + dest);
 
-                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: flight started — group={} dest={} bots={} chance={}%",
+                PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: flight started — group={} dest={} bots={} chance={}%",
                          grpGuid, dest, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
 
                 PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
@@ -241,7 +241,7 @@ void PBC_PollPartyState()
                 // We keep state.location so we know where we departed from.
                 if (!state.candidateLocation.empty())
                 {
-                    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: location debounce interrupted by flight — group={} was debouncing '{}'->'{}'",
+                    PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: location debounce interrupted by flight — group={} was debouncing '{}'->'{}'",
                              grpGuid, state.location, state.candidateLocation);
                 }
                 state.candidateLocation.clear();
@@ -256,7 +256,7 @@ void PBC_PollPartyState()
                     state.location = gi.sharedZone;
                     if (!state.baselineLogged)
                     {
-                        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: location baseline set — group={} zone='{}' bots={}",
+                        PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: location baseline set — group={} zone='{}' bots={}",
                                  grpGuid, state.location, gi.bots.size());
                         state.baselineLogged = true;
                     }
@@ -269,12 +269,12 @@ void PBC_PollPartyState()
                         // New candidate zone (or first time seeing this change).
                         if (!state.candidateLocation.empty())
                         {
-                            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: location candidate changed — group={} from='{}' old_candidate='{}' new_candidate='{}'",
+                            PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: location candidate changed — group={} from='{}' old_candidate='{}' new_candidate='{}'",
                                      grpGuid, state.location, state.candidateLocation, gi.sharedZone);
                         }
                         else
                         {
-                            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: location change detected — group={} from='{}' to='{}' debounce=1/{}",
+                            PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: location change detected — group={} from='{}' to='{}' debounce=1/{}",
                                      grpGuid, state.location, gi.sharedZone, g_PBC_LocationChangeDebounceCycles);
                         }
                         state.candidateLocation = gi.sharedZone;
@@ -284,7 +284,7 @@ void PBC_PollPartyState()
                     {
                         // Same candidate — count stable cycles.
                         ++state.locationStableCycles;
-                        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: location debouncing — group={} candidate='{}' cycles={}/{}",
+                        PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: location debouncing — group={} candidate='{}' cycles={}/{}",
                                  grpGuid, state.candidateLocation, state.locationStableCycles, g_PBC_LocationChangeDebounceCycles);
                     }
 
@@ -293,7 +293,7 @@ void PBC_PollPartyState()
                         std::string eventLine = PBC_MakeEventLine("Party has arrived in " + gi.sharedZone);
                         std::string histLine  = PBC_MakeHistLine("Party moved to " + gi.sharedZone);
 
-                        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: location changed — group={} from='{}' to='{}' bots={} chance={}%",
+                        PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: location changed — group={} from='{}' to='{}' bots={} chance={}%",
                                  grpGuid, state.location, gi.sharedZone, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
 
                         state.location = gi.sharedZone;
@@ -309,7 +309,7 @@ void PBC_PollPartyState()
                     // Same zone as last confirmed — clear any stale debounce state.
                     if (!state.candidateLocation.empty())
                     {
-                        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: location returned to confirmed zone — group={} zone='{}' clearing candidate='{}'",
+                        PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: location returned to confirmed zone — group={} zone='{}' clearing candidate='{}'",
                                  grpGuid, state.location, state.candidateLocation);
                     }
                     state.candidateLocation.clear();
@@ -322,7 +322,7 @@ void PBC_PollPartyState()
                 // Don't spam — log only when there was an active debounce being interrupted.
                 if (!state.candidateLocation.empty())
                 {
-                    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: location debounce on hold — group={} party not all in same zone (candidate='{}')",
+                    PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: location debounce on hold — group={} party not all in same zone (candidate='{}')",
                              grpGuid, state.candidateLocation);
                 }
             }
@@ -334,19 +334,19 @@ void PBC_PollPartyState()
             tracker.wasInCombat = true;
             tracker.combatStartTime = GameTime::GetGameTime().count();
             tracker.partySize = gi.grp->GetMembersCount();
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: combat started — group={} partySize={}", grpGuid, tracker.partySize);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: combat started — group={} partySize={}", grpGuid, tracker.partySize);
         }
 
         if (gi.anyAliveInCombat && tracker.wasInCombat && tracker.combatEndCycles > 0)
         {
             tracker.combatEndCycles = 0;
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: combat resumed during debounce — group={}", grpGuid);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: combat resumed during debounce — group={}", grpGuid);
         }
 
         if (gi.allDead && tracker.wasInCombat)
         {
             tracker.wiped = true;
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: party wiped — group={}", grpGuid);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: party wiped — group={}", grpGuid);
         }
 
         if (!gi.anyAliveInCombat && !gi.allDead && tracker.wasInCombat)
@@ -355,14 +355,14 @@ void PBC_PollPartyState()
 
             if (tracker.combatEndCycles < g_PBC_CombatEndDebounceCycles)
             {
-                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: combat ended debouncing — group={} cycles={}/{}",
+                PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: combat ended debouncing — group={} cycles={}/{}",
                          grpGuid, tracker.combatEndCycles, g_PBC_CombatEndDebounceCycles);
                 continue;
             }
 
             if (g_PBC_ReplyChanceHardCombat == 0)
             {
-                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "PollPartyState: combat ended but ReplyChanceHardCombat=0, skipping — group={}", grpGuid);
+                PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: combat ended but ReplyChanceHardCombat=0, skipping — group={}", grpGuid);
                 tracker = PBC_GroupCombatTracker();
                 continue;
             }
@@ -473,7 +473,7 @@ void PBC_PollPartyState()
 
                 AddTrackedPlayersToEvent(ev, gi.anchor);
 
-                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG,
+                PBC_Log(PBC_LogLevel::PBC_DEBUG,
                          "PollPartyState: combat ended (significant) — group={} kills={} notable={} dead={}/{} toughness=\"{}\" duration={}s bots={}",
                          grpGuid, tracker.killCount, tracker.notableEnemyNames.size(),
                          tracker.deadCount, tracker.partySize, combatToughness,
@@ -483,7 +483,7 @@ void PBC_PollPartyState()
             }
             else
             {
-                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG,
+                PBC_Log(PBC_LogLevel::PBC_DEBUG,
                          "PollPartyState: combat ended (not significant or wiped) — group={} kills={} wiped={}",
                          grpGuid, tracker.killCount, tracker.wiped);
             }

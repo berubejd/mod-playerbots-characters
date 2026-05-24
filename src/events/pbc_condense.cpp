@@ -63,11 +63,11 @@ bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
 {
     if (sysPrompt.empty() || userPromptTmpl.empty())
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "CondenseInline: prompts not configured, skipping for character={}", snap.charName);
+        PBC_Log(PBC_LogLevel::PBC_DEBUG, "CondenseInline: prompts not configured, skipping for character={}", snap.charName);
         return false;
     }
 
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "CondenseInline: character={} history_lines={}", snap.charName, snap.history.size());
+    PBC_Log(PBC_LogLevel::PBC_DEBUG, "CondenseInline: character={} history_lines={}", snap.charName, snap.history.size());
 
     std::string userPrompt = PBC_BuildCondensationPromptFromSnapshot(snap, userPromptTmpl);
     PBC_LLMResult res = g_PBC_UseAltModelForCondensation
@@ -76,7 +76,7 @@ bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
 
     if (!res.success || res.text.empty())
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "CondenseInline: LLM failed for character={} — history left untouched, will retry on next event", snap.charName);
+        PBC_Log(PBC_LogLevel::PBC_WARNING, "CondenseInline: LLM failed for character={} — history left untouched, will retry on next event", snap.charName);
         return false;
     }
 
@@ -90,7 +90,7 @@ bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
     DB_DeleteHistoryForCharacter(snap.charGuidRaw);
     snap.history.clear();
 
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "CondenseInline: condensed character={} memories_extracted={}",
+    PBC_Log(PBC_LogLevel::PBC_DEBUG, "CondenseInline: condensed character={} memories_extracted={}",
              snap.charName, memCount);
 
     return true;
@@ -143,7 +143,7 @@ void QueueRelationshipUpdatesAfterCondensation(
 
         PBC_PushEvent(std::move(relEv));
 
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG,
+        PBC_Log(PBC_LogLevel::PBC_DEBUG,
                  "Condensation: queuing relationship update for character={} target={}",
                  snap.charName, memberName);
     }

@@ -62,8 +62,7 @@ Download a `.zip` or `.tar.gz` source archive from the [Releases](https://github
 After obtaining the sources using any of the methods above, rebuild the server normally.
 
 > [!NOTE]
-> 1. Only Linux is officially supported as a build target. I have no plans to add Windows support, but pull requests that address it are welcome.
-> 2. The module includes bundled copies of [nlohmann/json](https://github.com/nlohmann/json) in `deps/nlohmann/json.hpp` and [yhirose/cpp-httplib](https://github.com/yhirose/cpp-httplib) in `deps/yhirose/cpp-httplib/httplib.h`, so no external libraries are required.
+> The module includes bundled copies of [nlohmann/json](https://github.com/nlohmann/json) in `deps/nlohmann/json.hpp` and [yhirose/cpp-httplib](https://github.com/yhirose/cpp-httplib) in `deps/yhirose/cpp-httplib/httplib.h`, so no external libraries are required.
 
 If [mod_weather_vibe](https://github.com/hermensbas/mod_weather_vibe) is also installed, weather states from it will be included in the character's scene description.
 

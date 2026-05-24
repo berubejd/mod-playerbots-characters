@@ -265,14 +265,14 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
     // Private key is required for the authorization layer
     if (g_PBC_HttpServerPrivateKey.empty())
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR,
+        PBC_Log(PBC_LogLevel::PBC_ERROR,
                   "HTTP server not started: PBC.HttpServerPrivateKey is not set. "
                   "A private key is required for the authorization layer.");
         return false;
     }
 
 #ifndef CPPHTTPLIB_OPENSSL_SUPPORT
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR,
+    PBC_Log(PBC_LogLevel::PBC_ERROR,
               "HTTP server not started: OpenSSL is not compiled in. "
               "The authorization layer requires OpenSSL for token encryption.");
     return false;
@@ -307,7 +307,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                     return httplib::Server::HandlerResponse::Handled;
                 }
 
-                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "WS: authenticated account ID={}", accountId);
+                PBC_Log(PBC_LogLevel::PBC_DEBUG, "WS: authenticated account ID={}", accountId);
             }
 
             return httplib::Server::HandlerResponse::Unhandled;
@@ -358,12 +358,12 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 });
 
                 frontendServing = true;
-                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Frontend serving enabled from '{}' (canonical: '{}')",
+                PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Frontend serving enabled from '{}' (canonical: '{}')",
                          frontendPath, canonicalStr);
             }
             else
             {
-                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING,
+                PBC_Log(PBC_LogLevel::PBC_WARNING,
                          "Frontend path '{}' does not exist or is not a directory. "
                          "Frontend serving disabled.", frontendPath);
             }
@@ -383,13 +383,13 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // GET /api/token — no auth required
         svr->Get("/api/token", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             HandleGetToken(req, res);
         });
 
         // GET /api/account
         svr->Get("/api/account", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetAccount(req, res, authInfo);
@@ -397,7 +397,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // GET /api/party
         svr->Get("/api/party", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetParty(req, res, authInfo);
@@ -405,7 +405,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // GET /api/config
         svr->Get("/api/config", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetConfig(req, res, authInfo);
@@ -413,7 +413,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // GET /api/char/:guid/card
         svr->Get("/api/char/:guid/card", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetCharCard(req, res, authInfo);
@@ -421,7 +421,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // GET /api/char/:guid/context
         svr->Get("/api/char/:guid/context", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetCharContext(req, res, authInfo);
@@ -429,7 +429,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // GET /api/char/:guid/history
         svr->Get("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetCharHistory(req, res, authInfo);
@@ -437,7 +437,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // POST /api/char/:guid/history
         svr->Post("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandlePostCharHistory(req, res, authInfo);
@@ -445,7 +445,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // DELETE /api/char/:guid/history
         svr->Delete("/api/char/:guid/history", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleDeleteCharHistory(req, res, authInfo);
@@ -453,7 +453,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // GET /api/char/:guid/memory/count
         svr->Get("/api/char/:guid/memory/count", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetCharMemoryCount(req, res, authInfo);
@@ -461,7 +461,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // GET /api/char/:guid/memory
         svr->Get("/api/char/:guid/memory", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetCharMemory(req, res, authInfo);
@@ -469,7 +469,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // POST /api/char/:guid/memory/:id
         svr->Post("/api/char/:guid/memory/:id", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandlePostCharMemory(req, res, authInfo);
@@ -477,7 +477,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // DELETE /api/char/:guid/memory/:id
         svr->Delete("/api/char/:guid/memory/:id", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleDeleteCharMemory(req, res, authInfo);
@@ -485,7 +485,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // GET /api/char/:guid/relationships
         svr->Get("/api/char/:guid/relationships", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetCharRelationships(req, res, authInfo);
@@ -493,7 +493,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // POST /api/char/:guid/relationships
         svr->Post("/api/char/:guid/relationships", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandlePostCharRelationships(req, res, authInfo);
@@ -501,7 +501,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // DELETE /api/char/:guid/relationships
         svr->Delete("/api/char/:guid/relationships", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleDeleteCharRelationships(req, res, authInfo);
@@ -509,7 +509,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // GET /api/char/:guid/data
         svr->Get("/api/char/:guid/data", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetCharData(req, res, authInfo);
@@ -517,7 +517,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // POST /api/char/:guid/data
         svr->Post("/api/char/:guid/data", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandlePostCharData(req, res, authInfo);
@@ -525,7 +525,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // GET /api/char/:guid/debug/request
         svr->Get("/api/char/:guid/debug/request", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetCharDebugRequest(req, res, authInfo);
@@ -533,7 +533,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // POST /api/char/:guid/whisper
         svr->Post("/api/char/:guid/whisper", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandlePostCharWhisper(req, res, authInfo);
@@ -541,7 +541,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // POST /api/char/:guid/narrate
         svr->Post("/api/char/:guid/narrate", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandlePostCharNarrate(req, res, authInfo);
@@ -549,7 +549,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // POST /api/party/narrate
         svr->Post("/api/party/narrate", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandlePostPartyNarrate(req, res, authInfo);
@@ -557,7 +557,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // POST /api/char/:guid/trigger
         svr->Post("/api/char/:guid/trigger", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandlePostCharTrigger(req, res, authInfo);
@@ -565,7 +565,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
 
         // POST /api/party/message
         svr->Post("/api/party/message", [](const httplib::Request& req, httplib::Response& res) {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandlePostPartyMessage(req, res, authInfo);
@@ -579,7 +579,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 std::string token = ExtractWebSocketToken(req);
                 uint32_t accountId = PBC_ValidateToken(token);
 
-                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "WS: new connection from {} (account ID={})",
+                PBC_Log(PBC_LogLevel::PBC_DEBUG, "WS: new connection from {} (account ID={})",
                              req.remote_addr, accountId);
 
                 // Auto-subscribe on connect so account-level events (online/offline/party)
@@ -602,7 +602,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
                 if (s_httpShuttingDown.load())
                     ws.close(httplib::ws::CloseStatus::GoingAway, "server shutting down");
 
-                PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "WS: connection closed (account ID={})", accountId);
+                PBC_Log(PBC_LogLevel::PBC_DEBUG, "WS: connection closed (account ID={})", accountId);
             },
             [](const std::vector<std::string>& protocols) -> std::string {
                 for (const auto& proto : protocols)
@@ -621,7 +621,7 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         // Try to bind before spawning the thread
         if (!svr->bind_to_port(bindAddr.c_str(), port))
         {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR,
+            PBC_Log(PBC_LogLevel::PBC_ERROR,
                       "HTTP server failed to bind to {}:{} — port may be in use or address invalid. "
                       "HTTP server disabled; the rest of the module continues normally.",
                       bindAddr, port);
@@ -633,17 +633,17 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
         s_httpRunning.store(true);
 
         s_httpThread = std::make_unique<std::thread>([bindAddr, port]() {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "HTTP server listening on {}:{}", bindAddr, port);
+            PBC_Log(PBC_LogLevel::PBC_DEFAULT, "HTTP server listening on {}:{}", bindAddr, port);
             s_httpServer->listen_after_bind();
             s_httpRunning.store(false);
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "HTTP server stopped.");
+            PBC_Log(PBC_LogLevel::PBC_DEFAULT, "HTTP server stopped.");
         });
 
         return true;
     }
     catch (const std::exception& ex)
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR,
+        PBC_Log(PBC_LogLevel::PBC_ERROR,
                   "HTTP server exception during startup: {}. HTTP server disabled; "
                   "the rest of the module continues normally.",
                   ex.what());

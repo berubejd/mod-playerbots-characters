@@ -32,7 +32,7 @@ std::string PBC_HttpClient::Post(const std::string& url,
         std::smatch m;
         if (!std::regex_match(url, m, urlRe))
         {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "Invalid URL: {}", url);
+            PBC_Log(PBC_LogLevel::PBC_ERROR, "Invalid URL: {}", url);
             return "";
         }
 
@@ -42,7 +42,7 @@ std::string PBC_HttpClient::Post(const std::string& url,
         int         port   = proto == "https" ? 443 : 80;
         if (m[3].matched) port = std::stoi(m[3].str());
 
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP {} {}:{}{}", proto, host, port, path);
+        PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP {} {}:{}{}", proto, host, port, path);
 
         httplib::Headers headers = {
             {"Accept",       "application/json"},
@@ -63,7 +63,7 @@ std::string PBC_HttpClient::Post(const std::string& url,
             cli.set_write_timeout(m_timeoutSec);
             res = cli.Post(path, headers, jsonData, "application/json");
 #else
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "HTTPS requested but OpenSSL not compiled in.");
+            PBC_Log(PBC_LogLevel::PBC_ERROR, "HTTPS requested but OpenSSL not compiled in.");
             return "";
 #endif
         }
@@ -78,23 +78,23 @@ std::string PBC_HttpClient::Post(const std::string& url,
 
         if (!res)
         {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "HTTP request failed (no response) for {}:{}{}", host, port, path);
+            PBC_Log(PBC_LogLevel::PBC_ERROR, "HTTP request failed (no response) for {}:{}{}", host, port, path);
             return "";
         }
         if (res->status != 200)
         {
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "HTTP {} from {}:{}{}", res->status, host, port, path);
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "Response body: {}", PBC_SanitizeForFmt(res->body));
+            PBC_Log(PBC_LogLevel::PBC_ERROR, "HTTP {} from {}:{}{}", res->status, host, port, path);
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "Response body: {}", PBC_SanitizeForFmt(res->body));
             return "";
         }
 
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEBUG, "HTTP OK, body length={}", res->body.size());
+        PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP OK, body length={}", res->body.size());
 
         return res->body;
     }
     catch (const std::exception& ex)
     {
-        PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_ERROR, "HTTP exception: {}", ex.what());
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "HTTP exception: {}", ex.what());
         return "";
     }
 }

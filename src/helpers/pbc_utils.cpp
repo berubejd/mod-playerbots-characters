@@ -113,7 +113,7 @@ void PBC_CleanUnknownTokens(std::string& s)
 
         // Log warning once per unique unknown token
         if (warned.insert(tokenName).second)
-            PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_WARNING, "Unknown template token '{{{}}}' — replaced with empty string", tokenName);
+            PBC_Log(PBC_LogLevel::PBC_WARNING, "Unknown template token '{{{}}}' — replaced with empty string", tokenName);
 
         // Skip the token (replace with "")
         size_t tokenEnd = matchPos + match.length();

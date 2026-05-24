@@ -8,7 +8,7 @@
 
 void Addmod_playerbots_charactersScripts()
 {
-    PBC_Log(PBC_LogLevel::PBC_LOG_LEVEL_DEFAULT, "Registering mod-playerbots-characters scripts.");
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Registering mod-playerbots-characters scripts.");
 
     new PBC_WorldScript();
     new PBC_PlayerEvents();
