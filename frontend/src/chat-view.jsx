@@ -623,10 +623,25 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
           pendingWhisperRef.current = null;
           setMessages((prev) => prev.map((m) => m.id === 'pending' ? msg : m));
           markAsNew(id);
+        } else if (msg.type === 0) {
+          // Narrator line (e.g. "some time passes") — insert BEFORE the
+          // pending placeholder. The time-gap represents a passage of
+          // time that occurred before the player's message was processed,
+          // so server-side ordering has it first.
+          setMessages((prev) => {
+            const pendingIdx = prev.findIndex(m => m.id === 'pending');
+            if (pendingIdx !== -1) {
+              const newArr = [...prev];
+              newArr.splice(pendingIdx, 0, msg);
+              return newArr;
+            }
+            return [...prev, msg];
+          });
+          markAsNew(id);
         } else {
-          // Character response / narrator line — insert it right after
-          // the pending placeholder so the player's own message stays
-          // first (the player spoke before characters responded).
+          // Character response — insert it right after the pending
+          // placeholder so the player's own message stays first
+          // (the player spoke before characters responded).
           setMessages((prev) => {
             const pendingIdx = prev.findIndex(m => m.id === 'pending');
             if (pendingIdx !== -1) {

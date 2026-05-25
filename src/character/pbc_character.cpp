@@ -502,7 +502,6 @@ PBC_HistoryResult PBC_UpdateHistoryMessage(uint64_t historyId,
 // ---------------------------------------------------------------------------
 PBC_HistoryResult PBC_DeleteHistoryMessage(uint64_t historyId)
 {
-    // First remove all ownership rows from DB, then the message (via orphan cleanup)
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
         if (g_PBC_History.find(historyId) == g_PBC_History.end())
@@ -519,13 +518,13 @@ PBC_HistoryResult PBC_DeleteHistoryMessage(uint64_t historyId)
         g_PBC_History.erase(historyId);
     }
 
-    // DB cleanup: remove all ownership rows + orphaned message
-    DB_RemoveHistoryOwnership(0, historyId, true);
-    // The above DB_RemoveHistoryOwnership with guid=0 won't work because
-    // it tries to delete WHERE guid=0. Let's do it differently:
-    CharacterDatabase.Execute(
+    // DB cleanup: remove all ownership rows, then the message itself.
+    // Use DirectExecute for synchronous, ordered execution — avoids a window
+    // where ownership rows are gone but the message still exists (or vice
+    // versa), which could cause a subsequent reload to resurrect the message.
+    CharacterDatabase.DirectExecute(
         "DELETE FROM mod_pbc_history_owners WHERE history_id = {}", historyId);
-    CharacterDatabase.Execute(
+    CharacterDatabase.DirectExecute(
         "DELETE FROM mod_pbc_history WHERE id = {}", historyId);
 
     return PBC_HistoryResult::Ok;
