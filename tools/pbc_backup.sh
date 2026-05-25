@@ -4,7 +4,8 @@
 #        output_path — optional; defaults to pbc_backup_<timestamp>.sql in current dir
 
 TABLES=(
-    mod_pbc_chat_history
+    mod_pbc_history
+    mod_pbc_history_owners
     mod_pbc_memories
     mod_pbc_data
     mod_pbc_relationships

@@ -22,6 +22,15 @@
 std::string PBC_MakeEventLine(const std::string& text) { return "*" + text + "*"; }
 std::string PBC_MakeHistLine(const std::string& text)  { return "Narrator: *" + text + "*"; }
 
+std::string PBC_MakeHistLineFromSource(const PBC_EventSource& source)
+{
+    if (source.IsNarrator())
+        return PBC_MakeHistLine(source.narratorText);
+    if (source.IsChat())
+        return source.senderName + ": " + source.message;
+    return "";
+}
+
 // ---------------------------------------------------------------------------
 // PBC_NotifyRealPlayersInGroup
 // ---------------------------------------------------------------------------
@@ -90,7 +99,7 @@ void AddTrackedPlayersToEvent(PBC_EventItem& ev, Player* anchor)
 // PBC_DispatchGroupEvent
 // ---------------------------------------------------------------------------
 void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
-                             const std::string& histLine, uint32_t chance,
+                             const std::string& narratorText, uint32_t chance,
                              bool notifyRealPlayers)
 {
     if (!PBC_PTR_VALID(anchor)) return;
@@ -119,7 +128,7 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
     PBC_EventItem ev;
     ev.type            = PBC_EventType::Normal;
     ev.eventLine       = eventLine;
-    ev.histLine        = histLine;
+    ev.source.narratorText = narratorText;
     ev.chatType        = CHAT_MSG_PARTY;
     ev.canCreateEvents = true;
 
@@ -263,10 +272,12 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
              senderName, targetName, msg, g_PBC_ReplyChanceWhisper);
 
     PBC_EventItem ev;
-    ev.type      = PBC_EventType::Normal;
-    ev.eventLine = eventLine;
-    ev.histLine  = historyLine;
-    ev.chatType  = CHAT_MSG_WHISPER;
+    ev.type               = PBC_EventType::Normal;
+    ev.eventLine          = eventLine;
+    ev.source.senderGuid  = sender->GetGUID().GetCounter();
+    ev.source.senderName  = senderName;
+    ev.source.message     = msg;
+    ev.chatType           = CHAT_MSG_WHISPER;
 
     ev.whisperSenderName = senderName;
     ev.whisperTargetName = targetName;
@@ -300,72 +311,44 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
 // ---------------------------------------------------------------------------
 std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charName)
 {
-    static const std::string kTimePassesLine = "Narrator: *some time passes*";
-
-    std::string lastLine;
+    bool lastIsNarrator  = false;
+    bool lastIsWhisper   = false;
+    bool lastIsOwn       = false;
+    bool lastIsTimePasses = false;
 
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        auto it = g_PBC_ChatHistory.find(botGuid);
-        if (it != g_PBC_ChatHistory.end() && !it->second.empty())
-            lastLine = it->second.back();
+        auto ownersIt = g_PBC_HistoryOwners.find(botGuid);
+        if (ownersIt != g_PBC_HistoryOwners.end() && !ownersIt->second.empty())
+        {
+            uint64_t lastId = ownersIt->second.back();
+            auto entryIt = g_PBC_History.find(lastId);
+            if (entryIt != g_PBC_History.end())
+            {
+                const auto& entry = entryIt->second;
+                lastIsNarrator  = (entry.type == 0);
+                lastIsWhisper   = (entry.type == CHAT_MSG_WHISPER);
+                lastIsOwn       = (entry.authorGuid == botGuid);
+                lastIsTimePasses = (entry.type == 0 && entry.message == "some time passes");
+            }
+        }
     }
 
     // -------------------------------------------------------------------
     // No history → default
     // -------------------------------------------------------------------
-    if (lastLine.empty())
+    if (!lastIsNarrator && !lastIsWhisper && !lastIsOwn && !lastIsTimePasses)
     {
         PBC_Log(PBC_LogLevel::PBC_DEBUG, "PickTriggerEventLine: guid={} char='{}' — no history, using default",
                 botGuid, charName);
         return "you feel the urge to say something";
     }
 
-    // -------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------
-    auto isWhisper = [](const std::string& s) -> bool {
-        auto privPos = s.find(" (privately to ");
-        if (privPos == std::string::npos || privPos == 0)
-            return false;
-        auto firstSpace = s.find(' ');
-        return firstSpace == privPos;
-    };
-
-    auto isNarrator = [](const std::string& s) -> bool {
-        return s.rfind("Narrator:", 0) == 0;
-    };
-
-    // Extract speaker name from a history line (everything before the first ':',
-    // with trailing " says" / " yells" / " shouts" / " whispers" stripped).
-    auto speakerName = [](const std::string& s) -> std::string {
-        auto colon = s.find(':');
-        if (colon == std::string::npos) return "";
-        std::string name = s.substr(0, colon);
-        for (const char* suffix : {" says", " yells", " shouts", " whispers"})
-        {
-            size_t len = strlen(suffix);
-            if (name.size() > len && name.compare(name.size() - len, len, suffix) == 0)
-            {
-                name.erase(name.size() - len);
-                break;
-            }
-        }
-        return name;
-    };
-
-    bool lastIsNarrator  = isNarrator(lastLine);
-    bool lastIsWhisper   = isWhisper(lastLine);
-    bool lastIsOwn       = !charName.empty() && speakerName(lastLine) == charName;
-    bool lastIsTimePasses = (lastLine == kTimePassesLine);
-
     PBC_Log(PBC_LogLevel::PBC_DEBUG,
-            "PickTriggerEventLine: guid={} char='{}' lastLine_len={} "
-            "isNarrator={} isWhisper={} isOwn={} isTimePasses={} "
-            "lastLine==kTimePassesLine={} speaker='{}'",
-            botGuid, charName, lastLine.size(),
-            lastIsNarrator, lastIsWhisper, lastIsOwn, lastIsTimePasses,
-            lastIsTimePasses, speakerName(lastLine));
+            "PickTriggerEventLine: guid={} char='{}' "
+            "isNarrator={} isWhisper={} isOwn={} isTimePasses={}",
+            botGuid, charName,
+            lastIsNarrator, lastIsWhisper, lastIsOwn, lastIsTimePasses);
 
     // -------------------------------------------------------------------
     // Case 1: "Narrator: *some time passes*"
@@ -451,7 +434,6 @@ void PBC_DispatchTriggerEvent(Player* bot)
     PBC_EventItem ev;
     ev.type             = PBC_EventType::Normal;
     ev.eventLine        = PBC_MakeEventLine(eventText);
-    ev.histLine         = "";
     ev.chatType         = chatType;
     ev.canCreateEvents  = false;
 
@@ -503,11 +485,13 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
              senderName, chatType, bots.size(), msg);
 
     PBC_EventItem ev;
-    ev.type            = PBC_EventType::Normal;
-    ev.eventLine       = eventLine;
-    ev.histLine        = historyLine;
-    ev.chatType        = chatType ? chatType : CHAT_MSG_PARTY;
-    ev.canCreateEvents = canCreateEvents;
+    ev.type               = PBC_EventType::Normal;
+    ev.eventLine          = eventLine;
+    ev.source.senderGuid  = sender->GetGUID().GetCounter();
+    ev.source.senderName  = senderName;
+    ev.source.message     = msg;
+    ev.chatType           = chatType ? chatType : CHAT_MSG_PARTY;
+    ev.canCreateEvents    = canCreateEvents;
 
     PBC_RollBotsForMessage(ev, bots, msg);
 

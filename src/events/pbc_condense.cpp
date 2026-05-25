@@ -85,9 +85,10 @@ bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
 
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        g_PBC_ChatHistory[snap.charGuidRaw].clear();
+        g_PBC_HistoryOwners.erase(snap.charGuidRaw);
+        g_PBC_LastHistoryTime.erase(snap.charGuidRaw);
     }
-    DB_DeleteHistoryForCharacter(snap.charGuidRaw);
+    DB_RemoveAllHistoryOwnership(snap.charGuidRaw);
     snap.history.clear();
 
     PBC_Log(PBC_LogLevel::PBC_DEBUG, "CondenseInline: condensed character={} memories_extracted={}",

@@ -7,6 +7,7 @@
 #include "pbc_http_auth.h"
 #include "pbc_http_handlers.h"
 #include "pbc_config.h"
+#include "pbc_character.h"
 #include "pbc_log.h"
 
 #define httplib pbc_httplib
@@ -205,15 +206,25 @@ void PBC_WsNotify(uint64_t botGuid, const std::string& eventType)
     WsSendToGuidOwner(botGuid, j.dump());
 }
 
-void PBC_WsNotifyHistory(uint64_t botGuid, size_t messageId, const std::string& text)
+void PBC_WsNotifyHistory(uint64_t botGuid, const PBC_HistoryEntry& entry)
 {
     if (!s_httpRunning.load())
         return;
 
+    std::string text = PBC_RenderHistoryLine(entry, botGuid);
+    std::string authorName = PBC_GetCharacterName(entry.authorGuid);
+
     json j;
     j["event"] = "history";
     j["guid"] = botGuid;
-    j["message"] = {{"id", messageId}, {"text", text}};
+    j["message"] = {
+        {"id", entry.id},
+        {"text", text},
+        {"type", entry.type},
+        {"message", entry.message},
+        {"author_guid", entry.authorGuid},
+        {"author_name", authorName}
+    };
     WsSendToGuidOwner(botGuid, j.dump());
 }
 

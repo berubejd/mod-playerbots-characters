@@ -6,65 +6,97 @@
 #include "DatabaseEnv.h"
 
 #include <string>
+#include <vector>
 #include <cstdint>
 #include <ctime>
 
 // ---------------------------------------------------------------------------
-// Chat history
+// Chat history — normalized schema (mod_pbc_history + mod_pbc_history_owners)
 // ---------------------------------------------------------------------------
 
-void DB_InsertHistoryLine(uint64_t botGuid, const std::string& message)
+uint64_t DB_InsertHistoryMessage(uint64_t authorGuid, uint8_t type,
+                                 const std::string& message,
+                                 const std::vector<uint64_t>& ownerGuids)
 {
+    if (ownerGuids.empty())
+        return 0;
+
     std::string escaped = message;
     CharacterDatabase.EscapeString(escaped);
-    CharacterDatabase.Execute(
-        "INSERT INTO mod_pbc_chat_history (bot_guid, message) VALUES ({}, '{}')",
-        botGuid,
-        escaped
-    );
+
+    // Insert the message row (synchronous, single-connection)
+    CharacterDatabase.DirectExecute(
+        "INSERT INTO mod_pbc_history (author_guid, type, message) VALUES ({}, {}, '{}')",
+        authorGuid,
+        static_cast<uint32_t>(type),
+        escaped);
+
+    // Get the auto-increment ID (connection-safe: DirectExecute+Query on same pool)
+    QueryResult idResult = CharacterDatabase.Query("SELECT LAST_INSERT_ID()");
+    uint64_t historyId = idResult ? (*idResult)[0].Get<uint64_t>() : 0;
+    if (historyId == 0)
+        return 0;
+
+    // Insert ownership rows
+    for (uint64_t ownerGuid : ownerGuids)
+    {
+        CharacterDatabase.DirectExecute(
+            "INSERT INTO mod_pbc_history_owners (guid, history_id) VALUES ({}, {})",
+            ownerGuid,
+            historyId
+        );
+    }
+
+    return historyId;
 }
 
-void DB_DeleteHistoryForCharacter(uint64_t botGuid)
-{
-    CharacterDatabase.Execute(
-        "DELETE FROM mod_pbc_chat_history WHERE bot_guid = {}",
-        botGuid
-    );
-}
-
-void DB_DeleteAllHistory()
-{
-    CharacterDatabase.Execute("DELETE FROM mod_pbc_chat_history");
-}
-
-void DB_UpdateHistoryLineByIndex(uint64_t botGuid, size_t index, const std::string& newMessage)
+void DB_UpdateHistoryMessage(uint64_t historyId, const std::string& newMessage)
 {
     std::string escaped = newMessage;
     CharacterDatabase.EscapeString(escaped);
     CharacterDatabase.Execute(
-        "UPDATE mod_pbc_chat_history SET message = '{}' "
-        "WHERE id = ("
-        "  SELECT id FROM ("
-        "    SELECT id FROM mod_pbc_chat_history WHERE bot_guid = {} ORDER BY id ASC LIMIT 1 OFFSET {}"
-        "  ) AS t"
-        ")",
+        "UPDATE mod_pbc_history SET message = '{}' WHERE id = {}",
         escaped,
-        botGuid,
-        index
+        historyId
     );
 }
 
-void DB_DeleteHistoryLineByIndex(uint64_t botGuid, size_t index)
+void DB_RemoveHistoryOwnership(uint64_t guid, uint64_t historyId,
+                               bool removeOrphaned)
 {
     CharacterDatabase.Execute(
-        "DELETE FROM mod_pbc_chat_history "
-        "WHERE id = ("
-        "  SELECT id FROM ("
-        "    SELECT id FROM mod_pbc_chat_history WHERE bot_guid = {} ORDER BY id ASC LIMIT 1 OFFSET {}"
-        "  ) AS t"
-        ")",
-        botGuid,
-        index
+        "DELETE FROM mod_pbc_history_owners WHERE guid = {} AND history_id = {}",
+        guid,
+        historyId
+    );
+
+    if (removeOrphaned)
+    {
+        CharacterDatabase.Execute(
+            "DELETE FROM mod_pbc_history "
+            "WHERE id = {} AND NOT EXISTS ("
+            "  SELECT 1 FROM mod_pbc_history_owners WHERE history_id = {}"
+            ")",
+            historyId,
+            historyId
+        );
+    }
+}
+
+void DB_RemoveAllHistoryOwnership(uint64_t guid)
+{
+    // Delete all ownership rows for this character
+    CharacterDatabase.Execute(
+        "DELETE FROM mod_pbc_history_owners WHERE guid = {}",
+        guid
+    );
+
+    // Clean orphaned messages (those with zero remaining owners)
+    CharacterDatabase.Execute(
+        "DELETE FROM mod_pbc_history "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM mod_pbc_history_owners WHERE history_id = mod_pbc_history.id"
+        ")"
     );
 }
 
@@ -226,27 +258,49 @@ bool DB_CardAdditionsTableNotEmpty()
 
 void PBC_LoadHistoryFromDB()
 {
-    QueryResult result = CharacterDatabase.Query(
-        "SELECT bot_guid, message, UNIX_TIMESTAMP(timestamp) FROM mod_pbc_chat_history ORDER BY id ASC"
-    );
-
     std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-    g_PBC_ChatHistory.clear();
+    g_PBC_History.clear();
+    g_PBC_HistoryOwners.clear();
     g_PBC_LastHistoryTime.clear();
 
-    if (!result) return;
+    // 1. Load all messages from mod_pbc_history
+    QueryResult msgResult = CharacterDatabase.Query(
+        "SELECT id, UNIX_TIMESTAMP(timestamp), author_guid, type, message "
+        "FROM mod_pbc_history ORDER BY id ASC");
 
-    do {
-        uint64_t    botGuid = (*result)[0].Get<uint64_t>();
-        std::string msg     = (*result)[1].Get<std::string>();
-        time_t      ts      = static_cast<time_t>((*result)[2].Get<uint64_t>());
-        g_PBC_ChatHistory[botGuid].push_back(std::move(msg));
-        if (ts > 0)
-            g_PBC_LastHistoryTime[botGuid] = ts;
-    } while (result->NextRow());
+    if (msgResult)
+    {
+        do {
+            PBC_HistoryEntry entry;
+            entry.id         = (*msgResult)[0].Get<uint64_t>();
+            entry.timestamp  = static_cast<time_t>((*msgResult)[1].Get<uint64_t>());
+            entry.authorGuid = (*msgResult)[2].Get<uint64_t>();
+            entry.type       = static_cast<uint8_t>((*msgResult)[3].Get<uint32_t>());
+            entry.message    = (*msgResult)[4].Get<std::string>();
+            g_PBC_History[entry.id] = std::move(entry);
+        } while (msgResult->NextRow());
+    }
 
-    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Chat history loaded from DB ({} characters with timestamps).",
-             g_PBC_LastHistoryTime.size());
+    // 2. Load ownership (ordered by history_id = chronological)
+    QueryResult ownResult = CharacterDatabase.Query(
+        "SELECT guid, history_id FROM mod_pbc_history_owners ORDER BY history_id ASC");
+
+    if (ownResult)
+    {
+        do {
+            uint64_t guid      = (*ownResult)[0].Get<uint64_t>();
+            uint64_t historyId = (*ownResult)[1].Get<uint64_t>();
+            g_PBC_HistoryOwners[guid].push_back(historyId);
+
+            // Track last timestamp per character
+            auto hit = g_PBC_History.find(historyId);
+            if (hit != g_PBC_History.end() && hit->second.timestamp > 0)
+                g_PBC_LastHistoryTime[guid] = hit->second.timestamp;
+        } while (ownResult->NextRow());
+    }
+
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Chat history loaded from DB ({} messages, {} characters).",
+             g_PBC_History.size(), g_PBC_LastHistoryTime.size());
 }
 
 void PBC_LoadMemoriesFromDB()

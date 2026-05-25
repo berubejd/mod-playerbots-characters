@@ -213,27 +213,27 @@ export async function sendPartyNarrate(token, message) {
   return res.json();
 }
 
-export async function editMessage(token, guid, id, message, original) {
+export async function editMessage(token, guid, id, message) {
   const res = await fetch(`/api/char/${encodeURIComponent(guid)}/history?id=${encodeURIComponent(id)}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ message, original }),
+    body: JSON.stringify({ message }),
   });
   throwForStatus(res, MUTATE_STATUS);
   return res.json();
 }
 
-export async function deleteMessage(token, guid, id, original) {
+export async function deleteMessage(token, guid, id) {
   const res = await fetch(`/api/char/${encodeURIComponent(guid)}/history?id=${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ original }),
+    body: JSON.stringify({}),
   });
   throwForStatus(res, MUTATE_STATUS);
   return res.json();

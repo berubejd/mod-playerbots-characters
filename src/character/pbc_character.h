@@ -56,8 +56,15 @@ std::string PBC_BuildCondensationPromptFromSnapshot(const PBC_CharacterSnapshot&
 // ---------------------------------------------------------------------------
 
 std::string PBC_GetChatHistory(uint64_t botGuid);
-void        PBC_AppendHistory(uint64_t botGuid, const std::string& line);
-int         PBC_EstimateHistoryTokens(uint64_t botGuid);
+std::deque<std::string> PBC_GetChatHistoryPreRendered(uint64_t botGuid);
+
+// Append a structured message to the history of all ownerGuids.
+// Deduplicates against each owner's last message. Returns the new history_id (0 if deduped).
+uint64_t PBC_AppendHistoryMessage(uint64_t authorGuid, uint8_t type,
+                                  const std::string& message,
+                                  const std::vector<uint64_t>& ownerGuids);
+
+int PBC_EstimateHistoryTokens(uint64_t botGuid);
 
 // ---------------------------------------------------------------------------
 // Insert a "Narrator: *some time passes*" line into the character's history
@@ -77,16 +84,26 @@ enum class PBC_HistoryResult { Ok, NotFound, Desync };
 // ---------------------------------------------------------------------------
 // History mutation (thread-safe, also updates the database)
 //
-// index is 0-based, matching the position returned by GET /api/history.
-// originalMessage: the current message at the index is compared against this
-// value before applying the mutation.  If they differ, Desync is returned
-// and no modification is made.
+// Uses real mod_pbc_history.id — no index conversion, no original comparison.
+// Editing affects ALL characters who own the shared message.
 // ---------------------------------------------------------------------------
-PBC_HistoryResult PBC_UpdateHistoryLine(uint64_t botGuid, size_t index,
-                                        const std::string& newMessage,
-                                        const std::string& originalMessage);
-PBC_HistoryResult PBC_DeleteHistoryLine(uint64_t botGuid, size_t index,
-                                        const std::string& originalMessage);
+PBC_HistoryResult PBC_UpdateHistoryMessage(uint64_t historyId,
+                                           const std::string& newMessage);
+
+// Hard delete: removes the message from mod_pbc_history AND all ownership rows.
+// Affects every character who shared this message.
+PBC_HistoryResult PBC_DeleteHistoryMessage(uint64_t historyId);
+
+// Soft unlink: removes one character's ownership only. If the message becomes
+// orphaned (zero owners), it is cleaned up from mod_pbc_history.
+PBC_HistoryResult PBC_RemoveHistoryOwnership(uint64_t guid, uint64_t historyId);
+
+// Render a single history entry from a specific character's perspective.
+// "You" for own messages, correctly identifies whisper targets.
+std::string PBC_RenderHistoryLine(const PBC_HistoryEntry& entry, uint64_t forGuid);
+
+// Thread-safe character name lookup. Uses CharacterCache first, falls back to DB.
+std::string PBC_GetCharacterName(uint64_t guid);
 
 // ---------------------------------------------------------------------------
 // Build the memories block for a character's prompt (thread-safe).

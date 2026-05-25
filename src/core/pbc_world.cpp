@@ -36,6 +36,13 @@ void PBC_WorldScript::OnStartup()
     PBC_LoadMemoriesFromDB();
     PBC_LoadHistoryFromDB();
     PBC_LoadRelationshipsFromDB();
+
+    // Clean orphaned messages (those with zero owners — can result from
+    // condensation between the ownership delete and the orphan cleanup,
+    // or from a server crash).
+    CharacterDatabase.Execute(
+        "DELETE FROM mod_pbc_history "
+        "WHERE NOT EXISTS (SELECT 1 FROM mod_pbc_history_owners WHERE history_id = mod_pbc_history.id)");
     PBC_LoadCharacterDataFromDB();
 
     g_PBC_EventThreadDone.store(true);
@@ -74,7 +81,7 @@ void PBC_WorldScript::OnShutdown()
         PBC_HttpServerStop();
     }
 
-    // History is written to DB on every PBC_AppendHistory call,
+    // History is written to DB on every PBC_AppendHistoryMessage call,
     // so no explicit flush is needed on shutdown.
     PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Module shutdown.");
 }
@@ -172,19 +179,31 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
             if (!targets.empty())
             {
-                // If the original event had a Narrator histLine that these bots
+                // If the original event had source data that these characters
                 // were not part of, write it to their histories now so they
                 // have full context.
-                if (!req.originHistLine.empty())
+                if (req.source.IsNarrator())
                 {
                     for (Player* bot : targets)
-                        PBC_AppendHistory(bot->GetGUID().GetCounter(), req.originHistLine);
+                    {
+                        std::vector<uint64_t> owners = {bot->GetGUID().GetCounter()};
+                        PBC_AppendHistoryMessage(0, 0, req.source.narratorText, owners);
+                    }
+                }
+                else if (req.source.IsChat())
+                {
+                    for (Player* bot : targets)
+                    {
+                        std::vector<uint64_t> owners = {bot->GetGUID().GetCounter()};
+                        PBC_AppendHistoryMessage(req.source.senderGuid, req.chatType,
+                                                 req.source.message, owners);
+                    }
                 }
 
                 PBC_EventItem newEv;
                 newEv.type             = PBC_EventType::Normal;
                 newEv.eventLine        = req.eventLine;
-                newEv.histLine         = req.histLine;
+                newEv.source           = req.source;
                 newEv.chatType         = req.chatType;
                 newEv.canCreateEvents  = false; // message events never spawn further events
                 // Original responders already have histLine; they only need

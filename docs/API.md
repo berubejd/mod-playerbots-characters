@@ -20,7 +20,7 @@ Once authenticated, you have access to **all characters on your account**.
 
 Endpoints that read or modify character data (history, memories, relationships, data) work for all characters. Endpoints that require the character to be online (context, debug, whisper, trigger) return `404` with a clear error when the target is offline.
 
-Edit and delete endpoints perform **desync detection**: the request must include the current text in the `original` field. If the server's copy differs, `409` with `{"error":"desync"}` is returned.
+Memory and relationship edit/delete endpoints perform **desync detection**: the request must include the current text in the `original` field. If the server's copy differs, `409` with `{"error":"desync"}` is returned. History mutations use real database IDs and do not require desync checks.
 
 
 ## Common Response Codes
@@ -34,7 +34,7 @@ Most endpoints share the following response codes:
 | `401` | Invalid or missing authentication (except `GET /` and `GET /api/token`) |
 | `403` | Character does not belong to your account |
 | `404` | Requested resource not found (character offline, message/relationship ID out of range) |
-| `409` | Desync — `original` text doesn't match server's copy (edit/delete endpoints only) |
+| `409` | Desync — `original` text doesn't match server's copy (memory and relationship edit/delete endpoints only) |
 
 
 ## API Endpoints
@@ -162,24 +162,66 @@ The character must be online. Returns `404` otherwise.
 
 ### Character Chat History
 
+History messages are stored in a normalized `mod_pbc_history` table with a junction table (`mod_pbc_history_owners`) linking characters to messages. A single message may be shared across multiple characters' histories (e.g. party chat).
+
 #### `GET /api/char/:guid/history?page=&limit=`
 
-Returns character chat history.
+Returns character chat history with structured message objects.
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
 | `page` | No | `1` | Page number (1-based). Page 1 = most recent. Only used when `limit` is set. |
 | `limit` | No | `0` | Messages per page (1–200). Omit or `0` to return all. |
 
-Returns `{"messages": [...], "page", "limit", "total", "total_pages"}`.
+Each message object:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | uint64 | Real `mod_pbc_history.id` — stable across characters |
+| `text` | string | Pre-rendered line from the character's perspective (e.g. `"You: Hello!"`) |
+| `author_guid` | uint64 | GUID of the character who spoke (0 = narrator) |
+| `type` | uint8 | Chat type: 0=narrator, 2=PARTY, 7=WHISPER (matches `ChatMsg` enum) |
+| `message` | string | Raw message text without speaker prefix |
+| `author_name` | string | Resolved character name (empty if author is offline/deleted) |
+
+```json
+{
+  "messages": [
+    {
+      "id": 42,
+      "text": "You: Be careful, there might be traps ahead!",
+      "author_guid": 12345,
+      "type": 2,
+      "message": "Be careful, there might be traps ahead!",
+      "author_name": ""
+    },
+    {
+      "id": 41,
+      "text": "Narrator: *The party enters a dark cave*",
+      "author_guid": 0,
+      "type": 0,
+      "message": "The party enters a dark cave",
+      "author_name": ""
+    }
+  ],
+  "page": 1,
+  "limit": 50,
+  "total": 150,
+  "total_pages": 3
+}
+```
 
 #### `POST /api/char/:guid/history?id=`
 
-Edit a single message in chat history. Query param `id` is the 1-based message ID. Body: `{"message": "New text", "original": "Current text"}`.
+Edit a single message by its real database ID. **Editing affects ALL characters who share this message.**
+
+Query param `id` is the `mod_pbc_history.id` (the `"id"` field from the GET response). Body: `{"message": "New raw message text"}`.
 
 #### `DELETE /api/char/:guid/history?id=`
 
-Delete a single message from chat history. Query param `id` is the 1-based message ID. Body: `{"original": "Current text"}`.
+Delete a message by its real database ID. **This permanently removes the message from ALL characters' histories.** No request body needed.
+
+Query param `id` is the `mod_pbc_history.id`.
 
 
 ### Character Memories
@@ -358,7 +400,7 @@ Invalid or expired tokens are rejected with `401` before the connection is estab
 
 | Event | Trigger | Payload |
 |---|---|---|
-| `history` | New message in chat history | `{"event":"history","guid":12345,"message":{"id":5,"text":"..."}}` |
+| `history` | New message in chat history | `{"event":"history","guid":12345,"message":{"id":42,"text":"You: Hello!","author_guid":12345,"type":2,"message":"Hello!","author_name":"John"}}` |
 | `thinks` | Character is about to respond (LLM call starting) | `{"event":"thinks","guid":12345}` |
 | `relationship` | Character's relationship updated | `{"event":"relationship","guid":12345}` |
 | `memory` | Character received new memories from condensation | `{"event":"memory","guid":12345}` |

@@ -11,6 +11,7 @@
 #include "Player.h"
 #include "ObjectAccessor.h"
 #include "Map.h"
+#include "CharacterCache.h"
 
 #include <fmt/core.h>
 #include <sstream>
@@ -206,26 +207,136 @@ std::string PBC_GetCharacterContext(Player* bot)
 }
 
 
+// ---------------------------------------------------------------------------
+// Thread-safe character name lookup (fallback to DB if not in cache)
+// ---------------------------------------------------------------------------
+std::string PBC_GetCharacterName(uint64_t guid)
+{
+    if (guid == 0) return "Unknown";
+
+    // CharacterCache is thread-safe and covers both online and offline characters
+    CharacterCacheEntry const* entry = sCharacterCache->GetCharacterCacheByGuid(ObjectGuid(guid));
+    if (entry && !entry->Name.empty())
+        return entry->Name;
+
+    // Fallback: DB query (rare — character may have been deleted)
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT name FROM characters WHERE guid = {}", guid);
+    if (result)
+        return (*result)[0].Get<std::string>();
+
+    return "Unknown";
+}
+
+// ---------------------------------------------------------------------------
+// Derive whisper recipient from ownership (must hold g_PBC_HistoryMutex)
+// ---------------------------------------------------------------------------
+static uint64_t PBC_GetWhisperTarget(uint64_t historyId, uint64_t excludeGuid)
+{
+    for (const auto& [guid, idList] : g_PBC_HistoryOwners)
+    {
+        if (guid == excludeGuid)
+            continue;
+        if (std::find(idList.begin(), idList.end(), historyId) != idList.end())
+            return guid;
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Render ONE history entry from a specific character's perspective
+// ---------------------------------------------------------------------------
+std::string PBC_RenderHistoryLine(const PBC_HistoryEntry& entry, uint64_t forGuid)
+{
+    // Narrator (type=0)
+    if (entry.type == 0)
+        return "Narrator: *" + entry.message + "*";
+
+    std::string authorName = PBC_GetCharacterName(entry.authorGuid);
+
+    // ----- Character's own message -----
+    if (entry.authorGuid == forGuid)
+    {
+        if (entry.type == CHAT_MSG_WHISPER)
+        {
+            uint64_t targetGuid = PBC_GetWhisperTarget(entry.id, forGuid);
+            std::string targetName = PBC_GetCharacterName(targetGuid);
+            if (!targetName.empty() && targetName != "Unknown")
+                return "You (privately to " + targetName + "): " + entry.message;
+            return "You (privately): " + entry.message;
+        }
+        return "You: " + entry.message;
+    }
+
+    // ----- Someone else's message -----
+    if (entry.type == CHAT_MSG_WHISPER)
+    {
+        uint64_t targetGuid = PBC_GetWhisperTarget(entry.id, entry.authorGuid);
+        if (targetGuid == forGuid)
+            return authorName + " (privately to you): " + entry.message;
+
+        std::string targetName = PBC_GetCharacterName(targetGuid);
+        if (!targetName.empty() && targetName != "Unknown")
+            return authorName + " (privately to " + targetName + "): " + entry.message;
+        return authorName + " (privately): " + entry.message;
+    }
+
+    // Regular chat
+    return authorName + ": " + entry.message;
+}
+
+// ---------------------------------------------------------------------------
+// Build the full chat history string for prompt inclusion (thread-safe)
+// ---------------------------------------------------------------------------
 std::string PBC_GetChatHistory(uint64_t botGuid)
 {
     std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-    auto it = g_PBC_ChatHistory.find(botGuid);
-    if (it == g_PBC_ChatHistory.end() || it->second.empty())
+
+    auto ownersIt = g_PBC_HistoryOwners.find(botGuid);
+    if (ownersIt == g_PBC_HistoryOwners.end() || ownersIt->second.empty())
         return "";
 
     std::ostringstream oss;
-    for (const auto& line : it->second)
-        oss << line << "\n";
+    for (uint64_t historyId : ownersIt->second)
+    {
+        auto entryIt = g_PBC_History.find(historyId);
+        if (entryIt == g_PBC_History.end())
+            continue;
+        oss << PBC_RenderHistoryLine(entryIt->second, botGuid) << "\n";
+    }
     return oss.str();
 }
 
+// ---------------------------------------------------------------------------
+// Pre-render all history lines for a character (used by snapshot capture)
+// ---------------------------------------------------------------------------
+std::deque<std::string> PBC_GetChatHistoryPreRendered(uint64_t botGuid)
+{
+    std::deque<std::string> result;
+    std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
 
+    auto ownersIt = g_PBC_HistoryOwners.find(botGuid);
+    if (ownersIt == g_PBC_HistoryOwners.end())
+        return result;
+
+    for (uint64_t historyId : ownersIt->second)
+    {
+        auto entryIt = g_PBC_History.find(historyId);
+        if (entryIt == g_PBC_History.end())
+            continue;
+        result.push_back(PBC_RenderHistoryLine(entryIt->second, botGuid));
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// Insert "Narrator: *some time passes*" if 5+ minutes since last entry
+// ---------------------------------------------------------------------------
 bool PBC_MaybeInsertTimeGap(uint64_t botGuid, bool incomingIsWhisper)
 {
-    static const std::string kTimePassesLine = "Narrator: *some time passes*";
-    static constexpr time_t  kTimeGapThresholdSec = 300; // 5 minutes
+    static constexpr time_t kTimeGapThresholdSec = 300; // 5 minutes
 
-    bool inserted = false;
+    bool shouldInsert = false;
 
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
@@ -237,137 +348,225 @@ bool PBC_MaybeInsertTimeGap(uint64_t botGuid, bool incomingIsWhisper)
         if (now - timeIt->second < kTimeGapThresholdSec)
             return false;
 
-        auto& hist = g_PBC_ChatHistory[botGuid];
-
-        // Don't insert if the last line is already a time-passes line.
-        if (!hist.empty() && hist.back() == kTimePassesLine)
+        auto ownersIt = g_PBC_HistoryOwners.find(botGuid);
+        if (ownersIt == g_PBC_HistoryOwners.end() || ownersIt->second.empty())
             return false;
 
-        // Skip the time-gap only when BOTH the last history line is a whisper
-        // AND the incoming event is also a whisper.  A single whisper followed
-        // by a public chat / combat / quest event still warrants a gap marker.
-        if (incomingIsWhisper)
-        {
-            auto isPrivateMsg = [](const std::string& s) -> bool {
-                auto privPos = s.find(" (privately to ");
-                if (privPos == std::string::npos || privPos == 0)
-                    return false;
-                auto firstSpace = s.find(' ');
-                return firstSpace == privPos;
-            };
-            if (!hist.empty() && isPrivateMsg(hist.back()))
-                return false;
-        }
+        // Check the last message type
+        uint64_t lastId = ownersIt->second.back();
+        auto entryIt = g_PBC_History.find(lastId);
+        if (entryIt == g_PBC_History.end())
+            return false;
 
-        hist.push_back(kTimePassesLine);
-        g_PBC_LastHistoryTime[botGuid] = now;
-        inserted = true;
+        // Don't insert if last line is already a narrator/time-passes line
+        if (entryIt->second.type == 0 && entryIt->second.message == "some time passes")
+            return false;
+
+        // Skip time-gap only when BOTH last message is a whisper AND incoming is whisper
+        if (incomingIsWhisper && entryIt->second.type == CHAT_MSG_WHISPER)
+            return false;
+
+        shouldInsert = true;
     }
 
-    if (inserted)
+    if (shouldInsert)
     {
-        DB_InsertHistoryLine(botGuid, kTimePassesLine);
+        std::vector<uint64_t> owners = {botGuid};
+        uint64_t newId = DB_InsertHistoryMessage(0, 0, "some time passes", owners);
 
-        // Determine the 1-based index for WS notification.
-        size_t idx = 0;
+        if (newId != 0)
         {
+            PBC_HistoryEntry entry;
+            entry.id         = newId;
+            entry.timestamp  = time(nullptr);
+            entry.authorGuid = 0;
+            entry.type       = 0;
+            entry.message    = "some time passes";
+
             std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-            auto it = g_PBC_ChatHistory.find(botGuid);
-            if (it != g_PBC_ChatHistory.end())
-                idx = it->second.size();
+            g_PBC_History[newId] = std::move(entry);
+            g_PBC_HistoryOwners[botGuid].push_back(newId);
+            g_PBC_LastHistoryTime[botGuid] = time(nullptr);
+
+            PBC_WsNotifyHistory(botGuid, g_PBC_History[newId]);
         }
-        if (idx > 0)
-            PBC_WsNotifyHistory(botGuid, idx, kTimePassesLine);
     }
 
-    return inserted;
+    return shouldInsert;
 }
 
-void PBC_AppendHistory(uint64_t botGuid, const std::string& line)
+// ---------------------------------------------------------------------------
+// Create one history message and assign it to the given owners
+// ---------------------------------------------------------------------------
+uint64_t PBC_AppendHistoryMessage(uint64_t authorGuid, uint8_t type,
+                                  const std::string& message,
+                                  const std::vector<uint64_t>& ownerGuids)
 {
-    // Time-gap insertion is now handled proactively by callers
-    // (event processor calls PBC_MaybeInsertTimeGap before LLM prompts).
-    // We still call it here as a safety net for callers that don't go through
-    // the event processor (e.g. narrate commands, API endpoints).
-    PBC_MaybeInsertTimeGap(botGuid);
+    if (ownerGuids.empty())
+        return 0;
 
-    bool dedup = false;
-    std::vector<std::pair<size_t, std::string>> wsHistoryEvents;
-
+    // Dedup check under lock
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        auto& hist = g_PBC_ChatHistory[botGuid];
-
-        // Dedup check
-        if (!hist.empty() && hist.back() == line)
-            dedup = true;
-        else
+        bool allDedup = true;
+        for (uint64_t ownerGuid : ownerGuids)
         {
-            hist.push_back(line);
-            wsHistoryEvents.emplace_back(hist.size(), line);
+            auto ownersIt = g_PBC_HistoryOwners.find(ownerGuid);
+            if (ownersIt == g_PBC_HistoryOwners.end() || ownersIt->second.empty())
+            {
+                allDedup = false;
+                break;
+            }
+            uint64_t lastId = ownersIt->second.back();
+            auto entryIt = g_PBC_History.find(lastId);
+            if (entryIt == g_PBC_History.end()
+                || entryIt->second.authorGuid != authorGuid
+                || entryIt->second.type != type
+                || entryIt->second.message != message)
+            {
+                allDedup = false;
+                break;
+            }
         }
-
-        // Update timestamp
-        g_PBC_LastHistoryTime[botGuid] = time(nullptr);
+        if (allDedup)
+            return 0; // dedup — same author+type+text for all owners
     }
 
-    // DB write outside the lock
-    if (!dedup)
-        DB_InsertHistoryLine(botGuid, line);
+    // DB write
+    uint64_t newId = DB_InsertHistoryMessage(authorGuid, type, message, ownerGuids);
+    if (newId == 0)
+        return 0;
 
-    // WS notifications outside the lock
-    for (const auto& ev : wsHistoryEvents)
-        PBC_WsNotifyHistory(botGuid, ev.first, ev.second);
+    // In-memory update
+    PBC_HistoryEntry entry;
+    entry.id         = newId;
+    entry.timestamp  = time(nullptr);
+    entry.authorGuid = authorGuid;
+    entry.type       = type;
+    entry.message    = message;
+
+    std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+    g_PBC_History[newId] = entry;
+    for (uint64_t ownerGuid : ownerGuids)
+    {
+        g_PBC_HistoryOwners[ownerGuid].push_back(newId);
+        g_PBC_LastHistoryTime[ownerGuid] = entry.timestamp;
+
+        // WS notification — renders internally
+        PBC_WsNotifyHistory(ownerGuid, entry);
+    }
+
+    return newId;
 }
 
-
+// ---------------------------------------------------------------------------
+// Estimate total token count across all owned history lines
+// ---------------------------------------------------------------------------
 int PBC_EstimateHistoryTokens(uint64_t botGuid)
 {
     std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-    auto it = g_PBC_ChatHistory.find(botGuid);
-    if (it == g_PBC_ChatHistory.end()) return 0;
+    auto ownersIt = g_PBC_HistoryOwners.find(botGuid);
+    if (ownersIt == g_PBC_HistoryOwners.end())
+        return 0;
 
     int total = 0;
-    for (const auto& line : it->second)
-        total += PBC_EstimateTokens(line);
+    for (uint64_t historyId : ownersIt->second)
+    {
+        auto entryIt = g_PBC_History.find(historyId);
+        if (entryIt == g_PBC_History.end())
+            continue;
+        std::string rendered = PBC_RenderHistoryLine(entryIt->second, botGuid);
+        total += PBC_EstimateTokens(rendered);
+    }
     return total;
 }
 
-PBC_HistoryResult PBC_UpdateHistoryLine(uint64_t botGuid, size_t index,
-                                        const std::string& newMessage,
-                                        const std::string& originalMessage)
+// ---------------------------------------------------------------------------
+// Edit a message by its real mod_pbc_history.id (affects ALL owners)
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_UpdateHistoryMessage(uint64_t historyId,
+                                           const std::string& newMessage)
 {
     std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-    auto it = g_PBC_ChatHistory.find(botGuid);
-    if (it == g_PBC_ChatHistory.end() || index >= it->second.size())
+    auto it = g_PBC_History.find(historyId);
+    if (it == g_PBC_History.end())
         return PBC_HistoryResult::NotFound;
 
-    if (it->second[index] != originalMessage)
-        return PBC_HistoryResult::Desync;
-
-    it->second[index] = newMessage;
-
-    // DB write outside the lock — but we need to release first, so capture
-    // the parameters before unlocking.  The DB update is best-effort; the
-    // in-memory state is authoritative.
-    DB_UpdateHistoryLineByIndex(botGuid, index, newMessage);
+    it->second.message = newMessage;
+    DB_UpdateHistoryMessage(historyId, newMessage);
     return PBC_HistoryResult::Ok;
 }
 
-PBC_HistoryResult PBC_DeleteHistoryLine(uint64_t botGuid, size_t index,
-                                        const std::string& originalMessage)
+// ---------------------------------------------------------------------------
+// Hard delete: remove message from mod_pbc_history AND all ownership rows
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_DeleteHistoryMessage(uint64_t historyId)
 {
-    std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-    auto it = g_PBC_ChatHistory.find(botGuid);
-    if (it == g_PBC_ChatHistory.end() || index >= it->second.size())
-        return PBC_HistoryResult::NotFound;
+    // First remove all ownership rows from DB, then the message (via orphan cleanup)
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+        if (g_PBC_History.find(historyId) == g_PBC_History.end())
+            return PBC_HistoryResult::NotFound;
 
-    if (it->second[index] != originalMessage)
-        return PBC_HistoryResult::Desync;
+        // Remove this historyId from every owner's deque
+        for (auto& [guid, idList] : g_PBC_HistoryOwners)
+        {
+            auto pos = std::find(idList.begin(), idList.end(), historyId);
+            if (pos != idList.end())
+                idList.erase(pos);
+        }
 
-    it->second.erase(it->second.begin() + static_cast<std::ptrdiff_t>(index));
+        g_PBC_History.erase(historyId);
+    }
 
-    DB_DeleteHistoryLineByIndex(botGuid, index);
+    // DB cleanup: remove all ownership rows + orphaned message
+    DB_RemoveHistoryOwnership(0, historyId, true);
+    // The above DB_RemoveHistoryOwnership with guid=0 won't work because
+    // it tries to delete WHERE guid=0. Let's do it differently:
+    CharacterDatabase.Execute(
+        "DELETE FROM mod_pbc_history_owners WHERE history_id = {}", historyId);
+    CharacterDatabase.Execute(
+        "DELETE FROM mod_pbc_history WHERE id = {}", historyId);
+
+    return PBC_HistoryResult::Ok;
+}
+
+// ---------------------------------------------------------------------------
+// Soft unlink: remove one character's ownership (cleanup orphaned message)
+// ---------------------------------------------------------------------------
+PBC_HistoryResult PBC_RemoveHistoryOwnership(uint64_t guid, uint64_t historyId)
+{
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+        auto ownersIt = g_PBC_HistoryOwners.find(guid);
+        if (ownersIt == g_PBC_HistoryOwners.end())
+            return PBC_HistoryResult::NotFound;
+
+        auto pos = std::find(ownersIt->second.begin(), ownersIt->second.end(), historyId);
+        if (pos == ownersIt->second.end())
+            return PBC_HistoryResult::NotFound;
+
+        ownersIt->second.erase(pos);
+    }
+
+    DB_RemoveHistoryOwnership(guid, historyId, true);
+
+    // If message is now orphaned, remove from g_PBC_History
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+        bool hasOwners = false;
+        for (const auto& [g, idList] : g_PBC_HistoryOwners)
+        {
+            if (std::find(idList.begin(), idList.end(), historyId) != idList.end())
+            {
+                hasOwners = true;
+                break;
+            }
+        }
+        if (!hasOwners)
+            g_PBC_History.erase(historyId);
+    }
+
     return PBC_HistoryResult::Ok;
 }
 
@@ -526,13 +725,9 @@ PBC_CharacterSnapshot PBC_SnapshotCharacter(Player* bot)
     // Line-of-sight
     snap.charLos = PBC_BuildLosStr(bot);
 
-    // Capture the current global history into the snapshot's local copy.
-    {
-        std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        auto it = g_PBC_ChatHistory.find(snap.charGuidRaw);
-        if (it != g_PBC_ChatHistory.end())
-            snap.history = it->second;
-    }
+    // Capture the current global history into the snapshot's local copy
+    // using pre-rendered strings so the event thread never needs name lookups.
+    snap.history = PBC_GetChatHistoryPreRendered(snap.charGuidRaw);
 
     // Capture party member names and whether a real player is in the group.
     {

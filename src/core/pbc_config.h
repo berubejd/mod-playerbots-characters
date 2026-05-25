@@ -159,6 +159,24 @@ enum class PBC_EventType : uint8_t
     CardAdditionsMigration, // Convert legacy card additions into memories
 };
 
+// Raw source data for an event — the single source of truth.
+// All rendered views (histLine, eventLine) are derived from this.
+// Every event carries the full struct; unused fields stay default-empty.
+struct PBC_EventSource
+{
+    // Narrator events (item found, duel, level up, combat/quest summary, etc.)
+    std::string narratorText;       // Raw narrator text, no wrapper
+
+    // Chat events (say, yell, party, whisper)
+    uint64_t    senderGuid = 0;     // 0 for narrator / trigger events
+    std::string senderName;         // Empty for narrator / trigger events
+    std::string message;           // Empty for narrator / trigger events
+
+    bool IsNarrator() const { return !narratorText.empty(); }
+    bool IsChat() const     { return senderGuid != 0 && !message.empty(); }
+    bool HasSource() const  { return IsNarrator() || IsChat(); }
+};
+
 // A single unit of work for the event queue.
 struct PBC_EventItem
 {
@@ -166,17 +184,17 @@ struct PBC_EventItem
 
     // Normal / QuestSummarization / CombatSummarization fields
     std::string eventLine;          // Present-tense for [CURRENT EVENT]
-    std::string histLine;           // Past-tense appended to history after processing
+    PBC_EventSource source;        // Raw event data — single source of truth
     uint32_t    chatType = 0;       // Chat channel for bot replies
     std::vector<PBC_CharacterSnapshot> respondingChars;  // Rolled to respond
-    std::vector<uint64_t> silentCharGuids;               // Receive histLine only
+    std::vector<uint64_t> silentCharGuids;               // Receive source-derived histLine only
     std::vector<uint64_t> playerCharGuids;               // Real players receiving history
 
     // For whisper events
     std::string whisperSenderName;
     std::string whisperTargetName;
 
-    // GUIDs that already have histLine but still need new replies
+    // GUIDs that already have source-derived histLine but still need new replies
     std::vector<uint64_t> replyOnlyCharGuids;
     bool canCreateEvents = false;   // If true, triggers secondary events
 
@@ -226,8 +244,7 @@ extern std::mutex                    g_PBC_PendingActionsMutex;
 struct PBC_PendingEventRequest
 {
     std::string eventLine;
-    std::string histLine;
-    std::string originHistLine;  // Original trigger's histLine for context
+    PBC_EventSource source;         // Raw event data from the original event
     uint32_t chatType = 0;
     uint64_t anchorCharGuid = 0;
     std::unordered_set<uint64_t> excludedCharGuids;
@@ -276,8 +293,26 @@ extern std::mutex                 g_PBC_EventQueueMutex;
 // True when no event thread is running.
 extern std::atomic<bool> g_PBC_EventThreadDone;
 
-// In-memory chat history: bot_guid -> ordered list of pre-formatted lines
-extern std::unordered_map<uint64_t, std::deque<std::string>> g_PBC_ChatHistory;
+// ---------------------------------------------------------------------------
+// Central chat history store (mirrors mod_pbc_history)
+// ---------------------------------------------------------------------------
+struct PBC_HistoryEntry
+{
+    uint64_t    id         = 0;
+    time_t      timestamp  = 0;       // Unix timestamp
+    uint64_t    authorGuid = 0;       // 0 = narrator
+    uint8_t     type       = 2;       // ChatMsg enum: 0=narrator, 2=PARTY, 7=WHISPER, etc.
+    std::string message;              // Raw text, no speaker prefix
+};
+
+// All messages, keyed by mod_pbc_history.id
+extern std::unordered_map<uint64_t, PBC_HistoryEntry> g_PBC_History;
+
+// Per-character ordered list of history IDs (the character's chronological "view").
+// Order = insertion order = history_id ASC = chronological.
+extern std::unordered_map<uint64_t, std::deque<uint64_t>> g_PBC_HistoryOwners;
+
+// Single mutex for all three maps below.
 extern std::mutex g_PBC_HistoryMutex;
 
 // Last message timestamp per character for time-gap detection

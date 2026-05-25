@@ -13,6 +13,12 @@ struct PBC_EventItem;
 std::string PBC_MakeEventLine(const std::string& text);
 std::string PBC_MakeHistLine(const std::string& text);
 
+// Derive a histLine from a PBC_EventSource.  For narrator events produces
+// "Narrator: *text*", for chat events produces "Name: message", and
+// returns "" when the source is empty (e.g. trigger events).
+struct PBC_EventSource;
+std::string PBC_MakeHistLineFromSource(const PBC_EventSource& source);
+
 // ---------------------------------------------------------------------------
 // Send a narrator system message to all real (non-bot) players in the
 // same group as 'anchor' (or to anchor alone if ungrouped).
@@ -24,11 +30,13 @@ void PBC_NotifyRealPlayersInGroup(Player* anchor, const std::string& eventLine);
 // Dispatch a group event (from any translation unit).
 // Builds a PBC_EventItem with snapshots for all bots in anchor's group,
 // rolls each bot's chance, and pushes the item onto the global event queue.
+// narratorText: raw narrator text (no prefix/asterisk wrapper) — stored in
+//   ev.source.narratorText; histLine is derived automatically.
 // notifyRealPlayers=false: suppress the narrator system message sent to real
 // players in the group (used for combat events, which can be very frequent).
 // ---------------------------------------------------------------------------
 void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
-                             const std::string& histLine, uint32_t chance,
+                             const std::string& narratorText, uint32_t chance,
                              bool notifyRealPlayers = true);
 
 // ---------------------------------------------------------------------------

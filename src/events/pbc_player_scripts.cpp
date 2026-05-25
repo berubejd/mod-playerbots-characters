@@ -135,7 +135,7 @@ void PBC_PlayerEvents::OnPlayerLootItem(Player* player, Item* item, uint32 /*cou
 
     PBC_DispatchGroupEvent(player,
         PBC_MakeEventLine("The party has found " + phrase + " named " + itemName),
-        PBC_MakeHistLine("The party acquired " + phrase + " named " + itemName),
+        "The party acquired " + phrase + " named " + itemName,
         g_PBC_ReplyChanceItem);
 }
 
@@ -153,7 +153,7 @@ void PBC_PlayerEvents::OnPlayerQuestRewardItem(Player* player, Item* item, uint3
 
     PBC_DispatchGroupEvent(player,
         PBC_MakeEventLine("The party has been rewarded with " + phrase + " named " + itemName),
-        PBC_MakeHistLine("The party was rewarded with " + phrase + " named " + itemName),
+        "The party was rewarded with " + phrase + " named " + itemName,
         g_PBC_ReplyChanceItem);
 }
 
@@ -172,7 +172,7 @@ void PBC_PlayerEvents::OnPlayerGroupRollRewardItem(Player* player, Item* item, u
 
     PBC_DispatchGroupEvent(player,
         PBC_MakeEventLine("The party has found " + phrase + " named " + itemName),
-        PBC_MakeHistLine("The party acquired " + phrase + " named " + itemName),
+        "The party acquired " + phrase + " named " + itemName,
         g_PBC_ReplyChanceItem);
 }
 
@@ -182,7 +182,7 @@ void PBC_PlayerEvents::OnPlayerDuelEnd(Player* winner, Player* loser, DuelComple
     if (!PBC_PTR_VALID(winner) || !PBC_PTR_VALID(loser) || type != DUEL_WON) return;
     PBC_DispatchGroupEvent(winner,
         PBC_MakeEventLine(winner->GetName() + " just won the duel against " + loser->GetName()),
-        PBC_MakeHistLine(winner->GetName() + " won the duel against " + loser->GetName()),
+        winner->GetName() + " won the duel against " + loser->GetName(),
         g_PBC_ReplyChanceDuel);
 }
 
@@ -210,9 +210,9 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 oldLevel)
     const std::string& name = player->GetName();
     int idx = std::uniform_int_distribution<int>(0, 4)(PBC_GetRNG());
     std::string eventLine = PBC_MakeEventLine(name + levelUpEventPhrases[idx]);
-    std::string histLine  = PBC_MakeHistLine(name + levelUpHistPhrases[idx]);
+    std::string narratorText = name + levelUpHistPhrases[idx];
 
-    PBC_DispatchGroupEvent(player, eventLine, histLine, g_PBC_ReplyChanceLevelUp);
+    PBC_DispatchGroupEvent(player, eventLine, narratorText, g_PBC_ReplyChanceLevelUp);
 }
 
 void PBC_PlayerEvents::OnPlayerCreatureKill(Player* killer, Creature* killed)

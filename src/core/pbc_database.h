@@ -2,28 +2,30 @@
 #define MOD_PBC_DATABASE_H
 
 #include <string>
+#include <vector>
 #include <cstdint>
 
 // ---------------------------------------------------------------------------
-// Chat history
+// Chat history — normalized schema (mod_pbc_history + mod_pbc_history_owners)
 // ---------------------------------------------------------------------------
 
-// Insert a single history line for a character.
-void DB_InsertHistoryLine(uint64_t botGuid, const std::string& message);
+// Insert one message into mod_pbc_history and link it to one or more owners.
+// Returns the new history_id (auto-increment).
+uint64_t DB_InsertHistoryMessage(uint64_t authorGuid, uint8_t type,
+                                 const std::string& message,
+                                 const std::vector<uint64_t>& ownerGuids);
 
-// Delete all history rows for a character.
-void DB_DeleteHistoryForCharacter(uint64_t botGuid);
+// Update the raw message text in mod_pbc_history (affects all owners).
+void DB_UpdateHistoryMessage(uint64_t historyId, const std::string& newMessage);
 
-// Delete all history rows (used during periodic full-replace save).
-void DB_DeleteAllHistory();
+// Remove one character's ownership of a message.
+// If removeOrphaned is true and no owners remain, also delete the message.
+void DB_RemoveHistoryOwnership(uint64_t guid, uint64_t historyId,
+                               bool removeOrphaned = true);
 
-// Update a single history message by bot GUID and 0-based index (position
-// in the ordered list for that bot).  Uses a subquery to resolve the index
-// to the actual DB row id, so no in-memory ID tracking is needed.
-void DB_UpdateHistoryLineByIndex(uint64_t botGuid, size_t index, const std::string& newMessage);
-
-// Delete a single history message by bot GUID and 0-based index.
-void DB_DeleteHistoryLineByIndex(uint64_t botGuid, size_t index);
+// Remove all ownership rows for a character, then clean orphaned messages.
+// Used by condensation and .chars reset.
+void DB_RemoveAllHistoryOwnership(uint64_t guid);
 
 // ---------------------------------------------------------------------------
 // Character memories
@@ -88,7 +90,7 @@ bool DB_CardAdditionsTableNotEmpty();
 // DB Loader functions (implementations in pbc_database.cpp)
 // ---------------------------------------------------------------------------
 
-// Load all chat history from DB into g_PBC_ChatHistory.
+// Load all chat history from DB into g_PBC_History + g_PBC_HistoryOwners.
 void PBC_LoadHistoryFromDB();
 
 // Load all memories from DB into g_PBC_Memories.

@@ -221,12 +221,12 @@ void PBC_PollPartyState()
                     dest = "an unknown destination";
 
                 std::string eventLine = PBC_MakeEventLine("The party has started a flight to " + dest);
-                std::string histLine  = PBC_MakeHistLine("The party started a flight to " + dest);
+                std::string narratorText = "The party started a flight to " + dest;
 
                 PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: flight started — group={} dest={} bots={} chance={}%",
                          grpGuid, dest, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
 
-                PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
+                PBC_DispatchGroupEvent(gi.anchor, eventLine, narratorText,
                                        g_PBC_ReplyChanceLocationChanged);
             }
         }
@@ -291,7 +291,7 @@ void PBC_PollPartyState()
                     if (state.locationStableCycles >= g_PBC_LocationChangeDebounceCycles)
                     {
                         std::string eventLine = PBC_MakeEventLine("Party has arrived in " + gi.sharedZone);
-                        std::string histLine  = PBC_MakeHistLine("Party moved to " + gi.sharedZone);
+                        std::string narratorText = "Party moved to " + gi.sharedZone;
 
                         PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: location changed — group={} from='{}' to='{}' bots={} chance={}%",
                                  grpGuid, state.location, gi.sharedZone, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
@@ -300,7 +300,7 @@ void PBC_PollPartyState()
                         state.candidateLocation.clear();
                         state.locationStableCycles = 0;
 
-                        PBC_DispatchGroupEvent(gi.anchor, eventLine, histLine,
+                        PBC_DispatchGroupEvent(gi.anchor, eventLine, narratorText,
                                                g_PBC_ReplyChanceLocationChanged);
                     }
                 }

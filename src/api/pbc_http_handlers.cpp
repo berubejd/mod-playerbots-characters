@@ -301,27 +301,26 @@ static uint8_t ExtractOptionalImportance(const json& body)
     catch (...) { return 5; }
 }
 
-// Parse and validate the 'id' query parameter (1-based, used by history and
-// memory endpoints).  Returns the 0-based index on success, or SIZE_MAX on
-// error (response already set).
-static size_t ParseQueryId(const httplib::Request& req, httplib::Response& res)
+// Parse and validate the 'id' query parameter as a raw uint64_t (real DB id).
+// Returns the parsed id on success, or 0 on error (response already set).
+static uint64_t ParseQueryId(const httplib::Request& req, httplib::Response& res)
 {
     std::string idStr = req.get_param_value("id");
     if (idStr.empty())
     {
         res.status = 400;
         res.set_content("{\"error\":\"Missing id parameter\"}", "application/json");
-        return SIZE_MAX;
+        return 0;
     }
-    size_t id = 0;
+    uint64_t id = 0;
     try { id = std::stoull(idStr); } catch (...) {}
     if (id == 0)
     {
         res.status = 400;
         res.set_content("{\"error\":\"Invalid id parameter (must be >= 1)\"}", "application/json");
-        return SIZE_MAX;
+        return 0;
     }
-    return id - 1; // convert to 0-based index
+    return id;
 }
 
 // ===========================================================================
@@ -634,8 +633,8 @@ void HandleGetCharHistory(const httplib::Request& req, httplib::Response& res,
 
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        auto it = g_PBC_ChatHistory.find(charGuid);
-        if (it != g_PBC_ChatHistory.end())
+        auto it = g_PBC_HistoryOwners.find(charGuid);
+        if (it != g_PBC_HistoryOwners.end())
         {
             total = it->second.size();
 
@@ -644,7 +643,20 @@ void HandleGetCharHistory(const httplib::Request& req, httplib::Response& res,
                 if (limit == 0)
                 {
                     for (size_t i = 0; i < total; ++i)
-                        messages.push_back({{"id", i + 1}, {"text", it->second[i]}});
+                    {
+                        uint64_t historyId = it->second[i];
+                        auto entryIt = g_PBC_History.find(historyId);
+                        if (entryIt == g_PBC_History.end()) continue;
+                        const auto& e = entryIt->second;
+                        json msg;
+                        msg["id"]          = e.id;
+                        msg["text"]        = PBC_RenderHistoryLine(e, charGuid);
+                        msg["author_guid"] = e.authorGuid;
+                        msg["type"]        = e.type;
+                        msg["message"]     = e.message;
+                        msg["author_name"] = PBC_GetCharacterName(e.authorGuid);
+                        messages.push_back(msg);
+                    }
                 }
                 else
                 {
@@ -656,7 +668,20 @@ void HandleGetCharHistory(const httplib::Request& req, httplib::Response& res,
                                           ? endIdx - static_cast<size_t>(limit)
                                           : 0;
                         for (size_t i = startIdx; i < endIdx; ++i)
-                            messages.push_back({{"id", i + 1}, {"text", it->second[i]}});
+                        {
+                            uint64_t historyId = it->second[i];
+                            auto entryIt = g_PBC_History.find(historyId);
+                            if (entryIt == g_PBC_History.end()) continue;
+                            const auto& e = entryIt->second;
+                            json msg;
+                            msg["id"]          = e.id;
+                            msg["text"]        = PBC_RenderHistoryLine(e, charGuid);
+                            msg["author_guid"] = e.authorGuid;
+                            msg["type"]        = e.type;
+                            msg["message"]     = e.message;
+                            msg["author_name"] = PBC_GetCharacterName(e.authorGuid);
+                            messages.push_back(msg);
+                        }
                     }
                 }
             }
@@ -689,19 +714,18 @@ void HandlePostCharHistory(const httplib::Request& req, httplib::Response& res,
     if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
         return;
 
-    size_t index = ParseQueryId(req, res);
-    if (index == SIZE_MAX) return;
+    uint64_t historyId = ParseQueryId(req, res);
+    if (historyId == 0) return;
 
     json body;
     try { body = json::parse(req.body); } catch (...) {}
-    std::string newMessage      = ExtractRequiredBodyField(body, "message", res);
-    std::string originalMessage = ExtractRequiredBodyField(body, "original", res);
-    if (newMessage.empty() || originalMessage.empty()) return;
+    std::string newMessage = ExtractRequiredBodyField(body, "message", res);
+    if (newMessage.empty()) return;
 
-    PBC_HistoryResult result = PBC_UpdateHistoryLine(charGuid, index, newMessage, originalMessage);
+    PBC_HistoryResult result = PBC_UpdateHistoryMessage(historyId, newMessage);
     if (!RespondMutationResult(res, result, "Message")) return;
 
-    PBC_Log(PBC_LogLevel::PBC_DEBUG, "API history edit: character GUID={} index={}", charGuid, index);
+    PBC_Log(PBC_LogLevel::PBC_DEBUG, "API history edit: historyId={}", historyId);
     res.set_content("{\"status\":\"updated\"}", "application/json");
 }
 
@@ -717,18 +741,13 @@ void HandleDeleteCharHistory(const httplib::Request& req, httplib::Response& res
     if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
         return;
 
-    size_t index = ParseQueryId(req, res);
-    if (index == SIZE_MAX) return;
+    uint64_t historyId = ParseQueryId(req, res);
+    if (historyId == 0) return;
 
-    json body;
-    try { body = json::parse(req.body); } catch (...) {}
-    std::string originalMessage = ExtractRequiredBodyField(body, "original", res);
-    if (originalMessage.empty()) return;
-
-    PBC_HistoryResult result = PBC_DeleteHistoryLine(charGuid, index, originalMessage);
+    PBC_HistoryResult result = PBC_DeleteHistoryMessage(historyId);
     if (!RespondMutationResult(res, result, "Message")) return;
 
-    PBC_Log(PBC_LogLevel::PBC_DEBUG, "API history delete: character GUID={} index={}", charGuid, index);
+    PBC_Log(PBC_LogLevel::PBC_DEBUG, "API history delete: historyId={}", historyId);
     res.set_content("{\"status\":\"deleted\"}", "application/json");
 }
 
@@ -1258,8 +1277,8 @@ void HandlePostCharNarrate(const httplib::Request& req, httplib::Response& res,
         return;
     }
 
-    std::string histLine = PBC_MakeHistLine(message);
-    PBC_AppendHistory(charGuid, histLine);
+    std::vector<uint64_t> owners = {charGuid};
+    PBC_AppendHistoryMessage(0, 0, message, owners);
 
     PBC_Log(PBC_LogLevel::PBC_DEBUG, "API narrate: character GUID={} message=\"{}\"", charGuid, message);
     res.set_content("{\"status\":\"ok\"}", "application/json");
@@ -1298,7 +1317,7 @@ void HandlePostPartyNarrate(const httplib::Request& req, httplib::Response& res,
         return;
     }
 
-    std::string histLine = PBC_MakeHistLine(message);
+    std::vector<uint64_t> owners;
     int count = 0;
 
     for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
@@ -1315,16 +1334,13 @@ void HandlePostPartyNarrate(const httplib::Request& req, httplib::Response& res,
         if (memberAccount != authInfo.accountId)
             continue;
 
-        PBC_AppendHistory(memberGuid, histLine);
+        owners.push_back(memberGuid);
         ++count;
     }
 
     // Also write the narrator line to the player's own character history
-    {
-        uint64_t playerGuid = player->GetGUID().GetCounter();
-        PBC_AppendHistory(playerGuid, histLine);
-        ++count;
-    }
+    owners.push_back(player->GetGUID().GetCounter());
+    PBC_AppendHistoryMessage(0, 0, message, owners);
 
     if (count == 0)
     {

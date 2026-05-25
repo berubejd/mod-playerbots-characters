@@ -6,6 +6,8 @@
 #include <utility>
 #include <cstdint>
 
+struct PBC_HistoryEntry;
+
 // Thin wrapper around cpp-httplib for synchronous HTTP/HTTPS POST requests.
 // Supports custom auth headers (Bearer token, x-api-key, etc.).
 class PBC_HttpClient
@@ -67,8 +69,9 @@ std::string PBC_HttpServerGenerateOTP(uint32_t accountId);
 void PBC_WsNotify(uint64_t botGuid, const std::string& eventType);
 
 // Notify WS clients subscribed to the same account as botGuid of a history
-// event with message data. messageId is the 1-based history index.
-void PBC_WsNotifyHistory(uint64_t botGuid, size_t messageId, const std::string& text);
+// event.  Sends id, text, type, message, author_guid, and author_name so the
+// frontend can render the message correctly without an HTTP reload.
+void PBC_WsNotifyHistory(uint64_t botGuid, const PBC_HistoryEntry& entry);
 
 // Send an immediate preview of a pending history line (id=0) to WS clients.
 // Used to stream character replies in real-time before they are persisted.

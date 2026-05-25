@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import { fetchHistory, editMessage, deleteMessage, sendWhisper, sendNarrate, sendPartyMessage, sendPartyNarrate, sendTrigger, formatApiError } from './api.js';
-import { parseMessage, formatMessageParts } from './chat-utils.js';
+import { getMessageMeta, formatMessageParts } from './chat-utils.js';
 import { useToast } from './toast-provider.jsx';
 import { useMediaQuery } from './use-media-query.js';
 import ActionMenu from './action-menu.jsx';
@@ -25,11 +25,12 @@ function formatThinkingLine(names) {
 }
 
 function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selected, onToggleSelect, isNew }) {
-  const text = typeof msg === 'string' ? msg : msg.text;
-  const id = typeof msg === 'string' ? null : msg.id;
+  const meta = typeof msg === 'object' && msg ? getMessageMeta(msg) : { name: 'Narrator', message: '', isWhisper: false, isNarrator: true };
+  const id = typeof msg === 'string' ? null : (msg && msg.id);
   const pending = !!(msg && msg.pending);
-  const { name, message, isWhisper, isNarrator } = parseMessage(text);
+  const { name, message, isWhisper, isNarrator } = meta;
   const canSelect = id != null && !pending;
+  const rawMessage = (msg && msg.message) || '';
 
   // Narrator messages: horizontal line with centered smaller white text
   if (isNarrator) {
@@ -50,14 +51,14 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
                 <button
                   class="btn btn-sm p-0 px-1"
                   title="Edit"
-                  onClick={(e) => { e.stopPropagation(); onEdit(id, text); }}
+                  onClick={(e) => { e.stopPropagation(); onEdit(id, rawMessage); }}
                 >
                   <i class="bi bi-pencil"></i>
                 </button>
                 <button
                   class="btn btn-sm p-0 px-1"
                   title="Delete"
-                  onClick={(e) => { e.stopPropagation(); onDelete(id, text); }}
+                  onClick={(e) => { e.stopPropagation(); onDelete(id); }}
                 >
                   <i class="bi bi-trash3"></i>
                 </button>
@@ -71,7 +72,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
         </div>
       {id != null && !pending && (
         <div class="action-menu position-absolute top-0 end-0">
-          <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
+          <ActionMenu onEdit={() => onEdit(id, rawMessage)} onDelete={() => onDelete(id)} />
         </div>
       )}
       </div>
@@ -98,14 +99,14 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
               <button
                 class="btn btn-sm p-0 px-1"
                 title="Edit"
-                onClick={(e) => { e.stopPropagation(); onEdit(id, text); }}
+                onClick={(e) => { e.stopPropagation(); onEdit(id, rawMessage); }}
               >
                 <i class="bi bi-pencil"></i>
               </button>
               <button
                 class="btn btn-sm p-0 px-1"
                 title="Delete"
-                onClick={(e) => { e.stopPropagation(); onDelete(id, text); }}
+                onClick={(e) => { e.stopPropagation(); onDelete(id); }}
               >
                 <i class="bi bi-trash3"></i>
               </button>
@@ -132,7 +133,7 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
       </div>
       {id != null && !pending && (
         <div class="action-menu position-absolute top-0 end-0">
-          <ActionMenu onEdit={() => onEdit(id, text)} onDelete={() => onDelete(id, text)} />
+          <ActionMenu onEdit={() => onEdit(id, rawMessage)} onDelete={() => onDelete(id)} />
         </div>
       )}
     </div>
@@ -141,14 +142,11 @@ function MessageLine({ msg, nameColorMap, onEdit, onDelete, selectionMode, selec
 
 function EditModal({ show, text, onSave, onCancel }) {
   const [value, setValue] = useState(text);
-  const [propagate, setPropagate] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
     if (show) {
       setValue(text);
-      const { isWhisper } = parseMessage(text);
-      setPropagate(!isWhisper);
       requestAnimationFrame(() => {
         if (inputRef.current) inputRef.current.focus();
       });
@@ -159,7 +157,7 @@ function EditModal({ show, text, onSave, onCancel }) {
     if (e.key === 'Enter') {
       e.preventDefault();
       if (!e.shiftKey) {
-        onSave(value, propagate);
+        onSave(value);
       }
     } else if (e.key === 'Escape') {
       onCancel();
@@ -189,22 +187,13 @@ function EditModal({ show, text, onSave, onCancel }) {
               onKeyDown={handleKeyDown}
               style="resize: vertical"
             />
-            <div class="form-check mt-3">
-              <input
-                class="form-check-input"
-                type="checkbox"
-                id="editPropagate"
-                checked={propagate}
-                onChange={(e) => setPropagate(e.target.checked)}
-              />
-              <label class="form-check-label small" for="editPropagate">
-                Find and edit the same message in other group members' histories
-              </label>
+            <div class="alert alert-info small mt-3 mb-0">
+              This message may be shared across multiple characters' histories. Editing it will affect <strong>all</strong> of them.
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onClick={onCancel}>Cancel</button>
-            <button type="button" class="btn btn-primary" onClick={() => onSave(value, propagate)}>Save</button>
+            <button type="button" class="btn btn-primary" onClick={() => onSave(value)}>Save</button>
           </div>
         </div>
       </div>
@@ -212,16 +201,7 @@ function EditModal({ show, text, onSave, onCancel }) {
   );
 }
 
-function DeleteModal({ show, text, onConfirm, onCancel }) {
-  const [propagate, setPropagate] = useState(false);
-
-  useEffect(() => {
-    if (show) {
-      const { isWhisper } = parseMessage(text);
-      setPropagate(!isWhisper);
-    }
-  }, [show, text]);
-
+function DeleteModal({ show, onConfirm, onCancel }) {
   if (!show) return null;
 
   return (
@@ -234,22 +214,13 @@ function DeleteModal({ show, text, onConfirm, onCancel }) {
           </div>
           <div class="modal-body">
             <p class="mb-0">Deleting messages is irreversible, are you sure you want to delete this one?</p>
-            <div class="form-check mt-3">
-              <input
-                class="form-check-input"
-                type="checkbox"
-                id="deletePropagate"
-                checked={propagate}
-                onChange={(e) => setPropagate(e.target.checked)}
-              />
-              <label class="form-check-label small" for="deletePropagate">
-                Find and delete the same message in other group members' histories
-              </label>
+            <div class="alert alert-info small mt-3 mb-0">
+              This message will be permanently deleted from <strong>all</strong> characters' histories.
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onClick={onCancel}>Cancel</button>
-            <button type="button" class="btn btn-danger" onClick={() => onConfirm(propagate)}>Delete</button>
+            <button type="button" class="btn btn-danger" onClick={() => onConfirm()}>Delete</button>
           </div>
         </div>
       </div>
@@ -257,15 +228,7 @@ function DeleteModal({ show, text, onConfirm, onCancel }) {
   );
 }
 
-function BatchDeleteModal({ show, count, hasNonWhisper, onConfirm, onCancel }) {
-  const [propagate, setPropagate] = useState(false);
-
-  useEffect(() => {
-    if (show) {
-      setPropagate(hasNonWhisper);
-    }
-  }, [show, hasNonWhisper]);
-
+function BatchDeleteModal({ show, count, onConfirm, onCancel }) {
   if (!show) return null;
 
   return (
@@ -278,22 +241,13 @@ function BatchDeleteModal({ show, count, hasNonWhisper, onConfirm, onCancel }) {
           </div>
           <div class="modal-body">
             <p class="mb-0">Deleting messages is irreversible. Are you sure you want to delete {count} message{count !== 1 ? 's' : ''}?</p>
-            <div class="form-check mt-3">
-              <input
-                class="form-check-input"
-                type="checkbox"
-                id="batchDeletePropagate"
-                checked={propagate}
-                onChange={(e) => setPropagate(e.target.checked)}
-              />
-              <label class="form-check-label small" for="batchDeletePropagate">
-                Find and delete the same messages in other group members' histories
-              </label>
+            <div class="alert alert-info small mt-3 mb-0">
+              Selected messages will be permanently deleted from <strong>all</strong> characters' histories.
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onClick={onCancel}>Cancel</button>
-            <button type="button" class="btn btn-danger" onClick={() => onConfirm(propagate)}>Delete</button>
+            <button type="button" class="btn btn-danger" onClick={() => onConfirm()}>Delete</button>
           </div>
         </div>
       </div>
@@ -498,7 +452,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
   // Edit modal state
   const [editModal, setEditModal] = useState({ show: false, id: null, text: '' });
   // Delete modal state
-  const [deleteModal, setDeleteModal] = useState({ show: false, id: null, text: '' });
+  const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
 
   // Selection mode state (desktop only)
   const [selectionMode, setSelectionMode] = useState(false);
@@ -510,7 +464,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
   const newTimersRef = useRef(new Map());
 
   const containerRef = useRef(null);
-  const lastIdRef = useRef(0);
   const pendingWhisperRef = useRef(null);
   const loadingRef = useRef(false);
   const isAtBottomRef = useRef(true);
@@ -570,21 +523,26 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
   const handleMessageSent = useCallback((message, mode) => {
     if (mode === 'narrate' || mode === 'narrate-party') return;
 
-    let fullText;
-    switch (mode) {
-      case 'party':
-        fullText = `${playerName}: ${message}`;
-        break;
-      default:
-        fullText = `${playerName} (privately to you): ${message}`;
-        break;
-    }
-    pendingWhisperRef.current = fullText;
+    // Store the raw message text for matching against the WS event
+    pendingWhisperRef.current = message;
+
+    const text = mode === 'party'
+      ? `You: ${message}`
+      : `You (privately): ${message}`;
+
     setMessages((prev) => {
       const withoutPending = prev ? prev.filter((m) => m.id !== 'pending') : [];
-      return [...withoutPending, { id: 'pending', text: fullText, pending: true }];
+      return [...withoutPending, {
+        id: 'pending',
+        text,
+        type: mode === 'whisper' ? 7 : 2,
+        author_guid: playerGuid,
+        author_name: playerName,
+        message,
+        pending: true,
+      }];
     });
-  }, [playerName]);
+  }, [playerName, playerGuid]);
 
   // Fetch all history when selectedGuid changes, retry is clicked, or chatReloadKey changes
   useEffect(() => {
@@ -593,7 +551,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     loadingRef.current = true;
     setError(null);
     setMessages(null);
-    lastIdRef.current = 0;
     pendingWhisperRef.current = null;
     shouldAutoScrollRef.current = true;
     setSelectionMode(false);
@@ -608,9 +565,6 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       .then((data) => {
         if (!cancelled) {
           setMessages(data.messages);
-          if (data.messages.length > 0) {
-            lastIdRef.current = data.messages[data.messages.length - 1].id;
-          }
           setLoading(false);
           loadingRef.current = false;
         }
@@ -642,9 +596,9 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
 
       if (loadingRef.current) return;
 
-      const { id, text } = chatEvent.data.message;
-      const expectedId = lastIdRef.current + 1;
-      const pendingText = pendingWhisperRef.current;
+      const msg = chatEvent.data.message;
+      const { id } = msg;
+      const pendingRaw = pendingWhisperRef.current;
 
       // Helper: mark a message as new (highlight) and auto-remove after animation
       const markAsNew = (msgId) => {
@@ -663,44 +617,35 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       // Ignore preview/temporary messages (id=0) — only process real messages
       if (id === 0) return;
 
-      if (pendingText !== null) {
-        if (text === pendingText) {
+      if (pendingRaw !== null) {
+        if (msg.message === pendingRaw) {
           // Exact match — replace pending with real (removes opacity)
           pendingWhisperRef.current = null;
-          setMessages((prev) => prev.map((m) => m.id === 'pending' ? { id, text } : m));
-          lastIdRef.current = id;
+          setMessages((prev) => prev.map((m) => m.id === 'pending' ? msg : m));
           markAsNew(id);
-        } else if (id === expectedId) {
+        } else {
           // Character response / narrator line — insert it right after
           // the pending placeholder so the player's own message stays
           // first (the player spoke before characters responded).
           setMessages((prev) => {
-            const newMsg = { id, text };
             const pendingIdx = prev.findIndex(m => m.id === 'pending');
             if (pendingIdx !== -1) {
               const newArr = [...prev];
-              newArr.splice(pendingIdx + 1, 0, newMsg);
+              newArr.splice(pendingIdx + 1, 0, msg);
               return newArr;
             }
-            return [...prev, newMsg];
+            return [...prev, msg];
           });
-          lastIdRef.current = id;
           markAsNew(id);
-        } else {
-          // ID mismatch — remove pending and reload
-          pendingWhisperRef.current = null;
-          setMessages((prev) => prev.filter((m) => m.id !== 'pending'));
-          setRetryKey((k) => k + 1);
         }
       } else {
-        if (id === expectedId) {
-          setMessages((prev) => prev ? [...prev, { id, text }] : prev);
-          lastIdRef.current = id;
-          markAsNew(id);
-        } else {
-          // ID mismatch — something went wrong, invalidate and re-fetch
-          setRetryKey((k) => k + 1);
-        }
+        // No pending — append with dedup by real DB id
+        setMessages((prev) => {
+          if (!prev) return [msg];
+          if (prev.some(m => m.id === id)) return prev;
+          return [...prev, msg];
+        });
+        markAsNew(id);
       }
     }
   }, [chatEvent]);
@@ -829,40 +774,29 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     setEditModal({ show: true, id, text });
   }, []);
 
-  const handleEditSave = useCallback(async (newText, propagate) => {
-    const originalText = editModal.text;
+  const handleEditSave = useCallback(async (newText) => {
     const messageId = editModal.id;
     setSelectionMode(false);
     setSelectedIds(new Set());
     try {
-      await editMessage(token, selectedGuid, messageId, newText, originalText);
+      await editMessage(token, selectedGuid, messageId, newText);
       setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === messageId ? { ...msg, text: newText } : msg
-        )
+        prev.map((msg) => {
+          if (msg.id !== messageId) return msg;
+          // Regenerate pre-rendered text from raw message + type/author_name
+          let renderedText;
+          if (msg.type === 0) {
+            renderedText = `Narrator: *${newText}*`;
+          } else if (msg.type === 7) {
+            renderedText = `${msg.author_name || 'Unknown'} (privately to you): ${newText}`;
+          } else {
+            renderedText = `${msg.author_name || 'Unknown'}: ${newText}`;
+          }
+          return { ...msg, message: newText, text: renderedText };
+        })
       );
       setEditModal({ show: false, id: null, text: '' });
-
-      let count = 1;
-      if (propagate) {
-        const otherChars = (characters || []).filter((c) => c.guid !== selectedGuid);
-        const results = await Promise.allSettled(
-          otherChars.map(async (char) => {
-            const data = await fetchHistory(token, char.guid);
-            const msgs = data.messages;
-            for (let i = msgs.length - 1; i >= 0; i--) {
-              if (msgs[i].text === originalText) {
-                await editMessage(token, char.guid, msgs[i].id, newText, originalText);
-                return true;
-              }
-            }
-            return false;
-          })
-        );
-        count += results.filter((r) => r.status === 'fulfilled' && r.value).length;
-      }
-
-      toast(propagate ? `${count} message${count !== 1 ? 's' : ''} updated` : 'Message updated', 'success');
+      toast('Message updated', 'success');
     } catch (err) {
       if (err.message === 'desync' || err.message === 'unauthorized') {
         onDesync(err.message);
@@ -870,53 +804,26 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       }
       toast('Failed to update message', 'error');
     }
-  }, [token, selectedGuid, editModal.id, editModal.text, toast, onDesync, characters]);
+  }, [token, selectedGuid, editModal.id, toast, onDesync]);
 
   const handleEditCancel = useCallback(() => {
     setEditModal({ show: false, id: null, text: '' });
   }, []);
 
   // Delete handlers
-  const handleDeleteOpen = useCallback((id, text) => {
-    setDeleteModal({ show: true, id, text });
+  const handleDeleteOpen = useCallback((id) => {
+    setDeleteModal({ show: true, id });
   }, []);
 
-  const handleDeleteConfirm = useCallback(async (propagate) => {
-    const originalText = deleteModal.text;
+  const handleDeleteConfirm = useCallback(async () => {
     const messageId = deleteModal.id;
     setSelectionMode(false);
     setSelectedIds(new Set());
     try {
-      await deleteMessage(token, selectedGuid, messageId, originalText);
-      const deletedId = messageId;
-      setMessages((prev) =>
-        prev
-          .filter((msg) => msg.id !== deletedId)
-          .map((msg) => (msg.id > deletedId ? { ...msg, id: msg.id - 1 } : msg))
-      );
-      lastIdRef.current -= 1;
-      setDeleteModal({ show: false, id: null, text: '' });
-
-      let count = 1;
-      if (propagate) {
-        const otherChars = (characters || []).filter((c) => c.guid !== selectedGuid);
-        const results = await Promise.allSettled(
-          otherChars.map(async (char) => {
-            const data = await fetchHistory(token, char.guid);
-            const msgs = data.messages;
-            for (let i = msgs.length - 1; i >= 0; i--) {
-              if (msgs[i].text === originalText) {
-                await deleteMessage(token, char.guid, msgs[i].id, originalText);
-                return true;
-              }
-            }
-            return false;
-          })
-        );
-        count += results.filter((r) => r.status === 'fulfilled' && r.value).length;
-      }
-
-      toast(propagate ? `${count} message${count !== 1 ? 's' : ''} deleted` : 'Message deleted', 'success');
+      await deleteMessage(token, selectedGuid, messageId);
+      setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+      setDeleteModal({ show: false, id: null });
+      toast('Message deleted', 'success');
     } catch (err) {
       if (err.message === 'desync' || err.message === 'unauthorized') {
         onDesync(err.message);
@@ -924,10 +831,10 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       }
       toast('Failed to delete message', 'error');
     }
-  }, [token, selectedGuid, deleteModal.id, deleteModal.text, toast, onDesync, characters]);
+  }, [token, selectedGuid, deleteModal.id, toast, onDesync]);
 
   const handleDeleteCancel = useCallback(() => {
-    setDeleteModal({ show: false, id: null, text: '' });
+    setDeleteModal({ show: false, id: null });
   }, []);
 
   // Batch delete handlers
@@ -939,10 +846,10 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
     setBatchDeleteModal({ show: false, count: 0 });
   }, []);
 
-  const handleBatchDeleteConfirm = useCallback(async (propagate) => {
+  const handleBatchDeleteConfirm = useCallback(async () => {
     const toDelete = messages
-      .filter((msg) => selectedIds.has(msg.id) && msg.id != null && !msg.pending && !msg.preview)
-      .map((msg) => ({ id: msg.id, text: msg.text }))
+      .filter((msg) => selectedIds.has(msg.id) && msg.id != null && !msg.pending)
+      .map((msg) => ({ id: msg.id }))
       .sort((a, b) => b.id - a.id);
 
     setSelectionMode(false);
@@ -951,18 +858,12 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
 
     if (toDelete.length === 0) return;
 
-    const deletedTexts = [];
+    let deletedCount = 0;
     for (const msg of toDelete) {
       try {
-        await deleteMessage(token, selectedGuid, msg.id, msg.text);
-        deletedTexts.push(msg.text);
-        setMessages((prev) => {
-          const deletedId = msg.id;
-          return prev
-            .filter((m) => m.id !== deletedId)
-            .map((m) => (m.id > deletedId ? { ...m, id: m.id - 1 } : m));
-        });
-        lastIdRef.current -= 1;
+        await deleteMessage(token, selectedGuid, msg.id);
+        setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+        deletedCount++;
       } catch (err) {
         if (err.message === 'desync' || err.message === 'unauthorized') {
           onDesync(err.message);
@@ -973,38 +874,10 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       }
     }
 
-    if (deletedTexts.length === 0) return;
-
-    if (propagate) {
-      const otherChars = (characters || []).filter((c) => c.guid !== selectedGuid);
-      let propagateCount = 0;
-      for (const char of otherChars) {
-        try {
-          const data = await fetchHistory(token, char.guid);
-          const msgs = data.messages;
-          for (const delText of deletedTexts) {
-            for (let i = msgs.length - 1; i >= 0; i--) {
-              if (msgs[i].text === delText) {
-                try {
-                  await deleteMessage(token, char.guid, msgs[i].id, msgs[i].text);
-                  propagateCount++;
-                } catch {
-                  // Skip failed propagations for individual messages
-                }
-                break;
-              }
-            }
-          }
-        } catch {
-          // Skip failed character history fetches
-        }
-      }
-      const totalCount = deletedTexts.length + propagateCount;
-      toast(`${totalCount} message${totalCount !== 1 ? 's' : ''} deleted`, 'success');
-    } else {
-      toast(`${deletedTexts.length} message${deletedTexts.length !== 1 ? 's' : ''} deleted`, 'success');
+    if (deletedCount > 0) {
+      toast(`${deletedCount} message${deletedCount !== 1 ? 's' : ''} deleted`, 'success');
     }
-  }, [token, selectedGuid, messages, selectedIds, toast, onDesync, characters]);
+  }, [token, selectedGuid, messages, selectedIds, toast, onDesync]);
 
   // Render: loading
   if (loading) {
@@ -1140,14 +1013,12 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       />
       <DeleteModal
         show={deleteModal.show}
-        text={deleteModal.text}
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
       />
       <BatchDeleteModal
         show={batchDeleteModal.show}
         count={batchDeleteModal.count}
-        hasNonWhisper={messages.filter((msg) => selectedIds.has(msg.id) && msg.id != null && !msg.pending && !msg.preview).some((msg) => !parseMessage(msg.text).isWhisper)}
         onConfirm={handleBatchDeleteConfirm}
         onCancel={handleBatchDeleteCancel}
       />

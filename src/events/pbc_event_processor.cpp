@@ -122,20 +122,6 @@ void PushReplySegments(const PBC_CharacterSnapshot& snap,
     }
 }
 
-std::string AdjustWhisperPerspective(const std::string& text,
-                                     const std::string& fromPerspective,
-                                     const std::string& toPerspective)
-{
-    std::string result = text;
-    size_t pos = 0;
-    while ((pos = result.find(fromPerspective, pos)) != std::string::npos)
-    {
-        result.replace(pos, fromPerspective.size(), toPerspective);
-        pos += toPerspective.size();
-    }
-    return result;
-}
-
 // ===========================================================================
 // PBC_PushNarratorSummary
 // ===========================================================================
@@ -363,7 +349,7 @@ void ProcessCombatSummarization(PBC_EventItem& ev)
     }
 
     ev.eventLine = PBC_MakeEventLine(summary.text);
-    ev.histLine  = PBC_MakeHistLine(summary.text);
+    ev.source.narratorText = summary.text;
 
     PBC_PushNarratorSummary(ev.anchorObjGuid, ev.eventLine);
 }
@@ -386,10 +372,17 @@ void ProcessQuestSummarization(PBC_EventItem& ev)
     }
 
     ev.eventLine = PBC_MakeEventLine(summary.text);
-    ev.histLine  = PBC_MakeHistLine(summary.text);
+    ev.source.narratorText = summary.text;
 
     PBC_PushNarratorSummary(ev.anchorObjGuid, ev.eventLine);
 }
+
+struct PendingReply {
+    uint64_t    authorGuid;
+    uint64_t    targetGuid;   // For whispers: the recipient. 0 otherwise.
+    uint8_t     chatType;
+    std::string messageText;  // Raw text (no speaker prefix)
+};
 
 void ProcessNormal(PBC_EventItem& ev,
                    const std::string& sysPrompt,
@@ -402,10 +395,9 @@ void ProcessNormal(PBC_EventItem& ev,
     std::string currentEvent = ev.eventLine;
 
     uint64_t    lastResponderGuid = 0;
-    std::string lastReplyLine;
     std::string lastEventLine;
 
-    std::vector<std::string> completedReplyLines;
+    std::vector<PendingReply> replies;
 
     for (PBC_CharacterSnapshot& snap : ev.respondingChars)
     {
@@ -426,7 +418,6 @@ void ProcessNormal(PBC_EventItem& ev,
         int histTokens = PBC_EstimateHistoryTokens(snap.charGuidRaw);
         if (histTokens > static_cast<int>(g_PBC_MaxHistoryCtx))
         {
-            // Notify real players that a lengthy background condensation is starting
             PBC_PushNarratorSummary(snap.charObjGuid,
                 PBC_MakeEventLine("Condensing " + snap.charName + "'s history..."));
 
@@ -454,66 +445,59 @@ void ProcessNormal(PBC_EventItem& ev,
             continue;
         }
 
-        // Build the history line for this bot's own reply
-        std::string replyLine;
-        if (ev.chatType == CHAT_MSG_WHISPER && !snap.whisperTargetName.empty())
-            replyLine = snap.charName + " (privately to " + snap.whisperTargetName + "): " + res.text;
+        // Collect structured reply data (no pre-rendering)
+        PendingReply reply;
+        reply.authorGuid  = snap.charGuidRaw;
+        reply.chatType    = static_cast<uint8_t>(ev.chatType);
+        reply.messageText = res.text;
+        if (ev.chatType == CHAT_MSG_WHISPER && !snap.whisperTargetGuid.IsEmpty())
+            reply.targetGuid = snap.whisperTargetGuid.GetCounter();
         else
-            replyLine = snap.charName + ": " + res.text;
+            reply.targetGuid = 0;
 
-        if (!ev.histLine.empty())
-            snap.history.push_back(ev.histLine);
-        snap.history.push_back(replyLine);
+        // Append source-derived histLine to the snapshot's local history copy
+        // so subsequent responders see it in their chain context
+        std::string histLine = PBC_MakeHistLineFromSource(ev.source);
+        if (!histLine.empty())
+            snap.history.push_back(histLine);
 
-        completedReplyLines.push_back(replyLine);
+        replies.push_back(std::move(reply));
 
         // -----------------------------------------------------------------
-        // Send immediate WS preview (id=0) so the frontend can display this
-        // reply in real-time, before it is persisted.  When the batch write
-        // at the end of ProcessNormal sends the real PBC_WsNotifyHistory
-        // with the proper id, the frontend replaces the preview entry.
+        // Send immediate WS preview (id=0) — pre-render for each recipient
         // -----------------------------------------------------------------
-        for (const PBC_CharacterSnapshot& rs : ev.respondingChars)
-            PBC_WsNotifyHistoryPreview(rs.charGuidRaw, replyLine);
-
-        if (ev.chatType != CHAT_MSG_WHISPER)
         {
-            for (uint64_t guid : ev.silentCharGuids)
-                PBC_WsNotifyHistoryPreview(guid, replyLine);
+            PBC_HistoryEntry previewEntry;
+            previewEntry.id         = 0;
+            previewEntry.authorGuid = snap.charGuidRaw;
+            previewEntry.type       = static_cast<uint8_t>(ev.chatType);
+            previewEntry.message    = res.text;
 
-            for (uint64_t guid : ev.replyOnlyCharGuids)
-                PBC_WsNotifyHistoryPreview(guid, replyLine);
-        }
-
-        if (!ev.playerCharGuids.empty())
-        {
-            if (ev.chatType == CHAT_MSG_WHISPER
-                && !ev.whisperSenderName.empty()
-                && !ev.whisperTargetName.empty())
+            // Preview for all recipients (responding chars, silent, replyOnly, players)
+            std::unordered_set<uint64_t> previewTargets;
+            for (const PBC_CharacterSnapshot& rs : ev.respondingChars)
+                previewTargets.insert(rs.charGuidRaw);
+            if (ev.chatType != CHAT_MSG_WHISPER)
             {
-                std::string playerReplyLine = AdjustWhisperPerspective(
-                    replyLine,
-                    "(privately to " + ev.whisperSenderName + ")",
-                    "(privately to you)");
-
-                for (uint64_t guid : ev.playerCharGuids)
-                    PBC_WsNotifyHistoryPreview(guid, playerReplyLine);
+                for (uint64_t g : ev.silentCharGuids)   previewTargets.insert(g);
+                for (uint64_t g : ev.replyOnlyCharGuids) previewTargets.insert(g);
+                for (uint64_t g : ev.playerCharGuids)    previewTargets.insert(g);
             }
             else
             {
-                for (uint64_t guid : ev.playerCharGuids)
-                {
-                    bool alreadyCovered = false;
-                    for (uint64_t sg : ev.silentCharGuids)
-                        { if (sg == guid) { alreadyCovered = true; break; } }
-                    if (!alreadyCovered)
-                    {
-                        for (uint64_t rg : ev.replyOnlyCharGuids)
-                            { if (rg == guid) { alreadyCovered = true; break; } }
-                    }
-                    if (alreadyCovered) continue;
-                    PBC_WsNotifyHistoryPreview(guid, replyLine);
-                }
+                // Whispers: only sender + target see them
+                previewTargets.clear();
+                previewTargets.insert(snap.charGuidRaw);
+                if (!snap.whisperTargetGuid.IsEmpty())
+                    previewTargets.insert(snap.whisperTargetGuid.GetCounter());
+                for (uint64_t g : ev.playerCharGuids)
+                    previewTargets.insert(g);
+            }
+
+            for (uint64_t targetGuid : previewTargets)
+            {
+                std::string rendered = PBC_RenderHistoryLine(previewEntry, targetGuid);
+                PBC_WsNotifyHistoryPreview(targetGuid, rendered);
             }
         }
 
@@ -542,30 +526,81 @@ void ProcessNormal(PBC_EventItem& ev,
         currentEvent = snap.charName + " says: " + res.text;
 
         lastResponderGuid = snap.charGuidRaw;
-        lastReplyLine     = replyLine;
         lastEventLine     = currentEvent;
 
         PBC_Log(PBC_LogLevel::PBC_DEBUG, "ProcessEvent: character={} replied", snap.charName);
     }
 
     // -----------------------------------------------------------------------
-    // Deferred global history write for all responding characters
+    // Deferred structured history writes
     // -----------------------------------------------------------------------
-    if (!ev.histLine.empty() || !completedReplyLines.empty())
+
+    // 1. Original source event for all participants
+    if (ev.source.HasSource())
     {
+        // Collect all unique participant GUIDs
+        std::vector<uint64_t> allOwners;
         for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
+            allOwners.push_back(snap.charGuidRaw);
+        for (uint64_t g : ev.silentCharGuids)
+            allOwners.push_back(g);
+        for (uint64_t g : ev.replyOnlyCharGuids)
+            allOwners.push_back(g);
+        for (uint64_t g : ev.playerCharGuids)
+            allOwners.push_back(g);
+        std::sort(allOwners.begin(), allOwners.end());
+        allOwners.erase(std::unique(allOwners.begin(), allOwners.end()), allOwners.end());
+
+        if (ev.source.IsChat())
         {
-            if (!ev.histLine.empty())
-                PBC_AppendHistory(snap.charGuidRaw, ev.histLine);
-            for (const auto& replyLine : completedReplyLines)
-                PBC_AppendHistory(snap.charGuidRaw, replyLine);
+            // Chat event from a known sender — store as a proper
+            // chat entry so PBC_RenderHistoryLine produces "Name: message".
+            PBC_AppendHistoryMessage(ev.source.senderGuid, ev.chatType,
+                                     ev.source.message, allOwners);
         }
+        else if (ev.source.IsNarrator())
+        {
+            // Narrator event — store raw text; PBC_RenderHistoryLine
+            // will wrap it as "Narrator: *text*" for display.
+            PBC_AppendHistoryMessage(0, 0, ev.source.narratorText, allOwners);
+        }
+    }
+
+    // 2. Reply messages — one per reply, assigned to appropriate owners
+    for (const auto& reply : replies)
+    {
+        std::vector<uint64_t> owners;
+
+        if (reply.chatType == CHAT_MSG_WHISPER)
+        {
+            // Whispers: only sender and recipient see them
+            owners = {reply.authorGuid, reply.targetGuid};
+        }
+        else
+        {
+            // Public chat: all participants
+            for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
+                owners.push_back(snap.charGuidRaw);
+            for (uint64_t g : ev.silentCharGuids)
+                owners.push_back(g);
+            for (uint64_t g : ev.replyOnlyCharGuids)
+                owners.push_back(g);
+            for (uint64_t g : ev.playerCharGuids)
+                owners.push_back(g);
+        }
+
+        // Deduplicate owner list
+        std::sort(owners.begin(), owners.end());
+        owners.erase(std::unique(owners.begin(), owners.end()), owners.end());
+
+        PBC_AppendHistoryMessage(reply.authorGuid, reply.chatType,
+                                 reply.messageText, owners);
     }
 
     // -----------------------------------------------------------------------
     // Secondary event
     // -----------------------------------------------------------------------
-    if (ev.canCreateEvents && lastResponderGuid != 0)
+    if (ev.canCreateEvents && lastResponderGuid != 0 && !replies.empty())
     {
         std::unordered_set<uint64_t> excluded;
         for (const auto& rs : ev.respondingChars)
@@ -574,18 +609,14 @@ void ProcessNormal(PBC_EventItem& ev,
             excluded.insert(g);
 
         PBC_PendingEventRequest req;
-        req.eventLine         = lastEventLine;
-        req.histLine          = lastReplyLine;
-        req.originHistLine    = ev.histLine;
-        req.chatType          = ev.chatType;
+        req.eventLine           = lastEventLine;
+        req.source              = ev.source;
+        req.chatType            = ev.chatType;
         req.anchorCharGuid     = lastResponderGuid;
         for (const auto& rs : ev.respondingChars)
             req.originCharGuids.push_back(rs.charGuidRaw);
         req.playerCharGuids   = ev.playerCharGuids;
         req.excludedCharGuids = std::move(excluded);
-
-        size_t dbgExcluded = req.excludedCharGuids.size();
-        std::string dbgEvent = req.eventLine;
 
         {
             std::lock_guard<std::mutex> lock(g_PBC_PendingEventRequestsMutex);
@@ -595,89 +626,7 @@ void ProcessNormal(PBC_EventItem& ev,
         PBC_Log(PBC_LogLevel::PBC_DEBUG,
                  "ProcessEvent: queued secondary event from last responder guid={} "
                  "excluded={} silent={} event=\"{}\"",
-                 lastResponderGuid, dbgExcluded, ev.silentCharGuids.size(), dbgEvent);
-    }
-
-    // -----------------------------------------------------------------------
-    // Update silent characters' history
-    // -----------------------------------------------------------------------
-    if (!ev.histLine.empty())
-    {
-        for (uint64_t guid : ev.silentCharGuids)
-            PBC_AppendHistory(guid, ev.histLine);
-    }
-
-    if (!completedReplyLines.empty() && !ev.silentCharGuids.empty()
-        && ev.chatType != CHAT_MSG_WHISPER)
-    {
-        for (uint64_t guid : ev.silentCharGuids)
-        {
-            for (const auto& replyLine : completedReplyLines)
-                PBC_AppendHistory(guid, replyLine);
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Propagate replies to replyOnlyCharGuids
-    // -----------------------------------------------------------------------
-    if (!completedReplyLines.empty() && !ev.replyOnlyCharGuids.empty()
-        && ev.chatType != CHAT_MSG_WHISPER)
-    {
-        for (uint64_t guid : ev.replyOnlyCharGuids)
-        {
-            for (const auto& replyLine : completedReplyLines)
-                PBC_AppendHistory(guid, replyLine);
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Write history for tracked player characters
-    // -----------------------------------------------------------------------
-    if (!ev.playerCharGuids.empty())
-    {
-        if (ev.chatType == CHAT_MSG_WHISPER
-            && !ev.whisperSenderName.empty()
-            && !ev.whisperTargetName.empty())
-        {
-            std::string playerHistLine = ev.histLine;
-            playerHistLine = AdjustWhisperPerspective(
-                playerHistLine,
-                "(privately to you)",
-                "(privately to " + ev.whisperTargetName + ")");
-
-            for (uint64_t guid : ev.playerCharGuids)
-            {
-                if (!playerHistLine.empty())
-                    PBC_AppendHistory(guid, playerHistLine);
-
-                for (const auto& replyLine : completedReplyLines)
-                {
-                    std::string playerReplyLine = AdjustWhisperPerspective(
-                        replyLine,
-                        "(privately to " + ev.whisperSenderName + ")",
-                        "(privately to you)");
-                    PBC_AppendHistory(guid, playerReplyLine);
-                }
-            }
-        }
-        else if (!completedReplyLines.empty())
-        {
-            for (uint64_t guid : ev.playerCharGuids)
-            {
-                bool alreadyHandled = false;
-                for (uint64_t sg : ev.silentCharGuids)
-                    { if (sg == guid) { alreadyHandled = true; break; } }
-                if (!alreadyHandled)
-                {
-                    for (uint64_t rg : ev.replyOnlyCharGuids)
-                        { if (rg == guid) { alreadyHandled = true; break; } }
-                }
-                if (alreadyHandled) continue;
-
-                for (const auto& replyLine : completedReplyLines)
-                    PBC_AppendHistory(guid, replyLine);
-            }
-        }
+                 lastResponderGuid, req.excludedCharGuids.size(), ev.silentCharGuids.size(), lastEventLine);
     }
 }
 
@@ -693,12 +642,8 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     // Insert time-gap narrator lines BEFORE any event-type-specific
     // processing, so every character (responding, silent, or undergoing
     // condensation/relationship-update) knows about the time gap before
-    // the LLM prompt is built.  This covers ALL events listed in
-    // EVENTS.md: whisper, chat, combat, quest, flight, location,
-    // trigger, condensation, and relationship updates.
-    //
-    // PBC_MaybeInsertTimeGap updates g_PBC_LastHistoryTime, so later
-    // calls from PBC_AppendHistory (safety net) won't double-insert.
+    // the LLM prompt is built.  PBC_MaybeInsertTimeGap now handles its
+    // own DB and in-memory writes directly.
     // -------------------------------------------------------------------
     bool incomingIsWhisper = (ev.chatType == CHAT_MSG_WHISPER);
 

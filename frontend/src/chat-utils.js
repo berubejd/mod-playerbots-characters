@@ -1,39 +1,19 @@
 const EMOTE_COLOR = '#CC99FF';
 
 /**
- * Parse a raw history message into speaker name, message text, and flags.
- *
- * Formats handled:
- *   "Name says: Hello"                    → name="Name", isWhisper=false
- *   "Name: Hello"                         → name="Name", isWhisper=false
- *   "Name (privately to Other): Hello"    → name="Name", isWhisper=true
- *   "Name (privately to you): Hello"      → name="Name", isWhisper=true
- *   "Narrator: *something happens*"       → name="Narrator", isNarrator=true
+ * Extract structured metadata from a message object returned by the API.
+ * No string parsing needed — the API provides type, author_name, and message fields.
  */
-export function parseMessage(raw) {
-  const colonIdx = raw.indexOf(':');
-  if (colonIdx === -1) return { speaker: null, message: raw, isWhisper: false, isNarrator: false };
-
-  const speakerInfo = raw.substring(0, colonIdx).trim();
-  let message = raw.substring(colonIdx + 1).trim();
-
-  let name = speakerInfo;
-  let isWhisper = false;
-  let isNarrator = false;
-
-  if (speakerInfo === 'Narrator') {
-    isNarrator = true;
-    // Strip surrounding asterisks from narrator messages
-    message = message.replace(/^\*|\*$/g, '');
-  } else if (/\(privately to /.test(speakerInfo)) {
-    isWhisper = true;
-    // Strip "(privately to X)" from the speaker name
-    name = speakerInfo.replace(/\s*\(privately to .+?\)\s*$/, '').trim();
-  } else {
-    name = speakerInfo.replace(/\s+(says|yells|shouts|whispers)$/, '').trim();
+export function getMessageMeta(msg) {
+  if (msg.type === 0) {
+    return { name: 'Narrator', message: msg.message, isWhisper: false, isNarrator: true };
   }
-
-  return { name, message, isWhisper, isNarrator };
+  return {
+    name: msg.author_name || 'Unknown',
+    message: msg.message,
+    isWhisper: msg.type === 7,
+    isNarrator: false,
+  };
 }
 
 /**

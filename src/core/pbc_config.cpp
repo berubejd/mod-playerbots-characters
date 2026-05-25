@@ -114,7 +114,8 @@ std::queue<PBC_EventItem>  g_PBC_EventQueue;
 std::mutex                 g_PBC_EventQueueMutex;
 std::atomic<bool>          g_PBC_EventThreadDone{ true };
 
-std::unordered_map<uint64_t, std::deque<std::string>> g_PBC_ChatHistory;
+std::unordered_map<uint64_t, PBC_HistoryEntry>     g_PBC_History;
+std::unordered_map<uint64_t, std::deque<uint64_t>> g_PBC_HistoryOwners;
 std::mutex g_PBC_HistoryMutex;
 
 std::unordered_map<uint64_t, std::vector<PBC_MemoryEntry>> g_PBC_Memories;

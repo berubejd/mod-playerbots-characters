@@ -117,8 +117,8 @@ static bool HandleCharsInfo(ChatHandler* handler, Optional<std::string_view> nam
     int histCount = 0;
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        auto it = g_PBC_ChatHistory.find(botGuid);
-        if (it != g_PBC_ChatHistory.end())
+        auto it = g_PBC_HistoryOwners.find(botGuid);
+        if (it != g_PBC_HistoryOwners.end())
             histCount = static_cast<int>(it->second.size());
     }
 
@@ -154,13 +154,16 @@ static bool HandleCharsReset(ChatHandler* handler, Optional<std::string_view> na
     // Handle the @ALL special token: wipe every bot's data.
     if (nameArg && *nameArg == "@ALL")
     {
-        DB_DeleteAllHistory();
+        CharacterDatabase.Execute("DELETE FROM mod_pbc_history");
+        CharacterDatabase.Execute("DELETE FROM mod_pbc_history_owners");
         DB_DeleteAllMemories();
         DB_DeleteAllRelationships();
 
         {
             std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-            g_PBC_ChatHistory.clear();
+            g_PBC_History.clear();
+            g_PBC_HistoryOwners.clear();
+            g_PBC_LastHistoryTime.clear();
         }
         {
             std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
@@ -184,13 +187,14 @@ static bool HandleCharsReset(ChatHandler* handler, Optional<std::string_view> na
 
     uint64_t botGuid = target->GetGUID().GetCounter();
 
-    DB_DeleteHistoryForCharacter(botGuid);
+    DB_RemoveAllHistoryOwnership(botGuid);
     DB_DeleteMemoriesForCharacter(botGuid);
     DB_DeleteRelationshipsForCharacter(botGuid);
 
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        g_PBC_ChatHistory.erase(botGuid);
+        g_PBC_HistoryOwners.erase(botGuid);
+        g_PBC_LastHistoryTime.erase(botGuid);
     }
     {
         std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
@@ -231,21 +235,26 @@ static bool HandleCharsHistory(ChatHandler* handler, Optional<std::string_view> 
     uint64_t botGuid = target->GetGUID().GetCounter();
 
     std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-    auto it = g_PBC_ChatHistory.find(botGuid);
-    if (it == g_PBC_ChatHistory.end() || it->second.empty())
+    auto it = g_PBC_HistoryOwners.find(botGuid);
+    if (it == g_PBC_HistoryOwners.end() || it->second.empty())
     {
         handler->PSendSysMessage("[PBC] No history found for '{}'.", target->GetName());
         return true;
     }
 
-    const auto& hist = it->second;
-    int total = static_cast<int>(hist.size());
+    const auto& idList = it->second;
+    int total = static_cast<int>(idList.size());
     int start = std::max(0, total - num);
 
     handler->PSendSysMessage("[PBC] Last {} history entries for '{}' ({} total):",
         total - start, target->GetName(), total);
     for (int i = start; i < total; ++i)
-        handler->PSendSysMessage("{}", hist[i]);
+    {
+        auto entryIt = g_PBC_History.find(idList[i]);
+        if (entryIt == g_PBC_History.end()) continue;
+        std::string line = PBC_RenderHistoryLine(entryIt->second, botGuid);
+        handler->PSendSysMessage("{}", line);
+    }
 
     return true;
 }
@@ -600,8 +609,8 @@ static bool HandleCharsNarrate(ChatHandler* handler,
     }
 
     uint64_t targetGuid = target->GetGUID().GetCounter();
-    std::string histLine = PBC_MakeHistLine(std::string(messageArg));
-    PBC_AppendHistory(targetGuid, histLine);
+    std::vector<uint64_t> owners = {targetGuid};
+    PBC_AppendHistoryMessage(0, 0, std::string(messageArg), owners);
 
     handler->PSendSysMessage("[PBC] Narrator line added to '{}'s history.", target->GetName());
     return true;
@@ -695,7 +704,7 @@ static bool HandleCharsNarrateParty(ChatHandler* handler, Tail messageArg)
         return false;
     }
 
-    std::string histLine = PBC_MakeHistLine(std::string(messageArg));
+    std::vector<uint64_t> owners;
     int count = 0;
 
     for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
@@ -705,12 +714,13 @@ static bool HandleCharsNarrateParty(ChatHandler* handler, Tail messageArg)
         WorldSession* sess = member->GetSession();
         if (!sess || !sess->IsBot()) continue;
 
-        PBC_AppendHistory(member->GetGUID().GetCounter(), histLine);
+        owners.push_back(member->GetGUID().GetCounter());
         ++count;
     }
 
     // Also write the narrator line to the calling player's own character history.
-    PBC_AppendHistory(player->GetGUID().GetCounter(), histLine);
+    owners.push_back(player->GetGUID().GetCounter());
+    PBC_AppendHistoryMessage(0, 0, std::string(messageArg), owners);
     ++count;
 
     if (count == 0)
