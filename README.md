@@ -25,18 +25,7 @@ Since mod-playerbots is an obvious hard requirement, follow their [Installation 
 
 There are three ways to obtain the module sources:
 
-### Method 1: Latest (bleeding edge)
-
-Clone the repository normally to get the latest changes:
-
-```sh
-cd modules
-git clone git@github.com:deseven/mod-playerbots-characters.git
-```
-
-This gives you the most recent commits from the `main` branch. You can `git pull` at any time to update.
-
-### Method 2: Specific release tag (recommended)
+### Method 1: Specific release tag (recommended)
 
 Clone a specific tagged release:
 
@@ -55,9 +44,20 @@ git checkout <new_tag_name>
 
 A list of all available tags can be found on the [Releases](https://github.com/deseven/mod-playerbots-characters/releases) page.
 
-### Method 3: Source code archive
+### Method 2: Source code archive
 
 Download a `.zip` or `.tar.gz` source archive from the [Releases](https://github.com/deseven/mod-playerbots-characters/releases) page and extract it into the `modules` directory. The extracted folder must be named `mod-playerbots-characters`.
+
+### Method 3: Latest (bleeding edge)
+
+Clone the repository normally to get the latest changes:
+
+```sh
+cd modules
+git clone git@github.com:deseven/mod-playerbots-characters.git
+```
+
+This gives you the most recent commits from the `main` branch. You can `git pull` at any time to update.
 
 After obtaining the sources using any of the methods above, rebuild the server normally.
 

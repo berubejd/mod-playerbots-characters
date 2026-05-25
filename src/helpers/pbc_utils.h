@@ -47,7 +47,7 @@ void PBC_StripEmptyAnnotatedLines(std::string& s);
 
 // Truncate a long string for debug logging: if > maxLen symbols, return
 // first headLen ... last tailLen.  Otherwise return the string unchanged.
-std::string PBC_TruncateForDebug(const std::string& s, size_t maxLen = 1000, size_t headLen = 100, size_t tailLen = 900);
+std::string PBC_TruncateForDebug(const std::string& s, size_t maxLen = 1500, size_t headLen = 100, size_t tailLen = 1400);
 
 // Replace curly braces with parentheses so the string is safe to pass
 // through AzerothCore's fmt-based LOG macros (which double-format).
