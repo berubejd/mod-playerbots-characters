@@ -369,14 +369,18 @@ void PBC_PollPartyState()
 
             bool significant = false;
 
-            if (!tracker.notableEnemyNames.empty())
-                significant = true;
+            // Hard requirement: there must have been enemies involved.
+            if (tracker.killCount > 0 || !tracker.notableEnemyNames.empty())
+            {
+                if (!tracker.notableEnemyNames.empty())
+                    significant = true;
 
-            if (tracker.deadCount > 0)
-                significant = true;
+                if (tracker.deadCount > 0)
+                    significant = true;
 
-            if (tracker.killCount >= 10)
-                significant = true;
+                if (tracker.killCount >= 10)
+                    significant = true;
+            }
 
             if (significant && !tracker.wiped)
             {
