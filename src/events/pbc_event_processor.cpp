@@ -392,6 +392,29 @@ void ProcessNormal(PBC_EventItem& ev,
     PBC_Log(PBC_LogLevel::PBC_DEBUG, "ProcessEvent: type={} respondingChars={} silentChars={} event=\"{}\"",
              static_cast<int>(ev.type), ev.respondingChars.size(), ev.silentCharGuids.size(), ev.eventLine);
 
+    // -------------------------------------------------------------------
+    // Seed the event-local history buffer with the source event (if any).
+    // This buffer accumulates every message in chronological order and is
+    // rendered into each responder's snapshot before their LLM call so
+    // they see the full chain of what happened before their turn.
+    // -------------------------------------------------------------------
+    if (ev.source.IsChat())
+    {
+        PBC_HistoryEntry srcEntry;
+        srcEntry.authorGuid = ev.source.senderGuid;
+        srcEntry.type       = static_cast<uint8_t>(ev.chatType);
+        srcEntry.message    = ev.source.message;
+        ev.eventHistory.push_back(std::move(srcEntry));
+    }
+    else if (ev.source.IsNarrator())
+    {
+        PBC_HistoryEntry srcEntry;
+        srcEntry.authorGuid = 0;
+        srcEntry.type       = 0;
+        srcEntry.message    = ev.source.narratorText;
+        ev.eventHistory.push_back(std::move(srcEntry));
+    }
+
     std::string currentEvent = ev.eventLine;
 
     uint64_t    lastResponderGuid = 0;
@@ -431,6 +454,16 @@ void ProcessNormal(PBC_EventItem& ev,
             }
         }
 
+        // Render all eventHistory entries EXCEPT the last one into this
+        // character's snapshot.  The last entry IS the currentEvent —
+        // it belongs in [CURRENT EVENT], not [HISTORY].  Previous entries
+        // are "the past" that this responder needs as context.
+        for (size_t i = 0; i + 1 < ev.eventHistory.size(); ++i)
+        {
+            std::string rendered = PBC_RenderHistoryLine(ev.eventHistory[i], snap.charGuidRaw);
+            snap.history.push_back(rendered);
+        }
+
         // Build user prompt from snapshot
         std::string userPrompt = PBC_BuildUserPromptFromSnapshot(snap, currentEvent);
 
@@ -455,11 +488,15 @@ void ProcessNormal(PBC_EventItem& ev,
         else
             reply.targetGuid = 0;
 
-        // Append source-derived histLine to the snapshot's local history copy
-        // so subsequent responders see it in their chain context
-        std::string histLine = PBC_MakeHistLineFromSource(ev.source);
-        if (!histLine.empty())
-            snap.history.push_back(histLine);
+        // Add this reply to the event-local history buffer so subsequent
+        // responders see it in their chain context.
+        {
+            PBC_HistoryEntry replyEntry;
+            replyEntry.authorGuid = snap.charGuidRaw;
+            replyEntry.type       = static_cast<uint8_t>(ev.chatType);
+            replyEntry.message    = res.text;
+            ev.eventHistory.push_back(std::move(replyEntry));
+        }
 
         replies.push_back(std::move(reply));
 
@@ -532,69 +569,29 @@ void ProcessNormal(PBC_EventItem& ev,
     }
 
     // -----------------------------------------------------------------------
-    // Deferred structured history writes
+    // Flush event-local history to DB and global memory
     // -----------------------------------------------------------------------
 
-    // 1. Original source event for all participants
-    if (ev.source.HasSource())
+    // Collect all unique participant GUIDs
+    std::vector<uint64_t> allOwners;
+    for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
+        allOwners.push_back(snap.charGuidRaw);
+    for (uint64_t g : ev.silentCharGuids)
+        allOwners.push_back(g);
+    for (uint64_t g : ev.replyOnlyCharGuids)
+        allOwners.push_back(g);
+    for (uint64_t g : ev.playerCharGuids)
+        allOwners.push_back(g);
+    std::sort(allOwners.begin(), allOwners.end());
+    allOwners.erase(std::unique(allOwners.begin(), allOwners.end()), allOwners.end());
+
+    // Write every entry from the event-local buffer in order.
+    // For public chat all participants see everything; for whispers
+    // allOwners already correctly contains only {bot, sender}.
+    for (const auto& entry : ev.eventHistory)
     {
-        // Collect all unique participant GUIDs
-        std::vector<uint64_t> allOwners;
-        for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
-            allOwners.push_back(snap.charGuidRaw);
-        for (uint64_t g : ev.silentCharGuids)
-            allOwners.push_back(g);
-        for (uint64_t g : ev.replyOnlyCharGuids)
-            allOwners.push_back(g);
-        for (uint64_t g : ev.playerCharGuids)
-            allOwners.push_back(g);
-        std::sort(allOwners.begin(), allOwners.end());
-        allOwners.erase(std::unique(allOwners.begin(), allOwners.end()), allOwners.end());
-
-        if (ev.source.IsChat())
-        {
-            // Chat event from a known sender — store as a proper
-            // chat entry so PBC_RenderHistoryLine produces "Name: message".
-            PBC_AppendHistoryMessage(ev.source.senderGuid, ev.chatType,
-                                     ev.source.message, allOwners);
-        }
-        else if (ev.source.IsNarrator())
-        {
-            // Narrator event — store raw text; PBC_RenderHistoryLine
-            // will wrap it as "Narrator: *text*" for display.
-            PBC_AppendHistoryMessage(0, 0, ev.source.narratorText, allOwners);
-        }
-    }
-
-    // 2. Reply messages — one per reply, assigned to appropriate owners
-    for (const auto& reply : replies)
-    {
-        std::vector<uint64_t> owners;
-
-        if (reply.chatType == CHAT_MSG_WHISPER)
-        {
-            // Whispers: only sender and recipient see them
-            owners = {reply.authorGuid, reply.targetGuid};
-        }
-        else
-        {
-            // Public chat: all participants
-            for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
-                owners.push_back(snap.charGuidRaw);
-            for (uint64_t g : ev.silentCharGuids)
-                owners.push_back(g);
-            for (uint64_t g : ev.replyOnlyCharGuids)
-                owners.push_back(g);
-            for (uint64_t g : ev.playerCharGuids)
-                owners.push_back(g);
-        }
-
-        // Deduplicate owner list
-        std::sort(owners.begin(), owners.end());
-        owners.erase(std::unique(owners.begin(), owners.end()), owners.end());
-
-        PBC_AppendHistoryMessage(reply.authorGuid, reply.chatType,
-                                 reply.messageText, owners);
+        PBC_AppendHistoryMessage(entry.authorGuid, entry.type,
+                                 entry.message, allOwners);
     }
 
     // -----------------------------------------------------------------------
@@ -613,6 +610,7 @@ void ProcessNormal(PBC_EventItem& ev,
         req.source              = ev.source;
         req.chatType            = ev.chatType;
         req.anchorCharGuid     = lastResponderGuid;
+        req.eventHistory        = ev.eventHistory;
         for (const auto& rs : ev.respondingChars)
             req.originCharGuids.push_back(rs.charGuidRaw);
         req.playerCharGuids   = ev.playerCharGuids;

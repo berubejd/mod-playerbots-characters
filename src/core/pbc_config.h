@@ -159,6 +159,18 @@ enum class PBC_EventType : uint8_t
     CardAdditionsMigration, // Convert legacy card additions into memories
 };
 
+// ---------------------------------------------------------------------------
+// Central chat history store (mirrors mod_pbc_history)
+// ---------------------------------------------------------------------------
+struct PBC_HistoryEntry
+{
+    uint64_t    id         = 0;
+    time_t      timestamp  = 0;       // Unix timestamp
+    uint64_t    authorGuid = 0;       // 0 = narrator
+    uint8_t     type       = 2;       // ChatMsg enum: 0=narrator, 2=PARTY, 7=WHISPER, etc.
+    std::string message;              // Raw text, no speaker prefix
+};
+
 // Raw source data for an event — the single source of truth.
 // All rendered views (histLine, eventLine) are derived from this.
 // Every event carries the full struct; unused fields stay default-empty.
@@ -197,6 +209,13 @@ struct PBC_EventItem
     // GUIDs that already have source-derived histLine but still need new replies
     std::vector<uint64_t> replyOnlyCharGuids;
     bool canCreateEvents = false;   // If true, triggers secondary events
+
+    // Event-local history accumulator.  Populated during ProcessNormal with
+    // structured entries in chronological order (source first, then each
+    // reply).  Before each responder's LLM call the current contents are
+    // rendered into that character's snapshot so they see the full chain.
+    // At the end of processing the buffer is flushed to DB / global memory.
+    std::vector<PBC_HistoryEntry> eventHistory;
 
     // QuestSummarization extra fields
     std::string questSystemPrompt;
@@ -250,6 +269,13 @@ struct PBC_PendingEventRequest
     std::unordered_set<uint64_t> excludedCharGuids;
     std::vector<uint64_t> originCharGuids;
     std::vector<uint64_t> playerCharGuids;
+
+    // Full accumulated history from the primary event (source + every reply
+    // in order).  Written to new targets' DB history before the secondary
+    // event is processed so their snapshots capture the complete chain.
+    // The secondary event goes through the same ProcessNormal logic as a
+    // regular event — no special handling needed.
+    std::vector<PBC_HistoryEntry> eventHistory;
 };
 
 extern std::queue<PBC_PendingEventRequest> g_PBC_PendingEventRequests;
@@ -292,18 +318,6 @@ extern std::mutex                 g_PBC_EventQueueMutex;
 
 // True when no event thread is running.
 extern std::atomic<bool> g_PBC_EventThreadDone;
-
-// ---------------------------------------------------------------------------
-// Central chat history store (mirrors mod_pbc_history)
-// ---------------------------------------------------------------------------
-struct PBC_HistoryEntry
-{
-    uint64_t    id         = 0;
-    time_t      timestamp  = 0;       // Unix timestamp
-    uint64_t    authorGuid = 0;       // 0 = narrator
-    uint8_t     type       = 2;       // ChatMsg enum: 0=narrator, 2=PARTY, 7=WHISPER, etc.
-    std::string message;              // Raw text, no speaker prefix
-};
 
 // All messages, keyed by mod_pbc_history.id
 extern std::unordered_map<uint64_t, PBC_HistoryEntry> g_PBC_History;

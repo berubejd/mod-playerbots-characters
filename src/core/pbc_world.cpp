@@ -179,24 +179,19 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
 
             if (!targets.empty())
             {
-                // If the original event had source data that these characters
-                // were not part of, write it to their histories now so they
-                // have full context.
-                if (req.source.IsNarrator())
+                // Write all primary-event entries EXCEPT the last one to
+                // each new target's DB history.  The last entry is the
+                // secondary event's currentEvent — it belongs in
+                // [CURRENT EVENT], not [HISTORY].  Previous entries are
+                // the context these late responders need.
+                for (size_t i = 0; i + 1 < req.eventHistory.size(); ++i)
                 {
+                    const auto& entry = req.eventHistory[i];
                     for (Player* bot : targets)
                     {
                         std::vector<uint64_t> owners = {bot->GetGUID().GetCounter()};
-                        PBC_AppendHistoryMessage(0, 0, req.source.narratorText, owners);
-                    }
-                }
-                else if (req.source.IsChat())
-                {
-                    for (Player* bot : targets)
-                    {
-                        std::vector<uint64_t> owners = {bot->GetGUID().GetCounter()};
-                        PBC_AppendHistoryMessage(req.source.senderGuid, req.chatType,
-                                                 req.source.message, owners);
+                        PBC_AppendHistoryMessage(entry.authorGuid, entry.type,
+                                                 entry.message, owners);
                     }
                 }
 
