@@ -252,6 +252,13 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
 {
     if (!PBC_QuestEventGuard(player) || !quest) return;
 
+    if (!PBC_IsQuestValidForEvent(quest))
+    {
+        PBC_Log(PBC_LogLevel::PBC_DEBUG, "OnPlayerCompleteQuest: quest '{}' (id={}) has no meaningful data, skipping",
+                 PBC_StripWowTextCodes(quest->GetTitle()), quest->GetQuestId());
+        return;
+    }
+
     if (g_PBC_QuestCompletedSystemPrompt.empty() || g_PBC_QuestCompletedUserPrompt.empty())
     {
         PBC_Log(PBC_LogLevel::PBC_WARNING, "OnPlayerCompleteQuest: prompts not configured, skipping");

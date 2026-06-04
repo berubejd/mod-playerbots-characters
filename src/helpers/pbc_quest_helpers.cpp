@@ -199,6 +199,28 @@ std::string PBC_SubstituteQuestVars(const std::string& tmpl,
 }
 
 // ---------------------------------------------------------------------------
+// Validate that a quest has enough meaningful data to warrant an LLM event.
+// PvP rank quests and other placeholder quests with no real title, no
+// description, and no giver/ender are filtered out.
+// ---------------------------------------------------------------------------
+bool PBC_IsQuestValidForEvent(Quest const* quest)
+{
+    if (!quest) return false;
+
+    std::string title = PBC_StripWowTextCodes(quest->GetTitle());
+    if (title.empty()) return false;
+
+    std::string description = PBC_StripWowTextCodes(quest->GetDetails());
+    if (description.empty()) return false;
+
+    std::string giverNames = PBC_GetQuestStarterNames(quest->GetQuestId());
+    std::string enderNames = PBC_GetQuestEnderNames(quest->GetQuestId());
+    if (giverNames.empty() && enderNames.empty()) return false;
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Common guard checks for quest events.
 // Returns true if the event should proceed.
 // ---------------------------------------------------------------------------

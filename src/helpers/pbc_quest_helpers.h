@@ -44,4 +44,10 @@ std::string PBC_SubstituteQuestVars(const std::string& tmpl,
 // player is group leader, and at least one real player is in the group).
 bool PBC_QuestEventGuard(Player* player);
 
+// Validate that a quest has enough meaningful data to warrant an LLM event.
+// Requires a non-empty title and description, plus at least one of giver or
+// ender name.  PvP rank quests and other placeholder quests with no real
+// quest data are filtered out.
+bool PBC_IsQuestValidForEvent(Quest const* quest);
+
 #endif // MOD_PBC_QUEST_HELPERS_H

@@ -26,6 +26,13 @@ static void HandleQuestTaken(Player* player, Quest const* quest,
 {
     if (!PBC_QuestEventGuard(player) || !quest) return;
 
+    if (!PBC_IsQuestValidForEvent(quest))
+    {
+        PBC_Log(PBC_LogLevel::PBC_DEBUG, "HandleQuestTaken: quest '{}' (id={}) has no meaningful data, skipping",
+                 PBC_StripWowTextCodes(quest->GetTitle()), quest->GetQuestId());
+        return;
+    }
+
     if (g_PBC_QuestTakenSystemPrompt.empty() || g_PBC_QuestTakenUserPrompt.empty())
     {
         PBC_Log(PBC_LogLevel::PBC_WARNING, "HandleQuestTaken: prompts not configured, skipping");
