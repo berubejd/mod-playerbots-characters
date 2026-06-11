@@ -311,9 +311,10 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
 // ---------------------------------------------------------------------------
 std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charName)
 {
-    bool lastIsNarrator  = false;
-    bool lastIsWhisper   = false;
-    bool lastIsOwn       = false;
+    bool hasLastEntry     = false;
+    bool lastIsNarrator   = false;
+    bool lastIsWhisper    = false;
+    bool lastIsOwn        = false;
     bool lastIsTimePasses = false;
 
     {
@@ -325,10 +326,11 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
             auto entryIt = g_PBC_History.find(lastId);
             if (entryIt != g_PBC_History.end())
             {
+                hasLastEntry     = true;
                 const auto& entry = entryIt->second;
-                lastIsNarrator  = (entry.type == 0);
-                lastIsWhisper   = (entry.type == CHAT_MSG_WHISPER);
-                lastIsOwn       = (entry.authorGuid == botGuid);
+                lastIsNarrator   = (entry.type == 0);
+                lastIsWhisper    = (entry.type == CHAT_MSG_WHISPER);
+                lastIsOwn        = (entry.authorGuid == botGuid);
                 lastIsTimePasses = (entry.type == 0 && entry.message == "some time passes");
             }
         }
@@ -337,7 +339,7 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
     // -------------------------------------------------------------------
     // No history → default
     // -------------------------------------------------------------------
-    if (!lastIsNarrator && !lastIsWhisper && !lastIsOwn && !lastIsTimePasses)
+    if (!hasLastEntry)
     {
         PBC_Log(PBC_LogLevel::PBC_DEBUG, "PickTriggerEventLine: guid={} char='{}' — no history, using default",
                 botGuid, charName);

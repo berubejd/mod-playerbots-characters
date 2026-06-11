@@ -84,6 +84,7 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
 // PBC_MakeEventLine).  Thread-safe.
 //
 // Logic:
+//   0. No history → "you feel the urge to say something".
 //   1. Last line is "Narrator: *some time passes*" → random pick from four
 //      "you want to …" variants.
 //   2. Last line is any other Narrator line →
@@ -91,7 +92,7 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
 //   3. Last line is not Narrator and not a whisper:
 //      a. Speaker is charName → "you feel like saying more".
 //      b. Speaker is someone else → "you feel like answering that".
-//   4. Otherwise (no history, whisper) →
+//   4. Whisper or fallthrough →
 //      "you feel the urge to say something".
 // ---------------------------------------------------------------------------
 std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charName);

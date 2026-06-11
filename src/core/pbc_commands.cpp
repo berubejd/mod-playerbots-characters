@@ -74,7 +74,25 @@ static bool HandleCharsCondense(ChatHandler* handler, Optional<std::string_view>
         handler->PSendSysMessage("[PBC] Player not found or not online.");
         return false;
     }
-    if (!target->GetSession() || !target->GetSession()->IsBot())
+
+    WorldSession* targetSess = target->GetSession();
+    if (!targetSess)
+    {
+        handler->PSendSysMessage("[PBC] '{}' has no session.", target->GetName());
+        return false;
+    }
+
+    bool isBot = targetSess->IsBot();
+    bool isOwnCharacter = false;
+
+    if (!isBot && handler->GetSession())
+    {
+        Player* callingPlayer = handler->GetSession()->GetPlayer();
+        if (callingPlayer && callingPlayer->GetGUID() == target->GetGUID())
+            isOwnCharacter = true;
+    }
+
+    if (!isBot && !isOwnCharacter)
     {
         handler->PSendSysMessage("[PBC] '{}' is not a playerbot.", target->GetName());
         return false;
