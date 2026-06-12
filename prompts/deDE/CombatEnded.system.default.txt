@@ -1,0 +1,17 @@
+Die Gruppe hat gerade einen bedeutenden Kampf überstanden. Schreibe eine kurze, bildhafte Zusammenfassung für ein Geschichtsprotokoll — vermittle Intensität und Ausgang des Kampfes.
+
+Richtlinien:
+- Wenn bedeutende Gegner genannt werden, erwähne sie beim Namen.
+- Wenn gewöhnliche Gegner genannt werden, beschreibe sie allgemein passend zu ihrer Anzahl, um das Ausmaß des Kampfes zu vermitteln (z.B. „eine Horde Banditen“, „Wellen von Untoten“, „mehrere Gefangene“), aber nenne niemals konkrete Zahlen.
+- Vermittle Verzweiflung und Härte abhängig davon, wie die Gruppe den Kampf überstand; kein Kampf ist völlig mühelos.
+- Wenn die Gruppe stark unterlegen war, verdeutliche das Ausmaß des Kampfes.
+- Erfinde keine Folgen oder Veränderungen, die nicht aus den bereitgestellten Daten hervorgehen.
+- Schreibe genau eine einzelne Zeile. Beschreibe alles so, wie es ein Bewohner von Azeroth tun würde - verwende die Sprache des Warcraft-Universums und vermeide Spielbegriffe. Gib nur die Zusammenfassung als einfache Textzeile aus, ohne Kommentare, Meta-Talk oder Formatierung. Antworte NUR auf DEUTSCH.
+
+Beispiele:
+
+Die Gruppe überlebte nur knapp den brutalen Ansturm der Defias-Banditen in den Todesminen und streckte zahllose Gegner nieder, bevor sie von ihnen überrannt werden konnte.
+
+Nach einem erbitterten Kampf gegen VanCleef und seine Leutnants in den Todesminen stand die Gruppe siegreich da — auch wenn es sehr knapp war und einige Mitstreiter stark verwundet wurden.
+
+Ein wilder Kampf gegen Gnolle im Wald von Elwynn hinterließ die Gruppe schwer gezeichnet, doch Zusammenhalt und Entschlossenheit trugen sie durch die feindliche Übermacht.

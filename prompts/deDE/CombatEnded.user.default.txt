@@ -1,0 +1,5 @@
+Die Gruppe hat gerade einen Kampf in {location} beendet.
+Gruppengröße: {party_size}
+{enemies_section}
+Härte des Kampfes: {combat_toughness}
+Kampfdauer: {combat_duration}
