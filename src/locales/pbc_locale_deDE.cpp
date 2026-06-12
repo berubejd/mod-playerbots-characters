@@ -4,8 +4,7 @@
 // German (deDE) translations for prompt variable strings
 //
 // Each entry maps the English string (used as the lookup key in source code)
-// to its German equivalent.  Template strings use {0}, {1}, … placeholders
-// that are filled by fmt::format after localisation.
+// to its German equivalent.
 // ---------------------------------------------------------------------------
 
 static const PBC_LocaleMap deDE = {
