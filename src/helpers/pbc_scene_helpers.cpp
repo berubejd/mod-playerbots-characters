@@ -569,22 +569,12 @@ static std::string BuildMemberPetSnippet(Player* owner, Pet* pet)
         case CLASS_WARLOCK:
         {
             std::string demonType = GetDemonTypeName(pet->GetEntry());
-            if (pet->isDead())
-                return PBC_Localize("{0} {1} ({2}'s demon, seriously wounded)", demonType, petName, ownerName);
             return PBC_Localize("{0} {1} ({2}'s demon)", demonType, petName, ownerName);
         }
         case CLASS_DEATH_KNIGHT:
-        {
-            if (pet->isDead())
-                return PBC_Localize("{0} ({1}'s risen ghoul, seriously wounded)", petName, ownerName);
             return PBC_Localize("{0} ({1}'s risen ghoul)", petName, ownerName);
-        }
         case CLASS_MAGE:
-        {
-            if (pet->isDead())
-                return PBC_Localize("Water Elemental ({0}'s summon, seriously wounded)", ownerName);
             return PBC_Localize("Water Elemental ({0}'s summon)", ownerName);
-        }
         default:
             return petName + " (" + ownerName + "'s pet)";
     }

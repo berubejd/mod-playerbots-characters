@@ -138,21 +138,12 @@ static const PBC_LocaleMap deDE = {
     // {0} = demon type, {1} = pet name, {2} = owner name
     { "{0} {1} ({2}'s demon)",
       "{0} {1} ({2}s Dämon)" },
-    // {0} = demon type, {1} = pet name, {2} = owner name
-    { "{0} {1} ({2}'s demon, seriously wounded)",
-      "{0} {1} ({2}s Dämon, schwer verwundet)" },
     // {0} = pet name, {1} = owner name
     { "{0} ({1}'s risen ghoul)",
       "{0} ({1}s auferstandener Ghul)" },
-    // {0} = pet name, {1} = owner name
-    { "{0} ({1}'s risen ghoul, seriously wounded)",
-      "{0} ({1}s auferstandener Ghul, schwer verwundet)" },
     // {0} = owner name
     { "Water Elemental ({0}'s summon)",
       "Wasserelementar ({0}s Beschwörung)" },
-    // {0} = owner name
-    { "Water Elemental ({0}'s summon, seriously wounded)",
-      "Wasserelementar ({0}s Beschwörung, schwer verwundet)" },
 
     // ---- Pet family fallback -----------------------------------------
     { "pet", "Tier" },

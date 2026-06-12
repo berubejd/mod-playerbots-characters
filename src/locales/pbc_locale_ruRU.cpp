@@ -138,21 +138,12 @@ static const PBC_LocaleMap ruRU = {
     // {0} = demon type, {1} = pet name, {2} = owner name
     { "{0} {1} ({2}'s demon)",
       "{0} {1} (призван {2})" },
-    // {0} = demon type, {1} = pet name, {2} = owner name
-    { "{0} {1} ({2}'s demon, seriously wounded)",
-      "{0} {1} (демон {2}, при смерти)" },
     // {0} = pet name, {1} = owner name
     { "{0} ({1}'s risen ghoul)",
       "{0} (восставший вурдалак {1})" },
-    // {0} = pet name, {1} = owner name
-    { "{0} ({1}'s risen ghoul, seriously wounded)",
-      "{0} (восставший вурдалак {1}, при смерти)" },
     // {0} = owner name
     { "Water Elemental ({0}'s summon)",
       "Элементаль Воды (призван {0})" },
-    // {0} = owner name
-    { "Water Elemental ({0}'s summon, seriously wounded)",
-      "Элементаль Воды (призван {0}, при смерти)" },
 
     // ---- Pet family fallback -----------------------------------------
     { "pet", "питомец" },
