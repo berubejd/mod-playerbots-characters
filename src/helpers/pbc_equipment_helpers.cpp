@@ -6,7 +6,7 @@
 #include "Item.h"
 #include "ItemTemplate.h"
 #include "Bag.h"
-#include <fmt/core.h>
+#include <vector>
 
 // ---------------------------------------------------------------------------
 // Equipment quality / off-hand helpers (local to this TU)
@@ -26,8 +26,9 @@ static std::string EquipQualityStr(uint32 quality)
     }
 }
 
-// Returns a human-readable off-hand type string (shield, relic, holdable, etc.)
-static std::string EquipOffhandTypeStr(ItemTemplate const* tmpl)
+// Returns a human-readable type string for any equipped item (shield, relic,
+// holdable, or weapon).  Used for both off-hand and ranged-slot items.
+static std::string EquipItemTypeStr(ItemTemplate const* tmpl)
 {
     if (!tmpl) return PBC_Localize("off-hand item");
     if (tmpl->Class == ITEM_CLASS_WEAPON)
@@ -48,35 +49,6 @@ static std::string EquipOffhandTypeStr(ItemTemplate const* tmpl)
             return PBC_Localize("off-hand focus");
     }
     return PBC_Localize("off-hand item");
-}
-
-// Builds a phrase like "a rare dagger" or "an epic staff called Devastation".
-// For rare+ items the name is included.
-static std::string DescribeWeapon(ItemTemplate const* tmpl)
-{
-    if (!tmpl) return "";
-    std::string type = PBC_WeaponTypeStr(tmpl->SubClass);
-    if (tmpl->Quality >= ITEM_QUALITY_RARE)
-    {
-        std::string qual = EquipQualityStr(tmpl->Quality);
-        return std::string(PBC_ArticleFor(qual)) + " " + qual + " " + type + " called " + PBC_GetItemName(tmpl->ItemId);
-    }
-    return std::string(PBC_ArticleFor(type)) + " " + type;
-}
-
-// Builds a phrase for an off-hand item (shield, relic, holdable, or weapon).
-static std::string DescribeOffhand(ItemTemplate const* tmpl)
-{
-    if (!tmpl) return "";
-    if (tmpl->Class == ITEM_CLASS_WEAPON)
-        return DescribeWeapon(tmpl);
-    std::string type = EquipOffhandTypeStr(tmpl);
-    if (tmpl->Quality >= ITEM_QUALITY_RARE)
-    {
-        std::string qual = EquipQualityStr(tmpl->Quality);
-        return std::string(PBC_ArticleFor(qual)) + " " + qual + " " + type + " called " + PBC_GetItemName(tmpl->ItemId);
-    }
-    return std::string(PBC_ArticleFor(type)) + " " + type;
 }
 
 // Returns a bag-space summary string for roleplaying purposes.
@@ -125,12 +97,22 @@ static std::string BuildBagSpaceStr(Player* bot)
 
 // ---------------------------------------------------------------------------
 // PBC_BuildEquipmentStr  (main-thread only)
+//
+// Builds a multi-line human-readable equipment summary:
+//
+//   You have {quality} equipment made of {material}.
+//   Your main weapon is a {rarity} {type}[ called {name}].
+//   In your off-hand you wield a {rarity} {type}[ called {name}].
+//   Your ranged weapon is a {rarity} {type}[ called {name}].
+//
+// Weapon names are included only for rare+ items.  Lines are omitted when
+// the corresponding slot is empty (e.g. no off-hand, no ranged weapon).
+// A bag-space summary is appended when bags are ≥40% full.
 // ---------------------------------------------------------------------------
 
 std::string PBC_BuildEquipmentStr(Player* bot)
 {
-    // --- Armor assessment ---
-    // Slots to consider for armor quality (exclude weapon slots)
+    // --- Armor assessment ------------------------------------------------
     static const uint8 armorSlots[] = {
         EQUIPMENT_SLOT_HEAD, EQUIPMENT_SLOT_NECK, EQUIPMENT_SLOT_SHOULDERS,
         EQUIPMENT_SLOT_BODY, EQUIPMENT_SLOT_CHEST, EQUIPMENT_SLOT_WAIST,
@@ -176,16 +158,15 @@ std::string PBC_BuildEquipmentStr(Player* bot)
         }
     }
 
-    // Build armor quality description
-    std::string armorDesc;
+    // Armor line
+    std::string armorLine;
 
     if (totalArmor == 0)
     {
-        armorDesc = PBC_Localize("You have no armor");
+        armorLine = PBC_Localize("You have no armor.");
     }
     else
     {
-        // Find dominant quality tier; on ties the highest quality wins
         struct Tier { int count; std::string adj; };
         Tier tiers[] = {
             { poorCount,       PBC_Localize("simple") },
@@ -206,15 +187,14 @@ std::string PBC_BuildEquipmentStr(Player* bot)
             }
         }
 
-        // Find dominant armor material (cloth/leather/mail/plate)
         std::string material;
         int matMax = 0;
         struct Mat { int count; std::string name; };
         Mat mats[] = {
-            {clothCount, PBC_Localize("cloth")},
+            {clothCount,   PBC_Localize("cloth")},
             {leatherCount, PBC_Localize("leather")},
-            {mailCount, PBC_Localize("mail")},
-            {plateCount, PBC_Localize("plate")}
+            {mailCount,    PBC_Localize("mail")},
+            {plateCount,   PBC_Localize("plate")}
         };
         for (const auto& m : mats)
         {
@@ -225,12 +205,12 @@ std::string PBC_BuildEquipmentStr(Player* bot)
             }
         }
 
-        armorDesc = PBC_Localize("You have {0} equipment", qualityAdj);
+        armorLine = PBC_Localize("You have {0} equipment.", qualityAdj);
         if (!material.empty() && matMax >= 2)
-            armorDesc += PBC_Localize(" made of {0}", material);
+            armorLine = PBC_Localize("You have {0} equipment made of {1}.", qualityAdj, material);
     }
 
-    // --- Weapon assessment ---
+    // --- Weapon assessment -----------------------------------------------
     Item* mainItem  = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
     Item* offItem   = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
     Item* rangeItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
@@ -239,59 +219,60 @@ std::string PBC_BuildEquipmentStr(Player* bot)
     ItemTemplate const* ohT = offItem   ? offItem->GetTemplate()   : nullptr;
     ItemTemplate const* rgT = rangeItem ? rangeItem->GetTemplate() : nullptr;
 
-    bool is2H       = mhT && mhT->InventoryType == INVTYPE_2HWEAPON;
-    bool mhIsWeapon = mhT && mhT->Class == ITEM_CLASS_WEAPON;
-    bool ohIsWeapon = ohT && ohT->Class == ITEM_CLASS_WEAPON;
-    bool rgIsWeapon = rgT && rgT->Class == ITEM_CLASS_WEAPON;
+    bool is2H = mhT && mhT->InventoryType == INVTYPE_2HWEAPON;
 
-    std::string weaponDesc;
+    std::vector<std::string> lines;
+    lines.push_back(armorLine);
 
-    if (!mhT && !ohT && !rgT)
+    // Main weapon line
+    if (mhT)
     {
-        weaponDesc = PBC_Localize("you are unarmed");
-    }
-    else if (is2H)
-    {
-        weaponDesc = PBC_Localize("you wield ") + DescribeWeapon(mhT);
-        if (rgIsWeapon)
-            weaponDesc += PBC_Localize(" and carry ") + DescribeWeapon(rgT);
-    }
-    else if (mhT && ohT)
-    {
-        // Dual wield of same weapon type, both rare+: special phrasing
-        if (ohIsWeapon && mhIsWeapon && mhT->SubClass == ohT->SubClass &&
-            mhT->Quality >= ITEM_QUALITY_RARE && ohT->Quality >= ITEM_QUALITY_RARE)
-        {
-            std::string qual = EquipQualityStr(mhT->Quality);
-            std::string type = PBC_WeaponTypeStr(mhT->SubClass);
-            weaponDesc = PBC_Localize("you wield two {0} {1}s, called {2} and {3}", qual, type, PBC_GetItemName(mhT->ItemId), PBC_GetItemName(ohT->ItemId));
-        }
+        std::string rarity = EquipQualityStr(mhT->Quality);
+        std::string type   = (mhT->Class == ITEM_CLASS_WEAPON)
+                                ? PBC_WeaponTypeStr(mhT->SubClass)
+                                : EquipItemTypeStr(mhT);
+
+        if (mhT->Quality >= ITEM_QUALITY_RARE)
+            lines.push_back(PBC_Localize("Your main weapon is a {0} {1} called {2}.", rarity, type, PBC_GetItemName(mhT->ItemId)));
         else
-        {
-            std::string mhDesc = mhIsWeapon ? DescribeWeapon(mhT) : DescribeOffhand(mhT);
-            std::string ohDesc = ohIsWeapon ? DescribeWeapon(ohT) : DescribeOffhand(ohT);
-            weaponDesc = PBC_Localize("you wield ") + mhDesc + PBC_Localize(" and ") + ohDesc;
-        }
-        if (rgIsWeapon)
-            weaponDesc += PBC_Localize(", and carry ") + DescribeWeapon(rgT);
-    }
-    else if (mhT)
-    {
-        weaponDesc = PBC_Localize("you wield ") + (mhIsWeapon ? DescribeWeapon(mhT) : DescribeOffhand(mhT));
-        if (rgIsWeapon)
-            weaponDesc += PBC_Localize(" and carry ") + DescribeWeapon(rgT);
-    }
-    else if (ohT)
-    {
-        weaponDesc = PBC_Localize("you carry ") + DescribeOffhand(ohT);
-    }
-    else
-    {
-        // Only ranged
-        weaponDesc = PBC_Localize("you carry ") + DescribeWeapon(rgT);
+            lines.push_back(PBC_Localize("Your main weapon is a {0}.", type));
     }
 
-    std::string result = armorDesc + PBC_Localize(", and ") + weaponDesc + ".";
+    // Off-hand line (suppressed when the main-hand weapon is two-handed)
+    if (!is2H && ohT)
+    {
+        std::string rarity = EquipQualityStr(ohT->Quality);
+        std::string type   = (ohT->Class == ITEM_CLASS_WEAPON)
+                                ? PBC_WeaponTypeStr(ohT->SubClass)
+                                : EquipItemTypeStr(ohT);
+
+        if (ohT->Quality >= ITEM_QUALITY_RARE)
+            lines.push_back(PBC_Localize("In your off-hand you wield a {0} {1} called {2}.", rarity, type, PBC_GetItemName(ohT->ItemId)));
+        else
+            lines.push_back(PBC_Localize("In your off-hand you wield a {0}.", type));
+    }
+
+    // Ranged weapon / relic line
+    if (rgT)
+    {
+        std::string rarity = EquipQualityStr(rgT->Quality);
+        std::string type   = (rgT->Class == ITEM_CLASS_WEAPON)
+                                ? PBC_WeaponTypeStr(rgT->SubClass)
+                                : EquipItemTypeStr(rgT);
+
+        if (rgT->Quality >= ITEM_QUALITY_RARE)
+            lines.push_back(PBC_Localize("Your ranged weapon is a {0} {1} called {2}.", rarity, type, PBC_GetItemName(rgT->ItemId)));
+        else
+            lines.push_back(PBC_Localize("Your ranged weapon is a {0}.", type));
+    }
+
+    // Assemble: each line on its own row
+    std::string result;
+    for (size_t i = 0; i < lines.size(); ++i)
+    {
+        if (i > 0) result += "\n";
+        result += lines[i];
+    }
 
     // Append bag space summary when noteworthy (≥40% full)
     std::string bagSpace = BuildBagSpaceStr(bot);

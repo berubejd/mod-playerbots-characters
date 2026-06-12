@@ -322,5 +322,5 @@ std::string PBC_BuildItemPhrase(ItemTemplate const* tmpl)
         default:                     type = PBC_Localize("item"); break;
     }
 
-    return std::string(PBC_ArticleFor(quality)) + " " + quality + " " + type;
+    return PBC_Localize("a {0} {1}", quality, type);
 }

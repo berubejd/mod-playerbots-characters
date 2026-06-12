@@ -224,29 +224,28 @@ static const PBC_LocaleMap deDE = {
     { "plate",   "Platte" },
 
     // ---- Equipment: description templates ----------------------------
-    { "You have no armor",
-      "Du hast keine Rüstung" },
-    // {0} = quality adjective (e.g. "good", "excellent")
-    { "You have {0} equipment",
-      "Du hast {0} Ausrüstung" },
-    // {0} = material name (e.g. "cloth", "plate")
-    { " made of {0}",
-      " aus {0}" },
-    { ", and ",
-      ", und " },
-    { "you are unarmed",
-      "du bist unbewaffnet" },
-    { "you wield ",
-      "du führst " },
-    { "you carry ",
-      "du trägst " },
-    { " and carry ",
-      " und trägst " },
-    { ", and carry ",
-      ", und trägst " },
-    // {0} = quality, {1} = weapon type, {2} = main-hand name, {3} = off-hand name
-    { "you wield two {0} {1}s, called {2} and {3}",
-      "du führst zwei {0} {1}e, namens {2} und {3}" },
+    { "You have no armor.",
+      "Du hast keine Rüstung." },
+    // {0} = quality adjective (e.g. "gute", "ausgezeichnete")
+    { "You have {0} equipment.",
+      "Du hast {0} Ausrüstung." },
+    // {0} = quality adjective, {1} = material name
+    { "You have {0} equipment made of {1}.",
+      "Du hast {0} Ausrüstung aus {1}." },
+
+    // -- Weapon lines ({0}=rarity omitted — German adjectives are gendered) --
+    { "Your main weapon is a {0} {1} called {2}.",
+      "Hauptwaffe: {1} namens {2}." },
+    { "Your main weapon is a {0}.",
+      "Hauptwaffe: {0}." },
+    { "In your off-hand you wield a {0} {1} called {2}.",
+      "Schildhand: {1} namens {2}." },
+    { "In your off-hand you wield a {0}.",
+      "Schildhand: {0}." },
+    { "Your ranged weapon is a {0} {1} called {2}.",
+      "Fernkampfwaffe: {1} namens {2}." },
+    { "Your ranged weapon is a {0}.",
+      "Fernkampfwaffe: {0}." },
 
     // ---- Equipment: off-hand types -----------------------------------
     { "off-hand item",  "Schildhand-Gegenstand" },
@@ -265,13 +264,13 @@ static const PBC_LocaleMap deDE = {
       "Deine Taschen sind komplett voll." },
 
     // ---- Item quality names (PBC_ItemQualityStr) ---------------------
-    { "common",     "gewöhnlich" },
-    { "uncommon",   "ungewöhnlich" },
-    { "rare",       "selten" },
-    { "epic",       "episch" },
-    { "legendary",  "legendär" },
-    { "artifact",   "Artefakt" },
-    { "heirloom",   "Erbstück" },
+    { "common",     "gewöhnlichen" },
+    { "uncommon",   "ungewöhnlichen" },
+    { "rare",       "seltenen" },
+    { "epic",       "epischen" },
+    { "legendary",  "legendären" },
+    { "artifact",   "einzigartigen" },
+    { "heirloom",   "ererbten" },
 
     // ---- Weapon types ------------------------------------------------
     { "one-handed axe",  "Einhand-Axt" },
@@ -527,19 +526,25 @@ static const PBC_LocaleMap deDE = {
     { "you feel the urge to say something",
       "du verspürst den Drang, etwas zu sagen" },
 
+    // ---- Item phrase template (PBC_BuildItemPhrase) ------------------
+    // {0}=quality (accusative masculine), {1}=item type.
+    // All four event templates below use accusative so the adjective
+    // form is consistent across every event.
+    { "a {0} {1}", "{0} Gegenstand — {1}" },
+
     // ---- Item found / rewarded (pbc_player_scripts.cpp) --------------
-    // {0} = item phrase (e.g. "an epic sword"), {1} = item name
+    // {0} = item phrase, {1} = item name
     { "The party has found {0} named {1}",
       "Die Gruppe hat {0} namens {1} gefunden" },
-    // {0} = item phrase, {1} = item name
     { "The party acquired {0} named {1}",
       "Die Gruppe hat {0} namens {1} erhalten" },
-    // {0} = item phrase, {1} = item name
+    // Rewarded templates use accusative ("… als Belohnung erhalten")
+    // instead of dative ("mit … belohnt") so the item phrase keeps
+    // the same adjective form across all four events.
     { "The party has been rewarded with {0} named {1}",
-      "Die Gruppe wurde mit {0} namens {1} belohnt" },
-    // {0} = item phrase, {1} = item name
+      "Die Gruppe hat {0} namens {1} als Belohnung erhalten" },
     { "The party was rewarded with {0} named {1}",
-      "Die Gruppe wurde mit {0} namens {1} belohnt" },
+      "Die Gruppe hat {0} namens {1} als Belohnung erhalten" },
 
     // ---- Fallback names ----------------------------------------------
     { "Unknown Item", "Unbekannter Gegenstand" },

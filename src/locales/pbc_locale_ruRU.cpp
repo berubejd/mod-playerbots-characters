@@ -218,35 +218,34 @@ static const PBC_LocaleMap ruRU = {
     { "exceptional", "исключительное" },
 
     // ---- Equipment: armour materials ---------------------------------
-    { "cloth",   "ткань" },
-    { "leather", "кожа" },
-    { "mail",    "кольчуга" },
-    { "plate",   "латы" },
+    { "cloth",   "ткани" },
+    { "leather", "кожи" },
+    { "mail",    "кольчуги" },
+    { "plate",   "лат" },
 
     // ---- Equipment: description templates ----------------------------
-    { "You have no armor",
-      "У тебя нет брони" },
-    // {0} = quality adjective (e.g. "good", "excellent")
-    { "You have {0} equipment",
-      "У тебя {0} снаряжение" },
-    // {0} = material name (e.g. "cloth", "plate")
-    { " made of {0}",
-      " из материала {0}" },
-    { ", and ",
-      ", и " },
-    { "you are unarmed",
-      "у тебя нет оружия" },
-    { "you wield ",
-      "ты используешь " },
-    { "you carry ",
-      "ты несёшь " },
-    { " and carry ",
-      " и " },
-    { ", and carry ",
-      ", и " },
-    // {0} = quality, {1} = weapon type, {2} = main-hand name, {3} = off-hand name
-    { "you wield two {0} {1}s, called {2} and {3}",
-      "ты используешь два {0} {1}, под названием {2} и {3}" },
+    { "You have no armor.",
+      "У тебя нет брони." },
+    // {0} = quality adjective (e.g. "хорошее", "отличное")
+    { "You have {0} equipment.",
+      "У тебя {0} снаряжение." },
+    // {0} = quality adjective, {1} = material name
+    { "You have {0} equipment made of {1}.",
+      "У тебя {0} снаряжение из {1}." },
+
+    // -- Weapon lines ({0}=rarity omitted in Russian — adjectives are gendered) --
+    { "Your main weapon is a {0} {1} called {2}.",
+      "Твоё основное оружие — {1} {2}." },
+    { "Your main weapon is a {0}.",
+      "Твоё основное оружие — {0}." },
+    { "In your off-hand you wield a {0} {1} called {2}.",
+      "В левой руке ты держишь {1} {2}." },
+    { "In your off-hand you wield a {0}.",
+      "В левой руке ты держишь {0}." },
+    { "Your ranged weapon is a {0} {1} called {2}.",
+      "Твоё оружие дальнего боя — {1} {2}." },
+    { "Your ranged weapon is a {0}.",
+      "Твоё оружие дальнего боя — {0}." },
 
     // ---- Equipment: off-hand types -----------------------------------
     { "off-hand item",  "предмет в левой руке" },
@@ -270,8 +269,8 @@ static const PBC_LocaleMap ruRU = {
     { "rare",       "редкий" },
     { "epic",       "эпический" },
     { "legendary",  "легендарный" },
-    { "artifact",   "артефакт" },
-    { "heirloom",   "фамильная ценность" },
+    { "artifact",   "артефактный" },
+    { "heirloom",   "фамильный" },
 
     // ---- Weapon types ------------------------------------------------
     { "one-handed axe",  "одноручный топор" },
@@ -526,6 +525,12 @@ static const PBC_LocaleMap ruRU = {
       "ты чувствуешь, что хочешь ответить" },
     { "you feel the urge to say something",
       "ты чувствуешь желание что-то сказать" },
+
+    // ---- Item phrase template (PBC_BuildItemPhrase) ------------------
+    // {0}=quality, {1}=item type.  Uses a fixed-gender anchor word
+    // ("предмет", masc.) to carry the quality adjective safely, then
+    // appends the actual type after a dash.
+    { "a {0} {1}", "{0} предмет — {1}" },
 
     // ---- Item found / rewarded (pbc_player_scripts.cpp) --------------
     // {0} = item phrase (e.g. "an epic sword"), {1} = item name
