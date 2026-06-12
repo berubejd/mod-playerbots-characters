@@ -69,11 +69,11 @@ std::string PBC_GetQuestStarterNames(uint32 questId)
     {
         if (it->second == questId)
         {
-            CreatureTemplate const* cInfo = sObjectMgr->GetCreatureTemplate(it->first);
-            if (cInfo)
+            std::string name = PBC_GetCreatureName(it->first);
+            if (!name.empty())
             {
                 if (!result.empty()) result += ", ";
-                result += cInfo->Name;
+                result += name;
             }
         }
     }
@@ -83,11 +83,11 @@ std::string PBC_GetQuestStarterNames(uint32 questId)
     {
         if (it->second == questId)
         {
-            GameObjectTemplate const* goInfo = sObjectMgr->GetGameObjectTemplate(it->first);
-            if (goInfo)
+            std::string name = PBC_GetGameObjectName(it->first);
+            if (!name.empty())
             {
                 if (!result.empty()) result += ", ";
-                result += goInfo->name;
+                result += name;
             }
         }
     }
@@ -102,11 +102,11 @@ std::string PBC_GetQuestEnderNames(uint32 questId)
     {
         if (it->second == questId)
         {
-            CreatureTemplate const* cInfo = sObjectMgr->GetCreatureTemplate(it->first);
-            if (cInfo)
+            std::string name = PBC_GetCreatureName(it->first);
+            if (!name.empty())
             {
                 if (!result.empty()) result += ", ";
-                result += cInfo->Name;
+                result += name;
             }
         }
     }
@@ -116,11 +116,11 @@ std::string PBC_GetQuestEnderNames(uint32 questId)
     {
         if (it->second == questId)
         {
-            GameObjectTemplate const* goInfo = sObjectMgr->GetGameObjectTemplate(it->first);
-            if (goInfo)
+            std::string name = PBC_GetGameObjectName(it->first);
+            if (!name.empty())
             {
                 if (!result.empty()) result += ", ";
-                result += goInfo->name;
+                result += name;
             }
         }
     }

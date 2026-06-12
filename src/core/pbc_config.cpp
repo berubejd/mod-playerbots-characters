@@ -6,6 +6,8 @@
 #include "pbc_utils.h"
 #include "pbc_log.h"
 #include "Config.h"
+#include "World.h"
+#include "Common.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "Chat.h"
@@ -323,14 +325,36 @@ static bool LoadPromptFile(const std::string& customPath,
     return true;
 }
 
+// Resolve the locale subdirectory to load prompts from.
+// Tries <prompts_path>/<dbc_locale>/ first, falls back to <prompts_path>/enUS/.
+static std::filesystem::path PBC_ResolvePromptLocaleDir()
+{
+    namespace fs = std::filesystem;
+    fs::path base(g_PBC_PromptsPath);
+
+    // Derive locale name from DBC.Locale (e.g. "deDE", "frFR", "enUS")
+    std::string localeName = GetNameByLocaleConstant(sWorld->GetDefaultDbcLocale());
+
+    // 1. Try the configured locale subdirectory
+    fs::path localeDir = base / localeName;
+    if (fs::exists(localeDir) && fs::is_directory(localeDir))
+        return localeDir;
+
+    // 2. Fall back to enUS subdirectory
+    return base / "enUS";
+}
+
 bool PBC_LoadPrompts()
 {
-    std::filesystem::path dir(g_PBC_PromptsPath);
+    std::filesystem::path dir = PBC_ResolvePromptLocaleDir();
     if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
     {
-        PBC_Log(PBC_LogLevel::PBC_ERROR, "Prompts directory not found: {}", g_PBC_PromptsPath);
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Prompts directory not found: {}", dir.string());
         return false;
     }
+
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Loading prompts from '{}' (DBC.Locale={})",
+             dir.string(), GetNameByLocaleConstant(sWorld->GetDefaultDbcLocale()));
 
     struct PromptEntry { const char* filename; std::string& target; };
     const PromptEntry prompts[] = {
@@ -373,8 +397,8 @@ bool PBC_LoadPrompts()
     if (!allOk)
         return false;
 
-    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Loaded {} prompt(s) from '{}' ({} custom)",
-             static_cast<int>(sizeof(prompts) / sizeof(prompts[0])), g_PBC_PromptsPath, customCount);
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Loaded {} prompt(s) ({} custom)",
+             static_cast<int>(sizeof(prompts) / sizeof(prompts[0])), customCount);
     return true;
 }
 

@@ -39,10 +39,10 @@ static void HandleQuestTaken(Player* player, Quest const* quest,
         return;
     }
 
-    std::string questTitle          = PBC_StripWowTextCodes(quest->GetTitle());
-    std::string questDescription    = PBC_StripWowTextCodes(quest->GetDetails());
-    std::string questLogDescription = PBC_StripWowTextCodes(quest->GetObjectives());
-    std::string questCompletionLog  = PBC_StripWowTextCodes(quest->GetCompletedText());
+    std::string questTitle          = PBC_StripWowTextCodes(PBC_GetQuestTitle(quest->GetQuestId()));
+    std::string questDescription    = PBC_StripWowTextCodes(PBC_GetQuestDetails(quest->GetQuestId()));
+    std::string questLogDescription = PBC_StripWowTextCodes(PBC_GetQuestObjectives(quest->GetQuestId()));
+    std::string questCompletionLog  = PBC_StripWowTextCodes(PBC_GetQuestCompletedText(quest->GetQuestId()));
 
     PBC_Log(PBC_LogLevel::PBC_DEBUG, "HandleQuestTaken: leader={} quest='{}' (id={}) giver='{}' type='{}'",
              player->GetName(), questTitle, quest->GetQuestId(), questGiver, questGiverType);
@@ -78,7 +78,9 @@ bool PBC_AllCreatureQuestScript::CanCreatureQuestAccept(Player* player, Creature
 {
     if (creature && quest && player)
     {
-        std::string giverName = creature->GetName();
+        std::string giverName = PBC_GetCreatureName(creature->GetEntry());
+        if (giverName.empty())
+            giverName = creature->GetName();
         HandleQuestTaken(player, quest, giverName, "person");
     }
     return false; // don't prevent quest acceptance
@@ -94,8 +96,12 @@ bool PBC_AllGameObjectQuestScript::CanGameObjectQuestAccept(Player* player, Game
 {
     if (go && quest && player)
     {
-        GameObjectTemplate const* goInfo = go->GetGOInfo();
-        std::string giverName = goInfo ? goInfo->name : go->GetName();
+        std::string giverName = PBC_GetGameObjectName(go->GetEntry());
+        if (giverName.empty())
+        {
+            GameObjectTemplate const* goInfo = go->GetGOInfo();
+            giverName = goInfo ? goInfo->name : go->GetName();
+        }
         HandleQuestTaken(player, quest, giverName, "object");
     }
     return false; // don't prevent quest acceptance
@@ -111,8 +117,12 @@ bool PBC_AllItemQuestScript::CanItemQuestAccept(Player* player, Item* item, Ques
 {
     if (item && quest && player)
     {
-        ItemTemplate const* itemInfo = item->GetTemplate();
-        std::string giverName = itemInfo ? itemInfo->Name1 : "Unknown Item";
+        std::string giverName = PBC_GetItemName(item->GetEntry());
+        if (giverName.empty())
+        {
+            ItemTemplate const* itemInfo = item->GetTemplate();
+            giverName = itemInfo ? itemInfo->Name1 : "Unknown Item";
+        }
         HandleQuestTaken(player, quest, giverName, "item");
     }
     return true; // true = allow quest acceptance (AllItemScript convention)

@@ -130,7 +130,9 @@ void PBC_PlayerEvents::OnPlayerLootItem(Player* player, Item* item, uint32 /*cou
     if (!tmpl || tmpl->Quality < ITEM_QUALITY_RARE) return;
     if (!(PBC_LOOT_EVENT_ITEM_CLASSES & (1u << tmpl->Class))) return;
 
-    std::string itemName = tmpl->Name1;
+    std::string itemName = PBC_GetItemName(item->GetEntry());
+    if (itemName.empty())
+        itemName = tmpl->Name1;
     std::string phrase   = PBC_BuildItemPhrase(tmpl);
 
     PBC_DispatchGroupEvent(player,
@@ -148,7 +150,9 @@ void PBC_PlayerEvents::OnPlayerQuestRewardItem(Player* player, Item* item, uint3
     if (!tmpl || tmpl->Quality < ITEM_QUALITY_RARE) return;
     if (!(PBC_LOOT_EVENT_ITEM_CLASSES & (1u << tmpl->Class))) return;
 
-    std::string itemName = tmpl->Name1;
+    std::string itemName = PBC_GetItemName(item->GetEntry());
+    if (itemName.empty())
+        itemName = tmpl->Name1;
     std::string phrase   = PBC_BuildItemPhrase(tmpl);
 
     PBC_DispatchGroupEvent(player,
@@ -167,7 +171,9 @@ void PBC_PlayerEvents::OnPlayerGroupRollRewardItem(Player* player, Item* item, u
     if (!tmpl || tmpl->Quality < ITEM_QUALITY_RARE) return;
     if (!(PBC_LOOT_EVENT_ITEM_CLASSES & (1u << tmpl->Class))) return;
 
-    std::string itemName = tmpl->Name1;
+    std::string itemName = PBC_GetItemName(item->GetEntry());
+    if (itemName.empty())
+        itemName = tmpl->Name1;
     std::string phrase   = PBC_BuildItemPhrase(tmpl);
 
     PBC_DispatchGroupEvent(player,
@@ -265,11 +271,11 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
         return;
     }
 
-    std::string questTitle          = PBC_StripWowTextCodes(quest->GetTitle());
-    std::string questDescription    = PBC_StripWowTextCodes(quest->GetDetails());
-    std::string questLogDescription = PBC_StripWowTextCodes(quest->GetObjectives());
-    std::string questCompletionLog  = PBC_StripWowTextCodes(quest->GetCompletedText());
-    std::string questRewardText     = PBC_StripWowTextCodes(quest->GetOfferRewardText());
+    std::string questTitle          = PBC_StripWowTextCodes(PBC_GetQuestTitle(quest->GetQuestId()));
+    std::string questDescription    = PBC_StripWowTextCodes(PBC_GetQuestDetails(quest->GetQuestId()));
+    std::string questLogDescription = PBC_StripWowTextCodes(PBC_GetQuestObjectives(quest->GetQuestId()));
+    std::string questCompletionLog  = PBC_StripWowTextCodes(PBC_GetQuestCompletedText(quest->GetQuestId()));
+    std::string questRewardText     = PBC_StripWowTextCodes(PBC_GetQuestOfferRewardText(quest->GetQuestId()));
     std::string questGiver          = PBC_GetQuestStarterNames(quest->GetQuestId());
     std::string questEnder          = PBC_GetQuestEnderNames(quest->GetQuestId());
     std::string questGiverType      = PBC_GetQuestStarterType(quest->GetQuestId());

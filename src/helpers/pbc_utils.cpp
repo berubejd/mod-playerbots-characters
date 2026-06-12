@@ -4,6 +4,12 @@
 #include "Group.h"
 #include "WorldSession.h"
 #include "SharedDefines.h"
+#include "World.h"
+#include "ObjectMgr.h"
+#include "CreatureData.h"
+#include "GameObjectData.h"
+#include "ItemTemplate.h"
+#include "QuestDef.h"
 
 #include <chrono>
 #include <thread>
@@ -279,6 +285,135 @@ bool PBC_RollChance(uint32_t chance)
     if (chance == 0) return false;
     std::uniform_int_distribution<uint32_t> dist(0, 99);
     return dist(PBC_GetRNG()) < chance;
+}
+
+// ---------------------------------------------------------------------------
+// Locale helpers
+// ---------------------------------------------------------------------------
+
+uint8_t PBC_GetDbcLocale()
+{
+    return static_cast<uint8_t>(sWorld->GetDefaultDbcLocale());
+}
+
+std::string_view PBC_DbcString(char const* const* localeStrArray)
+{
+    if (!localeStrArray)
+        return {};
+
+    uint8_t locale = PBC_GetDbcLocale();
+
+    // Try configured locale first
+    if (locale < TOTAL_LOCALES && localeStrArray[locale] && localeStrArray[locale][0] != '\0')
+        return std::string_view(localeStrArray[locale]);
+
+    // Fall back to enUS (index 0)
+    if (localeStrArray[0] && localeStrArray[0][0] != '\0')
+        return std::string_view(localeStrArray[0]);
+
+    return {};
+}
+
+std::string PBC_GetCreatureName(uint32_t entry)
+{
+    // Try locale override first
+    if (CreatureLocale const* cl = sObjectMgr->GetCreatureLocale(entry))
+    {
+        uint8_t locale = PBC_GetDbcLocale();
+        std::string_view locName = ObjectMgr::GetLocaleString(cl->Name, locale);
+        if (!locName.empty())
+            return std::string(locName);
+    }
+
+    // Fall back to enUS template name
+    if (CreatureTemplate const* ct = sObjectMgr->GetCreatureTemplate(entry))
+        return ct->Name;
+
+    return {};
+}
+
+std::string PBC_GetGameObjectName(uint32_t entry)
+{
+    // Try locale override first
+    if (GameObjectLocale const* gl = sObjectMgr->GetGameObjectLocale(entry))
+    {
+        uint8_t locale = PBC_GetDbcLocale();
+        std::string_view locName = ObjectMgr::GetLocaleString(gl->Name, locale);
+        if (!locName.empty())
+            return std::string(locName);
+    }
+
+    // Fall back to enUS template name
+    if (GameObjectTemplate const* gt = sObjectMgr->GetGameObjectTemplate(entry))
+        return gt->name;
+
+    return {};
+}
+
+std::string PBC_GetItemName(uint32_t entry)
+{
+    // Try locale override first
+    if (ItemLocale const* il = sObjectMgr->GetItemLocale(entry))
+    {
+        uint8_t locale = PBC_GetDbcLocale();
+        std::string_view locName = ObjectMgr::GetLocaleString(il->Name, locale);
+        if (!locName.empty())
+            return std::string(locName);
+    }
+
+    // Fall back to enUS template name
+    if (ItemTemplate const* tmpl = sObjectMgr->GetItemTemplate(entry))
+        return tmpl->Name1;
+
+    return {};
+}
+
+static std::string PBC_GetQuestLocaleString(uint32_t questId,
+    std::vector<std::string> QuestLocale::* field,
+    std::string const& (Quest::*fallback)() const = nullptr)
+{
+    // Try locale override first
+    if (QuestLocale const* ql = sObjectMgr->GetQuestLocale(questId))
+    {
+        uint8_t locale = PBC_GetDbcLocale();
+        std::string_view locText = ObjectMgr::GetLocaleString(ql->*field, locale);
+        if (!locText.empty())
+            return std::string(locText);
+    }
+
+    // Fall back to enUS quest text
+    if (fallback)
+    {
+        if (Quest const* quest = sObjectMgr->GetQuestTemplate(questId))
+            return (quest->*fallback)();
+    }
+
+    return {};
+}
+
+std::string PBC_GetQuestTitle(uint32_t questId)
+{
+    return PBC_GetQuestLocaleString(questId, &QuestLocale::Title, &Quest::GetTitle);
+}
+
+std::string PBC_GetQuestDetails(uint32_t questId)
+{
+    return PBC_GetQuestLocaleString(questId, &QuestLocale::Details, &Quest::GetDetails);
+}
+
+std::string PBC_GetQuestObjectives(uint32_t questId)
+{
+    return PBC_GetQuestLocaleString(questId, &QuestLocale::Objectives, &Quest::GetObjectives);
+}
+
+std::string PBC_GetQuestOfferRewardText(uint32_t questId)
+{
+    return PBC_GetQuestLocaleString(questId, &QuestLocale::OfferRewardText, &Quest::GetOfferRewardText);
+}
+
+std::string PBC_GetQuestCompletedText(uint32_t questId)
+{
+    return PBC_GetQuestLocaleString(questId, &QuestLocale::CompletedText, &Quest::GetCompletedText);
 }
 
 // ---------------------------------------------------------------------------

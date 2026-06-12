@@ -18,6 +18,8 @@ Over time, chat history grows. When it reaches the configured token limit, a con
 
 Relationships are tracked between characters and real players, as well as other characters. When a name is mentioned enough times in a character's history, a relationship update is triggered — generating or updating a brief description of how the character feels about that person. These are included in future prompts, giving characters continuity with their companions.
 
+The module supports multiple languages based on the server's `DBC.Locale` setting.
+
 
 ## Installation
 

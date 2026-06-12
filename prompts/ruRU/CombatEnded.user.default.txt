@@ -1,0 +1,5 @@
+Отряд только что завершил бой в {location}.
+Размер отряда: {party_size}
+{enemies_section}
+Сложность боя: {combat_toughness}
+Длительность боя: {combat_duration}

@@ -5,6 +5,28 @@ All prompt templates are loaded from files on disk. This allows the module to sh
 The prompt directory is configured via `PBC.PromptsPath` in the config (default: `../../../modules/mod-playerbots-characters/prompts`).
 
 
+## Locale Support
+
+Prompt files are organised by locale subdirectories. The module automatically resolves the correct locale based on the server's `DBC.Locale` setting in `worldserver.conf`:
+
+```
+prompts/
+├── enUS/
+│   ├── Main.system.default.txt
+│   ├── Main.system.custom.txt
+│   └── ...
+├── deDE/
+│   ├── Main.system.custom.txt
+│   └── ...
+├── frFR/
+└── ...
+```
+
+The module tries `<PBC.PromptsPath>/<DBC.Locale>/` first. If that directory doesn't exist, it falls back to `<PBC.PromptsPath>/enUS/`.
+
+To localise your prompts, copy the files from `enUS/` into a new locale directory (e.g. `deDE/`), translate them, and reload the module.
+
+
 ## How It Works
 
 For each prompt, the module first looks for a **custom** version (`.custom.txt`). If found, it is used. If not found, the **default** version (`.default.txt`) is loaded instead.

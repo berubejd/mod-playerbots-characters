@@ -96,7 +96,7 @@ std::string PBC_BuildPlaceName(Player* player)
         if (!entry)
             break;
 
-        std::string name = entry->area_name[0];
+        std::string name = std::string(PBC_DbcString(entry->area_name));
         if (!name.empty())
             names.push_back(name);
 
@@ -163,7 +163,7 @@ std::string PBC_BuildZoneName(Player* player)
         if (!entry)
             break;
 
-        std::string name = entry->area_name[0];
+        std::string name = std::string(PBC_DbcString(entry->area_name));
         if (!name.empty())
             rootName = name;
 
@@ -181,8 +181,9 @@ std::string PBC_BuildFlightDestination(Player* bot)
         uint32 finalNodeId = path.back();
         if (TaxiNodesEntry const* node = sTaxiNodesStore.LookupEntry(finalNodeId))
         {
-            if (node->name[0] && node->name[0][0] != '\0')
-                return node->name[0];
+            std::string_view name = PBC_DbcString(node->name);
+            if (!name.empty())
+                return std::string(name);
         }
     }
     return {};
@@ -197,7 +198,20 @@ std::string PBC_BuildCombatStatusStr(Player* bot)
     if (!bot->IsInCombat())
         return "You are not currently in combat.";
     if (Unit* victim = bot->GetVictim())
-        return "You are currently fighting " + std::string(victim->GetName()) + ".";
+    {
+        std::string victimName;
+        if (Creature* cVictim = victim->ToCreature())
+        {
+            victimName = PBC_GetCreatureName(cVictim->GetEntry());
+            if (victimName.empty())
+                victimName = cVictim->GetName();
+        }
+        else
+        {
+            victimName = victim->GetName();
+        }
+        return "You are currently fighting " + victimName + ".";
+    }
     return "You are currently in combat.";
 }
 
@@ -228,7 +242,10 @@ std::string PBC_BuildLosStr(Player* bot)
             if (!bot->IsWithinDistInMap(c, kLosRadius)) continue;
             if (!bot->IsWithinLOS(c->GetPositionX(), c->GetPositionY(), c->GetPositionZ())) continue;
             if (c->IsPet() || c->IsTotem()) continue;
-            nameCounts[std::string(c->GetName())]++;
+            std::string creatureName = PBC_GetCreatureName(c->GetEntry());
+            if (creatureName.empty())
+                creatureName = c->GetName();
+            nameCounts[creatureName]++;
         }
     }
 
@@ -301,7 +318,7 @@ std::string PBC_BuildSceneStr(Player* bot)
         if (!auraEffects.empty())
         {
             SpellInfo const* spellInfo = auraEffects.front()->GetSpellInfo();
-            std::string mountName = spellInfo->SpellName[0];
+            std::string mountName = std::string(PBC_DbcString(spellInfo->SpellName));
             bool isFlyingMount = (spellInfo->Effects[1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
                                   spellInfo->Effects[2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED);
             if (isFlyingMount)
@@ -437,10 +454,14 @@ static std::string GetHunterPetFamilyName(Pet* pet)
         return "pet";
 
     CreatureFamilyEntry const* familyEntry = sCreatureFamilyStore.LookupEntry(ct->family);
-    if (!familyEntry || !familyEntry->Name[0])
+    if (!familyEntry)
         return "pet";
 
-    return std::string(familyEntry->Name[0]);
+    std::string_view familyName = PBC_DbcString(familyEntry->Name);
+    if (familyName.empty())
+        return "pet";
+
+    return std::string(familyName);
 }
 
 // Build the alive-pet string for the owner (pet_info variable).

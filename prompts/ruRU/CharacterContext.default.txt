@@ -1,0 +1,7 @@
+Ты {char_name}, {char_gender} {char_race} {char_class}.
+{pet_info}
+{scene}
+{combat_status}
+{equipment}
+{char_group}
+{char_los}

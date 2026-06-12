@@ -42,7 +42,9 @@ static bool IsSignificantKill(const Creature* killed)
 // Produces a display string for the killed creature.
 static std::string BuildBossLabel(const Creature* killed)
 {
-    std::string label = killed->GetName();
+    std::string label = PBC_GetCreatureName(killed->GetEntry());
+    if (label.empty())
+        label = killed->GetName(); // fallback to live object name
     const std::string& sub = killed->GetCreatureTemplate()->SubName;
     if (!sub.empty())
         label += " (" + sub + ")";
@@ -90,7 +92,9 @@ void PBC_TrackGroupKill(Player* killer, Creature* killed)
     }
     else
     {
-        std::string name = killed->GetName();
+        std::string name = PBC_GetCreatureName(killed->GetEntry());
+        if (name.empty())
+            name = killed->GetName(); // fallback to live object name
         ++tracker.killedEnemies[name];
     }
 }

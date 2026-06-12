@@ -74,6 +74,41 @@ std::string PBC_NaturalList(const std::vector<std::string>& items);
 std::string PBC_DefaultRelationshipText(const std::string& name);
 
 // ---------------------------------------------------------------------------
+// Locale helpers
+// ---------------------------------------------------------------------------
+
+// Returns the configured DBC locale constant from worldserver.conf's DBC.Locale
+// (e.g. LOCALE_enUS=0, LOCALE_deDE=3).  Safe to call from any thread.
+uint8_t PBC_GetDbcLocale();
+
+// Reads a DBC string array at the configured locale index, falling back to
+// index 0 (enUS) if the configured locale's string is empty.  For use with
+// DBC fields like AreaTableEntry::area_name, CreatureFamilyEntry::Name, etc.
+// Returns empty string_view if all locale entries are empty.
+std::string_view PBC_DbcString(char const* const* localeStrArray);
+
+// Get a localized creature name.  Checks creature_template_locale for the
+// configured locale, falls back to CreatureTemplate::Name (enUS).
+std::string PBC_GetCreatureName(uint32_t entry);
+
+// Get a localized gameobject name.  Checks gameobject_template_locale for the
+// configured locale, falls back to GameObjectTemplate::name (enUS).
+std::string PBC_GetGameObjectName(uint32_t entry);
+
+// Get a localized item name.  Checks item_template_locale for the configured
+// locale, falls back to ItemTemplate::Name1 (enUS).
+std::string PBC_GetItemName(uint32_t entry);
+
+// Get localized quest text.  Checks quest_template_locale for the configured
+// locale, falls back to the Quest object's built-in (enUS) text.
+// Returns empty string if both locale and fallback are empty.
+std::string PBC_GetQuestTitle(uint32_t questId);
+std::string PBC_GetQuestDetails(uint32_t questId);
+std::string PBC_GetQuestObjectives(uint32_t questId);
+std::string PBC_GetQuestOfferRewardText(uint32_t questId);
+std::string PBC_GetQuestCompletedText(uint32_t questId);
+
+// ---------------------------------------------------------------------------
 // Enum-to-string helpers (require SharedDefines.h in implementation)
 // ---------------------------------------------------------------------------
 

@@ -162,9 +162,10 @@ PBC.AltModelModelExtraParameters =
 # PBC.PromptsPath
 #     Description: Path to the directory containing prompt template files.
 #                  This should be a relative path from the server's working directory.
-#                  The module loads all .default.txt prompt files from this directory.
-#                  To customize a prompt, create a .custom.txt version of it in the same
-#                  directory — it will be loaded instead of the default one.
+#                  Prompts are loaded from a locale subdirectory (e.g. prompts/deDE/)
+#                  based on DBC.Locale, falling back to prompts/enUS/.
+#                  To customize a prompt, create a .custom.txt version of it in the
+#                  locale directory — it will be loaded instead of .default.txt.
 #                  REQUIRED. The module will be disabled if prompts fail to load.
 #     Default:     ../../../modules/mod-playerbots-characters/prompts
 PBC.PromptsPath = ../../../modules/mod-playerbots-characters/prompts

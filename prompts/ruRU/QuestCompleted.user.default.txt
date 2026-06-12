@@ -1,0 +1,24 @@
+[TITLE]
+{quest_title}
+
+[QUEST GIVER]
+{quest_giver}
+
+[QUEST GIVER TYPE]
+{quest_giver_type}
+
+[QUEST ENDER]
+{quest_ender}
+
+[QUEST ENDER TYPE]
+{quest_ender_type}
+
+[DESCRIPTION TEXT]
+{quest_description}
+
+[OBJECTIVES]
+{quest_log_description}
+{quest_completion_log}
+
+[COMPLETION TEXT]
+{quest_reward_text}
