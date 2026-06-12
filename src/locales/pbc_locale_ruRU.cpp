@@ -436,6 +436,9 @@ static const PBC_LocaleMap ruRU = {
     // {0} = narrator message text
     { "Narrator: *{0}*",
       "Рассказчик: *{0}*" },
+    // {0} = character name — narrator event line for pending reactions
+    { "{0} thinks...",
+      "{0} думает..." },
     // {0} = message text — the character's own chat message
     { "You: {0}",
       "Ты: {0}" },

@@ -59,7 +59,7 @@ static std::string DescribeWeapon(ItemTemplate const* tmpl)
     if (tmpl->Quality >= ITEM_QUALITY_RARE)
     {
         std::string qual = EquipQualityStr(tmpl->Quality);
-        return std::string(PBC_ArticleFor(qual)) + " " + qual + " " + type + " called " + tmpl->Name1;
+        return std::string(PBC_ArticleFor(qual)) + " " + qual + " " + type + " called " + PBC_GetItemName(tmpl->ItemId);
     }
     return std::string(PBC_ArticleFor(type)) + " " + type;
 }
@@ -74,7 +74,7 @@ static std::string DescribeOffhand(ItemTemplate const* tmpl)
     if (tmpl->Quality >= ITEM_QUALITY_RARE)
     {
         std::string qual = EquipQualityStr(tmpl->Quality);
-        return std::string(PBC_ArticleFor(qual)) + " " + qual + " " + type + " called " + tmpl->Name1;
+        return std::string(PBC_ArticleFor(qual)) + " " + qual + " " + type + " called " + PBC_GetItemName(tmpl->ItemId);
     }
     return std::string(PBC_ArticleFor(type)) + " " + type;
 }
@@ -264,7 +264,7 @@ std::string PBC_BuildEquipmentStr(Player* bot)
         {
             std::string qual = EquipQualityStr(mhT->Quality);
             std::string type = PBC_WeaponTypeStr(mhT->SubClass);
-            weaponDesc = PBC_Localize("you wield two {0} {1}s, called {2} and {3}", qual, type, mhT->Name1, ohT->Name1);
+            weaponDesc = PBC_Localize("you wield two {0} {1}s, called {2} and {3}", qual, type, PBC_GetItemName(mhT->ItemId), PBC_GetItemName(ohT->ItemId));
         }
         else
         {

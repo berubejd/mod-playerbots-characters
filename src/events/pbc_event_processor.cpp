@@ -430,7 +430,7 @@ void ProcessNormal(PBC_EventItem& ev,
         {
             PBC_PendingAction action;
             action.charGuid          = snap.charObjGuid;
-            action.text              = PBC_MakeEventLine(snap.charName + " thinks...");
+            action.text              = PBC_MakeEventLine(PBC_Localize("{0} thinks...", snap.charName));
             action.isNarratorMessage = true;
 
             std::lock_guard<std::mutex> lock(g_PBC_PendingActionsMutex);

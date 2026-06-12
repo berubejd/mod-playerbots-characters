@@ -476,7 +476,6 @@ static std::string BuildAlivePetStr(Player* bot, Pet* pet)
         case CLASS_HUNTER:
         {
             std::string family = GetHunterPetFamilyName(pet);
-            std::transform(family.begin(), family.end(), family.begin(), ::tolower);
 
             HappinessState happiness = pet->GetHappinessState();
             switch (happiness)
@@ -513,7 +512,6 @@ static std::string BuildDeadPetStr(Player* bott, Pet* pet)
         case CLASS_HUNTER:
         {
             std::string family = GetHunterPetFamilyName(pet);
-            std::transform(family.begin(), family.end(), family.begin(), ::tolower);
             return PBC_Localize("Your {0} {1} is seriously wounded.", family, pet->GetName());
         }
         default:
@@ -564,7 +562,6 @@ static std::string BuildMemberPetSnippet(Player* owner, Pet* pet)
         case CLASS_HUNTER:
         {
             std::string family = GetHunterPetFamilyName(pet);
-            std::transform(family.begin(), family.end(), family.begin(), ::tolower);
             if (pet->isDead())
                 return PBC_Localize("{0} {1} ({2}'s pet, seriously wounded)", family, petName, ownerName);
             return PBC_Localize("{0} {1} ({2}'s pet)", family, petName, ownerName);

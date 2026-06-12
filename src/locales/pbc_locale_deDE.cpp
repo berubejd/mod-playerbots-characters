@@ -436,6 +436,9 @@ static const PBC_LocaleMap deDE = {
     // {0} = narrator message text
     { "Narrator: *{0}*",
       "Erzähler: *{0}*" },
+    // {0} = character name — narrator event line for pending reactions
+    { "{0} thinks...",
+      "{0} denkt nach..." },
     // {0} = message text — the character's own chat message
     { "You: {0}",
       "Du: {0}" },
