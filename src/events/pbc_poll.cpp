@@ -1,6 +1,7 @@
 #include "pbc_poll.h"
 #include "pbc_config.h"
 #include "pbc_utils.h"
+#include "pbc_locales.h"
 #include "pbc_event_dispatch.h"
 #include "pbc_group_helpers.h"
 #include "pbc_scene_helpers.h"
@@ -14,6 +15,7 @@
 #include "WorldSessionMgr.h"
 #include "GameTime.h"
 
+#include <fmt/core.h>
 #include <unordered_set>
 #include <sstream>
 #include <mutex>
@@ -224,8 +226,8 @@ void PBC_PollPartyState()
                 if (dest.empty())
                     dest = "an unknown destination";
 
-                std::string eventLine = PBC_MakeEventLine("The party has started a flight to " + dest);
-                std::string narratorText = "The party started a flight to " + dest;
+                std::string eventLine = PBC_MakeEventLine(PBC_Localize("The party has started a flight to {0}", dest));
+                std::string narratorText = PBC_Localize("The party started a flight to {0}", dest);
 
                 PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: flight started — group={} dest={} bots={} chance={}%",
                          grpGuid, dest, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
@@ -294,8 +296,8 @@ void PBC_PollPartyState()
 
                     if (state.locationStableCycles >= g_PBC_LocationChangeDebounceCycles)
                     {
-                        std::string eventLine = PBC_MakeEventLine("Party has arrived in " + gi.sharedZone);
-                        std::string narratorText = "Party moved to " + gi.sharedZone;
+                        std::string eventLine = PBC_MakeEventLine(PBC_Localize("Party has arrived in {0}", gi.sharedZone));
+                        std::string narratorText = PBC_Localize("Party moved to {0}", gi.sharedZone);
 
                         PBC_Log(PBC_LogLevel::PBC_DEBUG, "PollPartyState: location changed — group={} from='{}' to='{}' bots={} chance={}%",
                                  grpGuid, state.location, gi.sharedZone, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
@@ -400,7 +402,7 @@ void PBC_PollPartyState()
                 std::string enemiesSection;
                 {
                     std::ostringstream oss;
-                    oss << "Regular enemies defeated: ";
+                    oss << PBC_Localize("Regular enemies defeated: ");
                     if (!tracker.killedEnemies.empty())
                     {
                         bool first = true;
@@ -413,12 +415,12 @@ void PBC_PollPartyState()
                     }
                     else
                     {
-                        oss << "none";
+                        oss << PBC_Localize("none");
                     }
 
                     if (!tracker.notableEnemyNames.empty())
                     {
-                        oss << "\nSignificant enemies defeated: ";
+                        oss << "\n" << PBC_Localize("Significant enemies defeated: ");
                         for (size_t i = 0; i < tracker.notableEnemyNames.size(); ++i)
                         {
                             if (i > 0) oss << ", ";
@@ -435,26 +437,26 @@ void PBC_PollPartyState()
                     uint32_t size = tracker.partySize > 0 ? tracker.partySize : 1;
                     float deathRatio = static_cast<float>(dead) / static_cast<float>(size);
                     if (dead == 0)
-                        combatToughness = "The party confidently disposed of the enemies.";
+                        combatToughness = PBC_Localize("The party confidently disposed of the enemies.");
                     else if (deathRatio <= 0.2f)
-                        combatToughness = "The party members suffered minor wounds.";
+                        combatToughness = PBC_Localize("The party members suffered minor wounds.");
                     else if (deathRatio <= 0.4f)
-                        combatToughness = "The party members suffered major wounds.";
+                        combatToughness = PBC_Localize("The party members suffered major wounds.");
                     else
-                        combatToughness = "The party was almost wiped out and barely survived.";
+                        combatToughness = PBC_Localize("The party was almost wiped out and barely survived.");
                 }
 
                 time_t combatDuration = GameTime::GetGameTime().count() - tracker.combatStartTime;
                 std::string durationStr;
                 {
                     if (combatDuration < 30)
-                        durationStr = "short";
+                        durationStr = PBC_Localize("short");
                     else if (combatDuration < 60)
-                        durationStr = "average";
+                        durationStr = PBC_Localize("average");
                     else if (combatDuration < 150)
-                        durationStr = "long";
+                        durationStr = PBC_Localize("long");
                     else
-                        durationStr = "very long";
+                        durationStr = PBC_Localize("very long");
                 }
 
                 std::string userPrompt = g_PBC_CombatEndedUserPrompt;

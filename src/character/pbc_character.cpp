@@ -4,6 +4,7 @@
 #include "pbc_http.h"
 #include "pbc_llm.h"
 #include "pbc_utils.h"
+#include "pbc_locales.h"
 #include "pbc_scene_helpers.h"
 #include "pbc_equipment_helpers.h"
 #include "pbc_log.h"
@@ -250,7 +251,7 @@ std::string PBC_RenderHistoryLine(const PBC_HistoryEntry& entry, uint64_t forGui
 {
     // Narrator (type=0)
     if (entry.type == 0)
-        return "Narrator: *" + entry.message + "*";
+        return PBC_Localize("Narrator: *{0}*", entry.message);
 
     std::string authorName = PBC_GetCharacterName(entry.authorGuid);
 
@@ -262,10 +263,10 @@ std::string PBC_RenderHistoryLine(const PBC_HistoryEntry& entry, uint64_t forGui
             uint64_t targetGuid = PBC_GetWhisperTarget(entry.id, forGuid);
             std::string targetName = PBC_GetCharacterName(targetGuid);
             if (!targetName.empty() && targetName != "Unknown")
-                return "You (privately to " + targetName + "): " + entry.message;
-            return "You (privately): " + entry.message;
+                return PBC_Localize("You (privately to {0}): {1}", targetName, entry.message);
+            return PBC_Localize("You (privately): {0}", entry.message);
         }
-        return "You: " + entry.message;
+        return PBC_Localize("You: {0}", entry.message);
     }
 
     // ----- Someone else's message -----
@@ -273,16 +274,16 @@ std::string PBC_RenderHistoryLine(const PBC_HistoryEntry& entry, uint64_t forGui
     {
         uint64_t targetGuid = PBC_GetWhisperTarget(entry.id, entry.authorGuid);
         if (targetGuid == forGuid)
-            return authorName + " (privately to you): " + entry.message;
+            return PBC_Localize("{0} (privately to you): {1}", authorName, entry.message);
 
         std::string targetName = PBC_GetCharacterName(targetGuid);
         if (!targetName.empty() && targetName != "Unknown")
-            return authorName + " (privately to " + targetName + "): " + entry.message;
-        return authorName + " (privately): " + entry.message;
+            return PBC_Localize("{0} (privately to {1}): {2}", authorName, targetName, entry.message);
+        return PBC_Localize("{0} (privately): {1}", authorName, entry.message);
     }
 
     // Regular chat
-    return authorName + ": " + entry.message;
+    return PBC_Localize("{0}: {1}", authorName, entry.message);
 }
 
 // ---------------------------------------------------------------------------

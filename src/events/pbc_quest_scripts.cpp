@@ -3,6 +3,7 @@
 #include "pbc_character.h"
 #include "pbc_database.h"
 #include "pbc_utils.h"
+#include "pbc_locales.h"
 #include "pbc_quest_helpers.h"
 #include "pbc_group_helpers.h"
 #include "pbc_event_dispatch.h"
@@ -121,7 +122,7 @@ bool PBC_AllItemQuestScript::CanItemQuestAccept(Player* player, Item* item, Ques
         if (giverName.empty())
         {
             ItemTemplate const* itemInfo = item->GetTemplate();
-            giverName = itemInfo ? itemInfo->Name1 : "Unknown Item";
+            giverName = itemInfo ? itemInfo->Name1 : PBC_Localize("Unknown Item");
         }
         HandleQuestTaken(player, quest, giverName, "item");
     }

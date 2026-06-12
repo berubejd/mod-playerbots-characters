@@ -3,6 +3,7 @@
 #include "pbc_character.h"
 #include "pbc_database.h"
 #include "pbc_utils.h"
+#include "pbc_locales.h"
 #include "pbc_item_helpers.h"
 #include "pbc_quest_helpers.h"
 #include "pbc_group_helpers.h"
@@ -136,8 +137,8 @@ void PBC_PlayerEvents::OnPlayerLootItem(Player* player, Item* item, uint32 /*cou
     std::string phrase   = PBC_BuildItemPhrase(tmpl);
 
     PBC_DispatchGroupEvent(player,
-        PBC_MakeEventLine("The party has found " + phrase + " named " + itemName),
-        "The party acquired " + phrase + " named " + itemName,
+        PBC_MakeEventLine(PBC_Localize("The party has found {0} named {1}", phrase, itemName)),
+        PBC_Localize("The party acquired {0} named {1}", phrase, itemName),
         g_PBC_ReplyChanceItem);
 }
 
@@ -156,8 +157,8 @@ void PBC_PlayerEvents::OnPlayerQuestRewardItem(Player* player, Item* item, uint3
     std::string phrase   = PBC_BuildItemPhrase(tmpl);
 
     PBC_DispatchGroupEvent(player,
-        PBC_MakeEventLine("The party has been rewarded with " + phrase + " named " + itemName),
-        "The party was rewarded with " + phrase + " named " + itemName,
+        PBC_MakeEventLine(PBC_Localize("The party has been rewarded with {0} named {1}", phrase, itemName)),
+        PBC_Localize("The party was rewarded with {0} named {1}", phrase, itemName),
         g_PBC_ReplyChanceItem);
 }
 
@@ -177,8 +178,8 @@ void PBC_PlayerEvents::OnPlayerGroupRollRewardItem(Player* player, Item* item, u
     std::string phrase   = PBC_BuildItemPhrase(tmpl);
 
     PBC_DispatchGroupEvent(player,
-        PBC_MakeEventLine("The party has found " + phrase + " named " + itemName),
-        "The party acquired " + phrase + " named " + itemName,
+        PBC_MakeEventLine(PBC_Localize("The party has found {0} named {1}", phrase, itemName)),
+        PBC_Localize("The party acquired {0} named {1}", phrase, itemName),
         g_PBC_ReplyChanceItem);
 }
 
@@ -215,8 +216,8 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 oldLevel)
 
     const std::string& name = player->GetName();
     int idx = std::uniform_int_distribution<int>(0, 4)(PBC_GetRNG());
-    std::string eventLine = PBC_MakeEventLine(name + levelUpEventPhrases[idx]);
-    std::string narratorText = name + levelUpHistPhrases[idx];
+    std::string eventLine = PBC_MakeEventLine(name + PBC_Localize(levelUpEventPhrases[idx]));
+    std::string narratorText = name + PBC_Localize(levelUpHistPhrases[idx]);
 
     PBC_DispatchGroupEvent(player, eventLine, narratorText, g_PBC_ReplyChanceLevelUp);
 }

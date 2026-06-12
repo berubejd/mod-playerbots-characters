@@ -2,6 +2,7 @@
 #include "pbc_config.h"
 #include "pbc_character.h"
 #include "pbc_utils.h"
+#include "pbc_locales.h"
 #include "pbc_group_helpers.h"
 #include "pbc_log.h"
 
@@ -12,6 +13,7 @@
 #include "WorldSession.h"
 #include "SharedDefines.h"
 
+#include <fmt/core.h>
 #include <algorithm>
 #include <random>
 #include <unordered_set>
@@ -20,7 +22,7 @@
 // Narrator formatting helpers
 // ---------------------------------------------------------------------------
 std::string PBC_MakeEventLine(const std::string& text) { return "*" + text + "*"; }
-std::string PBC_MakeHistLine(const std::string& text)  { return "Narrator: *" + text + "*"; }
+std::string PBC_MakeHistLine(const std::string& text)  { return PBC_Localize("Narrator: *{0}*", text); }
 
 std::string PBC_MakeHistLineFromSource(const PBC_EventSource& source)
 {
@@ -265,8 +267,8 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
 
     std::string senderName = sender->GetName();
     std::string targetName = target->GetName();
-    std::string eventLine   = senderName + " tells you privately: " + msg;
-    std::string historyLine = senderName + " (privately to you): " + msg;
+    std::string eventLine   = PBC_Localize("{0} tells you privately: {1}", senderName, msg);
+    std::string historyLine = PBC_Localize("{0} (privately to you): {1}", senderName, msg);
 
     PBC_Log(PBC_LogLevel::PBC_DEBUG, "Whisper event: {} -> {}: \"{}\" (chance={}%)",
              senderName, targetName, msg, g_PBC_ReplyChanceWhisper);
@@ -362,10 +364,10 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
                 botGuid, charName);
 
         static const std::vector<std::string> timePassesTriggers = {
-            "you want to comment on your surroundings",
-            "you want to ask a question",
-            "you want to share something",
-            "you want to comment on how you feel"
+            PBC_Localize("you want to comment on your surroundings"),
+            PBC_Localize("you want to ask a question"),
+            PBC_Localize("you want to share something"),
+            PBC_Localize("you want to comment on how you feel")
         };
         static thread_local std::mt19937 rng(std::random_device{}());
         std::uniform_int_distribution<size_t> dist(0, timePassesTriggers.size() - 1);
@@ -380,7 +382,7 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
         PBC_Log(PBC_LogLevel::PBC_DEBUG,
                 "PickTriggerEventLine: guid={} char='{}' → case 2 (narrator, not time passes) — urge_to_comment",
                 botGuid, charName);
-        return "you feel the urge to comment on the last thing that happened";
+        return PBC_Localize("you feel the urge to comment on the last thing that happened");
     }
 
     // -------------------------------------------------------------------
@@ -393,14 +395,14 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
             PBC_Log(PBC_LogLevel::PBC_DEBUG,
                     "PickTriggerEventLine: guid={} char='{}' → case 3a (own reply) — saying_more",
                     botGuid, charName);
-            return "you feel like saying more";
+            return PBC_Localize("you feel like saying more");
         }
         else
         {
             PBC_Log(PBC_LogLevel::PBC_DEBUG,
                     "PickTriggerEventLine: guid={} char='{}' → case 3b (other reply) — answering_that",
                     botGuid, charName);
-            return "you feel like answering that";
+            return PBC_Localize("you feel like answering that");
         }
     }
 
@@ -410,7 +412,7 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
     PBC_Log(PBC_LogLevel::PBC_DEBUG,
             "PickTriggerEventLine: guid={} char='{}' → case 4 (whisper/fallthrough) — default",
             botGuid, charName);
-    return "you feel the urge to say something";
+    return PBC_Localize("you feel the urge to say something");
 }
 
 // ---------------------------------------------------------------------------
@@ -468,8 +470,8 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
     if (!PBC_PTR_VALID(sender)) return;
 
     std::string senderName = senderNameOverride.empty() ? sender->GetName() : senderNameOverride;
-    std::string historyLine = senderName + ": " + msg;
-    std::string eventLine   = senderName + " says: " + msg;
+    std::string historyLine = PBC_Localize("{0}: {1}", senderName, msg);
+    std::string eventLine   = PBC_Localize("{0} says: {1}", senderName, msg);
 
     bool isGroupChat = (chatType == CHAT_MSG_PARTY || chatType == CHAT_MSG_PARTY_LEADER ||
                         chatType == CHAT_MSG_RAID  || chatType == CHAT_MSG_RAID_LEADER  ||

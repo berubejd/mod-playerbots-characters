@@ -1,4 +1,5 @@
 #include "pbc_item_helpers.h"
+#include "pbc_locales.h"
 #include "ItemTemplate.h"
 #include "SharedDefines.h"
 
@@ -23,13 +24,13 @@ std::string PBC_ItemQualityStr(uint32 quality)
 {
     switch (quality)
     {
-        case ITEM_QUALITY_UNCOMMON: return "uncommon";
-        case ITEM_QUALITY_RARE:     return "rare";
-        case ITEM_QUALITY_EPIC:     return "epic";
-        case ITEM_QUALITY_LEGENDARY:return "legendary";
-        case ITEM_QUALITY_ARTIFACT: return "artifact";
-        case ITEM_QUALITY_HEIRLOOM: return "heirloom";
-        default:                    return "rare";
+        case ITEM_QUALITY_UNCOMMON: return PBC_Localize("uncommon");
+        case ITEM_QUALITY_RARE:     return PBC_Localize("rare");
+        case ITEM_QUALITY_EPIC:     return PBC_Localize("epic");
+        case ITEM_QUALITY_LEGENDARY:return PBC_Localize("legendary");
+        case ITEM_QUALITY_ARTIFACT: return PBC_Localize("artifact");
+        case ITEM_QUALITY_HEIRLOOM: return PBC_Localize("heirloom");
+        default:                    return PBC_Localize("rare");
     }
 }
 
@@ -41,23 +42,23 @@ std::string PBC_WeaponTypeStr(uint32 subClass)
 {
     switch (subClass)
     {
-        case ITEM_SUBCLASS_WEAPON_AXE:      return "one-handed axe";
-        case ITEM_SUBCLASS_WEAPON_AXE2:     return "two-handed axe";
-        case ITEM_SUBCLASS_WEAPON_BOW:      return "bow";
-        case ITEM_SUBCLASS_WEAPON_GUN:      return "gun";
-        case ITEM_SUBCLASS_WEAPON_MACE:     return "one-handed mace";
-        case ITEM_SUBCLASS_WEAPON_MACE2:    return "two-handed mace";
-        case ITEM_SUBCLASS_WEAPON_POLEARM:  return "polearm";
-        case ITEM_SUBCLASS_WEAPON_SWORD:    return "one-handed sword";
-        case ITEM_SUBCLASS_WEAPON_SWORD2:   return "two-handed sword";
-        case ITEM_SUBCLASS_WEAPON_STAFF:    return "staff";
-        case ITEM_SUBCLASS_WEAPON_FIST:     return "fist weapon";
-        case ITEM_SUBCLASS_WEAPON_DAGGER:   return "dagger";
-        case ITEM_SUBCLASS_WEAPON_THROWN:   return "thrown weapon";
-        case ITEM_SUBCLASS_WEAPON_CROSSBOW: return "crossbow";
-        case ITEM_SUBCLASS_WEAPON_WAND:     return "wand";
-        case ITEM_SUBCLASS_WEAPON_SPEAR:    return "spear";
-        default:                            return "weapon";
+        case ITEM_SUBCLASS_WEAPON_AXE:      return PBC_Localize("one-handed axe");
+        case ITEM_SUBCLASS_WEAPON_AXE2:     return PBC_Localize("two-handed axe");
+        case ITEM_SUBCLASS_WEAPON_BOW:      return PBC_Localize("bow");
+        case ITEM_SUBCLASS_WEAPON_GUN:      return PBC_Localize("gun");
+        case ITEM_SUBCLASS_WEAPON_MACE:     return PBC_Localize("one-handed mace");
+        case ITEM_SUBCLASS_WEAPON_MACE2:    return PBC_Localize("two-handed mace");
+        case ITEM_SUBCLASS_WEAPON_POLEARM:  return PBC_Localize("polearm");
+        case ITEM_SUBCLASS_WEAPON_SWORD:    return PBC_Localize("one-handed sword");
+        case ITEM_SUBCLASS_WEAPON_SWORD2:   return PBC_Localize("two-handed sword");
+        case ITEM_SUBCLASS_WEAPON_STAFF:    return PBC_Localize("staff");
+        case ITEM_SUBCLASS_WEAPON_FIST:     return PBC_Localize("fist weapon");
+        case ITEM_SUBCLASS_WEAPON_DAGGER:   return PBC_Localize("dagger");
+        case ITEM_SUBCLASS_WEAPON_THROWN:   return PBC_Localize("thrown weapon");
+        case ITEM_SUBCLASS_WEAPON_CROSSBOW: return PBC_Localize("crossbow");
+        case ITEM_SUBCLASS_WEAPON_WAND:     return PBC_Localize("wand");
+        case ITEM_SUBCLASS_WEAPON_SPEAR:    return PBC_Localize("spear");
+        default:                            return PBC_Localize("weapon");
     }
 }
 
@@ -69,25 +70,25 @@ std::string PBC_ArmorSlotStr(uint32 inventoryType)
 {
     switch (inventoryType)
     {
-        case INVTYPE_HEAD:       return "helm";
-        case INVTYPE_NECK:       return "necklace";
-        case INVTYPE_SHOULDERS:  return "shoulders";
-        case INVTYPE_BODY:       return "shirt";
-        case INVTYPE_CHEST:      return "chest armor";
-        case INVTYPE_WAIST:      return "belt";
-        case INVTYPE_LEGS:       return "legguards";
-        case INVTYPE_FEET:       return "boots";
-        case INVTYPE_WRISTS:     return "bracers";
-        case INVTYPE_HANDS:      return "gloves";
-        case INVTYPE_FINGER:     return "ring";
-        case INVTYPE_TRINKET:    return "trinket";
-        case INVTYPE_CLOAK:      return "cloak";
-        case INVTYPE_TABARD:     return "tabard";
-        case INVTYPE_ROBE:       return "robe";
-        case INVTYPE_HOLDABLE:   return "off-hand item";
-        case INVTYPE_SHIELD:     return "shield";
-        case INVTYPE_RELIC:      return "relic";
-        default:                 return "armor";
+        case INVTYPE_HEAD:       return PBC_Localize("helm");
+        case INVTYPE_NECK:       return PBC_Localize("necklace");
+        case INVTYPE_SHOULDERS:  return PBC_Localize("shoulders");
+        case INVTYPE_BODY:       return PBC_Localize("shirt");
+        case INVTYPE_CHEST:      return PBC_Localize("chest armor");
+        case INVTYPE_WAIST:      return PBC_Localize("belt");
+        case INVTYPE_LEGS:       return PBC_Localize("legguards");
+        case INVTYPE_FEET:       return PBC_Localize("boots");
+        case INVTYPE_WRISTS:     return PBC_Localize("bracers");
+        case INVTYPE_HANDS:      return PBC_Localize("gloves");
+        case INVTYPE_FINGER:     return PBC_Localize("ring");
+        case INVTYPE_TRINKET:    return PBC_Localize("trinket");
+        case INVTYPE_CLOAK:      return PBC_Localize("cloak");
+        case INVTYPE_TABARD:     return PBC_Localize("tabard");
+        case INVTYPE_ROBE:       return PBC_Localize("robe");
+        case INVTYPE_HOLDABLE:   return PBC_Localize("off-hand item");
+        case INVTYPE_SHIELD:     return PBC_Localize("shield");
+        case INVTYPE_RELIC:      return PBC_Localize("relic");
+        default:                 return PBC_Localize("armor");
     }
 }
 
@@ -96,12 +97,12 @@ std::string PBC_BuildArmorTypeStr(uint32 subClass, uint32 inventoryType)
     // Shields, bucklers and relics have their own distinct names
     switch (subClass)
     {
-        case ITEM_SUBCLASS_ARMOR_SHIELD:  return "shield";
-        case ITEM_SUBCLASS_ARMOR_BUCKLER: return "buckler";
-        case ITEM_SUBCLASS_ARMOR_LIBRAM:  return "libram";
-        case ITEM_SUBCLASS_ARMOR_IDOL:    return "idol";
-        case ITEM_SUBCLASS_ARMOR_TOTEM:   return "totem";
-        case ITEM_SUBCLASS_ARMOR_SIGIL:   return "sigil";
+        case ITEM_SUBCLASS_ARMOR_SHIELD:  return PBC_Localize("shield");
+        case ITEM_SUBCLASS_ARMOR_BUCKLER: return PBC_Localize("buckler");
+        case ITEM_SUBCLASS_ARMOR_LIBRAM:  return PBC_Localize("libram");
+        case ITEM_SUBCLASS_ARMOR_IDOL:    return PBC_Localize("idol");
+        case ITEM_SUBCLASS_ARMOR_TOTEM:   return PBC_Localize("totem");
+        case ITEM_SUBCLASS_ARMOR_SIGIL:   return PBC_Localize("sigil");
         default: break;
     }
 
@@ -111,10 +112,10 @@ std::string PBC_BuildArmorTypeStr(uint32 subClass, uint32 inventoryType)
     // Cloth / leather / mail / plate: combine material + slot
     switch (subClass)
     {
-        case ITEM_SUBCLASS_ARMOR_CLOTH:   return "cloth " + slot;
-        case ITEM_SUBCLASS_ARMOR_LEATHER: return "leather " + slot;
-        case ITEM_SUBCLASS_ARMOR_MAIL:    return "mail " + slot;
-        case ITEM_SUBCLASS_ARMOR_PLATE:   return "plate " + slot;
+        case ITEM_SUBCLASS_ARMOR_CLOTH:   return PBC_Localize("cloth") + " " + slot;
+        case ITEM_SUBCLASS_ARMOR_LEATHER: return PBC_Localize("leather") + " " + slot;
+        case ITEM_SUBCLASS_ARMOR_MAIL:    return PBC_Localize("mail") + " " + slot;
+        case ITEM_SUBCLASS_ARMOR_PLATE:   return PBC_Localize("plate") + " " + slot;
         default: break;
     }
 
@@ -130,14 +131,14 @@ std::string PBC_ConsumableTypeStr(uint32 subClass)
 {
     switch (subClass)
     {
-        case ITEM_SUBCLASS_POTION:           return "potion";
-        case ITEM_SUBCLASS_ELIXIR:           return "elixir";
-        case ITEM_SUBCLASS_FLASK:            return "flask";
-        case ITEM_SUBCLASS_SCROLL:           return "scroll";
-        case ITEM_SUBCLASS_FOOD:             return "food";
-        case ITEM_SUBCLASS_ITEM_ENHANCEMENT: return "item enhancement";
-        case ITEM_SUBCLASS_BANDAGE:          return "bandage";
-        default:                             return "consumable";
+        case ITEM_SUBCLASS_POTION:           return PBC_Localize("potion");
+        case ITEM_SUBCLASS_ELIXIR:           return PBC_Localize("elixir");
+        case ITEM_SUBCLASS_FLASK:            return PBC_Localize("flask");
+        case ITEM_SUBCLASS_SCROLL:           return PBC_Localize("scroll");
+        case ITEM_SUBCLASS_FOOD:             return PBC_Localize("food");
+        case ITEM_SUBCLASS_ITEM_ENHANCEMENT: return PBC_Localize("item enhancement");
+        case ITEM_SUBCLASS_BANDAGE:          return PBC_Localize("bandage");
+        default:                             return PBC_Localize("consumable");
     }
 }
 
@@ -149,15 +150,15 @@ std::string PBC_GemTypeStr(uint32 subClass)
 {
     switch (subClass)
     {
-        case ITEM_SUBCLASS_GEM_RED:       return "red gem";
-        case ITEM_SUBCLASS_GEM_BLUE:      return "blue gem";
-        case ITEM_SUBCLASS_GEM_YELLOW:    return "yellow gem";
-        case ITEM_SUBCLASS_GEM_PURPLE:    return "purple gem";
-        case ITEM_SUBCLASS_GEM_GREEN:     return "green gem";
-        case ITEM_SUBCLASS_GEM_ORANGE:    return "orange gem";
-        case ITEM_SUBCLASS_GEM_META:      return "meta gem";
-        case ITEM_SUBCLASS_GEM_PRISMATIC: return "prismatic gem";
-        default:                          return "gem";
+        case ITEM_SUBCLASS_GEM_RED:       return PBC_Localize("red gem");
+        case ITEM_SUBCLASS_GEM_BLUE:      return PBC_Localize("blue gem");
+        case ITEM_SUBCLASS_GEM_YELLOW:    return PBC_Localize("yellow gem");
+        case ITEM_SUBCLASS_GEM_PURPLE:    return PBC_Localize("purple gem");
+        case ITEM_SUBCLASS_GEM_GREEN:     return PBC_Localize("green gem");
+        case ITEM_SUBCLASS_GEM_ORANGE:    return PBC_Localize("orange gem");
+        case ITEM_SUBCLASS_GEM_META:      return PBC_Localize("meta gem");
+        case ITEM_SUBCLASS_GEM_PRISMATIC: return PBC_Localize("prismatic gem");
+        default:                          return PBC_Localize("gem");
     }
 }
 
@@ -169,18 +170,18 @@ std::string PBC_RecipeTypeStr(uint32 subClass)
 {
     switch (subClass)
     {
-        case ITEM_SUBCLASS_BOOK:                   return "book";
-        case ITEM_SUBCLASS_LEATHERWORKING_PATTERN: return "leatherworking pattern";
-        case ITEM_SUBCLASS_TAILORING_PATTERN:      return "tailoring pattern";
-        case ITEM_SUBCLASS_ENGINEERING_SCHEMATIC:  return "engineering schematic";
-        case ITEM_SUBCLASS_BLACKSMITHING:          return "blacksmithing plans";
-        case ITEM_SUBCLASS_COOKING_RECIPE:         return "cooking recipe";
-        case ITEM_SUBCLASS_ALCHEMY_RECIPE:         return "alchemy recipe";
-        case ITEM_SUBCLASS_FIRST_AID_MANUAL:       return "first aid manual";
-        case ITEM_SUBCLASS_ENCHANTING_FORMULA:     return "enchanting formula";
-        case ITEM_SUBCLASS_FISHING_MANUAL:         return "fishing manual";
-        case ITEM_SUBCLASS_JEWELCRAFTING_RECIPE:   return "jewelcrafting recipe";
-        default:                                   return "recipe";
+        case ITEM_SUBCLASS_BOOK:                   return PBC_Localize("book");
+        case ITEM_SUBCLASS_LEATHERWORKING_PATTERN: return PBC_Localize("leatherworking pattern");
+        case ITEM_SUBCLASS_TAILORING_PATTERN:      return PBC_Localize("tailoring pattern");
+        case ITEM_SUBCLASS_ENGINEERING_SCHEMATIC:  return PBC_Localize("engineering schematic");
+        case ITEM_SUBCLASS_BLACKSMITHING:          return PBC_Localize("blacksmithing plans");
+        case ITEM_SUBCLASS_COOKING_RECIPE:         return PBC_Localize("cooking recipe");
+        case ITEM_SUBCLASS_ALCHEMY_RECIPE:         return PBC_Localize("alchemy recipe");
+        case ITEM_SUBCLASS_FIRST_AID_MANUAL:       return PBC_Localize("first aid manual");
+        case ITEM_SUBCLASS_ENCHANTING_FORMULA:     return PBC_Localize("enchanting formula");
+        case ITEM_SUBCLASS_FISHING_MANUAL:         return PBC_Localize("fishing manual");
+        case ITEM_SUBCLASS_JEWELCRAFTING_RECIPE:   return PBC_Localize("jewelcrafting recipe");
+        default:                                   return PBC_Localize("recipe");
     }
 }
 
@@ -192,21 +193,21 @@ std::string PBC_TradeGoodsTypeStr(uint32 subClass)
 {
     switch (subClass)
     {
-        case ITEM_SUBCLASS_TRADE_GOODS:       return "trade goods";
-        case ITEM_SUBCLASS_PARTS:             return "engineering parts";
-        case ITEM_SUBCLASS_EXPLOSIVES:        return "explosives";
-        case ITEM_SUBCLASS_DEVICES:           return "device";
-        case ITEM_SUBCLASS_JEWELCRAFTING:     return "jewelcrafting material";
-        case ITEM_SUBCLASS_CLOTH:             return "cloth";
-        case ITEM_SUBCLASS_LEATHER:           return "leather";
-        case ITEM_SUBCLASS_METAL_STONE:       return "metal and stone";
-        case ITEM_SUBCLASS_MEAT:              return "meat";
-        case ITEM_SUBCLASS_HERB:              return "herb";
-        case ITEM_SUBCLASS_ELEMENTAL:         return "elemental item";
-        case ITEM_SUBCLASS_TRADE_GOODS_OTHER: return "trade goods";
-        case ITEM_SUBCLASS_ENCHANTING:        return "enchanting material";
-        case ITEM_SUBCLASS_MATERIAL:          return "material";
-        default:                              return "trade goods";
+        case ITEM_SUBCLASS_TRADE_GOODS:       return PBC_Localize("trade goods");
+        case ITEM_SUBCLASS_PARTS:             return PBC_Localize("engineering parts");
+        case ITEM_SUBCLASS_EXPLOSIVES:        return PBC_Localize("explosives");
+        case ITEM_SUBCLASS_DEVICES:           return PBC_Localize("device");
+        case ITEM_SUBCLASS_JEWELCRAFTING:     return PBC_Localize("jewelcrafting material");
+        case ITEM_SUBCLASS_CLOTH:             return PBC_Localize("cloth");
+        case ITEM_SUBCLASS_LEATHER:           return PBC_Localize("leather");
+        case ITEM_SUBCLASS_METAL_STONE:       return PBC_Localize("metal and stone");
+        case ITEM_SUBCLASS_MEAT:              return PBC_Localize("meat");
+        case ITEM_SUBCLASS_HERB:              return PBC_Localize("herb");
+        case ITEM_SUBCLASS_ELEMENTAL:         return PBC_Localize("elemental item");
+        case ITEM_SUBCLASS_TRADE_GOODS_OTHER: return PBC_Localize("trade goods");
+        case ITEM_SUBCLASS_ENCHANTING:        return PBC_Localize("enchanting material");
+        case ITEM_SUBCLASS_MATERIAL:          return PBC_Localize("material");
+        default:                              return PBC_Localize("trade goods");
     }
 }
 
@@ -218,9 +219,9 @@ std::string PBC_ProjectileTypeStr(uint32 subClass)
 {
     switch (subClass)
     {
-        case ITEM_SUBCLASS_ARROW:  return "arrow";
-        case ITEM_SUBCLASS_BULLET: return "bullet";
-        default:                   return "ammunition";
+        case ITEM_SUBCLASS_ARROW:  return PBC_Localize("arrow");
+        case ITEM_SUBCLASS_BULLET: return PBC_Localize("bullet");
+        default:                   return PBC_Localize("ammunition");
     }
 }
 
@@ -232,16 +233,16 @@ std::string PBC_ContainerTypeStr(uint32 subClass)
 {
     switch (subClass)
     {
-        case ITEM_SUBCLASS_CONTAINER:               return "bag";
-        case ITEM_SUBCLASS_SOUL_CONTAINER:          return "soul bag";
-        case ITEM_SUBCLASS_HERB_CONTAINER:          return "herb bag";
-        case ITEM_SUBCLASS_ENCHANTING_CONTAINER:    return "enchanting bag";
-        case ITEM_SUBCLASS_ENGINEERING_CONTAINER:   return "engineering bag";
-        case ITEM_SUBCLASS_GEM_CONTAINER:           return "gem bag";
-        case ITEM_SUBCLASS_MINING_CONTAINER:        return "mining bag";
-        case ITEM_SUBCLASS_LEATHERWORKING_CONTAINER:return "leatherworking bag";
-        case ITEM_SUBCLASS_INSCRIPTION_CONTAINER:   return "inscription bag";
-        default:                                    return "bag";
+        case ITEM_SUBCLASS_CONTAINER:               return PBC_Localize("bag");
+        case ITEM_SUBCLASS_SOUL_CONTAINER:          return PBC_Localize("soul bag");
+        case ITEM_SUBCLASS_HERB_CONTAINER:          return PBC_Localize("herb bag");
+        case ITEM_SUBCLASS_ENCHANTING_CONTAINER:    return PBC_Localize("enchanting bag");
+        case ITEM_SUBCLASS_ENGINEERING_CONTAINER:   return PBC_Localize("engineering bag");
+        case ITEM_SUBCLASS_GEM_CONTAINER:           return PBC_Localize("gem bag");
+        case ITEM_SUBCLASS_MINING_CONTAINER:        return PBC_Localize("mining bag");
+        case ITEM_SUBCLASS_LEATHERWORKING_CONTAINER:return PBC_Localize("leatherworking bag");
+        case ITEM_SUBCLASS_INSCRIPTION_CONTAINER:   return PBC_Localize("inscription bag");
+        default:                                    return PBC_Localize("bag");
     }
 }
 
@@ -253,9 +254,9 @@ std::string PBC_KeyTypeStr(uint32 subClass)
 {
     switch (subClass)
     {
-        case ITEM_SUBCLASS_KEY:      return "key";
-        case ITEM_SUBCLASS_LOCKPICK: return "lockpick";
-        default:                     return "key";
+        case ITEM_SUBCLASS_KEY:      return PBC_Localize("key");
+        case ITEM_SUBCLASS_LOCKPICK: return PBC_Localize("lockpick");
+        default:                     return PBC_Localize("key");
     }
 }
 
@@ -267,9 +268,9 @@ std::string PBC_QuiverTypeStr(uint32 subClass)
 {
     switch (subClass)
     {
-        case ITEM_SUBCLASS_QUIVER:     return "quiver";
-        case ITEM_SUBCLASS_AMMO_POUCH: return "ammo pouch";
-        default:                       return "quiver";
+        case ITEM_SUBCLASS_QUIVER:     return PBC_Localize("quiver");
+        case ITEM_SUBCLASS_AMMO_POUCH: return PBC_Localize("ammo pouch");
+        default:                       return PBC_Localize("quiver");
     }
 }
 
@@ -281,13 +282,13 @@ std::string PBC_MiscTypeStr(uint32 subClass)
 {
     switch (subClass)
     {
-        case ITEM_SUBCLASS_JUNK:          return "junk item";
-        case ITEM_SUBCLASS_JUNK_REAGENT:  return "reagent";
-        case ITEM_SUBCLASS_JUNK_PET:      return "pet";
-        case ITEM_SUBCLASS_JUNK_HOLIDAY:  return "holiday item";
-        case ITEM_SUBCLASS_JUNK_OTHER:    return "miscellaneous item";
-        case ITEM_SUBCLASS_JUNK_MOUNT:    return "mount";
-        default:                          return "item";
+        case ITEM_SUBCLASS_JUNK:          return PBC_Localize("junk item");
+        case ITEM_SUBCLASS_JUNK_REAGENT:  return PBC_Localize("reagent");
+        case ITEM_SUBCLASS_JUNK_PET:      return PBC_Localize("pet");
+        case ITEM_SUBCLASS_JUNK_HOLIDAY:  return PBC_Localize("holiday item");
+        case ITEM_SUBCLASS_JUNK_OTHER:    return PBC_Localize("miscellaneous item");
+        case ITEM_SUBCLASS_JUNK_MOUNT:    return PBC_Localize("mount");
+        default:                          return PBC_Localize("item");
     }
 }
 
@@ -297,7 +298,7 @@ std::string PBC_MiscTypeStr(uint32 subClass)
 
 std::string PBC_BuildItemPhrase(ItemTemplate const* tmpl)
 {
-    if (!tmpl) return "an item";
+    if (!tmpl) return PBC_Localize("an item");
 
     std::string quality = PBC_ItemQualityStr(tmpl->Quality);
     std::string type;
@@ -315,10 +316,10 @@ std::string PBC_BuildItemPhrase(ItemTemplate const* tmpl)
         case ITEM_CLASS_KEY:         type = PBC_KeyTypeStr(tmpl->SubClass); break;
         case ITEM_CLASS_QUIVER:      type = PBC_QuiverTypeStr(tmpl->SubClass); break;
         case ITEM_CLASS_MISC:        type = PBC_MiscTypeStr(tmpl->SubClass); break;
-        case ITEM_CLASS_QUEST:       type = "quest item"; break;
-        case ITEM_CLASS_REAGENT:     type = "reagent"; break;
+        case ITEM_CLASS_QUEST:       type = PBC_Localize("quest item"); break;
+        case ITEM_CLASS_REAGENT:     type = PBC_Localize("reagent"); break;
         case ITEM_CLASS_GLYPH:       type = "glyph"; break;
-        default:                     type = "item"; break;
+        default:                     type = PBC_Localize("item"); break;
     }
 
     return std::string(PBC_ArticleFor(quality)) + " " + quality + " " + type;

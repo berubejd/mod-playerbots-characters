@@ -1,0 +1,549 @@
+#include "pbc_locales.h"
+
+// ---------------------------------------------------------------------------
+// Russian (ruRU) translations for prompt variable strings
+//
+// Each entry maps the English string (used as the lookup key in source code)
+// to its Russian equivalent.  Template strings use {0}, {1}, … placeholders
+// that are filled by fmt::format after localisation.
+// ---------------------------------------------------------------------------
+
+static const PBC_LocaleMap ruRU = {
+    // ---- Time of day -------------------------------------------------
+    { "early night",     "ранняя ночь" },
+    { "night",           "ночь" },
+    { "late night",      "поздняя ночь" },
+    { "early morning",   "раннее утро" },
+    { "morning",         "утро" },
+    { "late morning",    "позднее утро" },
+    { "noon",            "полдень" },
+    { "afternoon",       "день" },
+    { "late afternoon",  "поздний день" },
+    { "early evening",   "ранний вечер" },
+    { "late evening",    "поздний вечер" },
+
+    // ---- Weather clauses ---------------------------------------------
+    { "the weather is fine",              "погода хорошая" },
+    { "it's foggy",                       "туманно" },
+    { "it's raining lightly",             "идёт лёгкий дождь" },
+    { "it's raining",                     "идёт дождь" },
+    { "it's raining heavily",             "идёт сильный дождь" },
+    { "it's snowing lightly",             "идёт лёгкий снег" },
+    { "it's snowing",                     "идёт снег" },
+    { "it's snowing heavily",             "идёт сильный снег" },
+    { "there is a light sandstorm",       "лёгкая песчаная буря" },
+    { "there is a sandstorm",             "песчаная буря" },
+    { "there is a heavy sandstorm",       "сильная песчаная буря" },
+    { "there is a thunderstorm",          "гроза" },
+
+    // ---- Time / weather assembly -------------------------------------
+    { "it's ",                            "сейчас " },
+    { " and ",                            " и " },
+    { ", but you are inside and sheltered from the weather",
+      ", но ты внутри и укрыт от непогоды" },
+
+    // ---- Scene templates (travel state) ------------------------------
+    // {0} = destination / mount name / place, {1} = time+weather
+    { "You are currently flying to {0}, {1}.",
+      "Ты сейчас летишь в {0}, {1}." },
+    { "You are currently flying, {0}.",
+      "Ты сейчас в полёте, {0}." },
+    // {0} = mount name, {1} = place, {2} = time+weather
+    { "You are currently flying {0} in {1}, {2}.",
+      "Ты сейчас летишь на {0} в {1}, {2}." },
+    // {0} = mount name, {1} = place, {2} = time+weather
+    { "You are currently riding {0} in {1}, {2}.",
+      "Ты сейчас едешь на {0} в {1}, {2}." },
+    // {0} = place, {1} = time+weather
+    { "You are currently riding a mount in {0}, {1}.",
+      "Ты сейчас едешь верхом в {0}, {1}." },
+    // {0} = place, {1} = time+weather
+    { "You are currently on foot in {0}, {1}.",
+      "Ты сейчас на ногах в {0}, {1}." },
+
+    // ---- Place name fallback -----------------------------------------
+    { "Unknown", "Неизвестно" },
+
+    // ---- Combat status -----------------------------------------------
+    { "You are not currently in combat.", "Ты сейчас не в бою." },
+    // {0} = enemy name
+    { "You are currently fighting {0}.",  "Ты сейчас сражаешься с {0}." },
+    { "You are currently in combat.",     "Ты сейчас в бою." },
+
+    // ---- Roles -------------------------------------------------------
+    { "tank",         "танк" },
+    { "melee DPS",    "ближний бой" },
+    { "ranged DPS",   "дальний бой" },
+    { "healer",       "лекарь" },
+    { "paladin",      "паладин" },
+    { "death knight", "рыцарь смерти" },
+    { "shaman",       "шаман" },
+    { "druid",        "друид" },
+    { "adventurer",   "искатель приключений" },
+
+    // ---- Demon type names --------------------------------------------
+    { "imp",        "бес" },
+    { "voidwalker", "демон Бездны" },
+    { "succubus",   "суккуб" },
+    { "felhunter",  "охотник Скверны" },
+    { "felguard",   "страж Скверны" },
+    { "demon",      "демон" },
+
+    // ---- Pet: not capable --------------------------------------------
+    { "You currently don't know how to tame or call a pet.",
+      "Ты пока не умеешь приручать или призывать питомца." },
+    { "You currently don't know how to summon a demon.",
+      "Ты пока не умеешь призывать демона." },
+
+    // ---- Pet: no pet out ---------------------------------------------
+    { "You currently have no pet at your side.",
+      "Рядом с тобой сейчас нет питомца." },
+    { "You currently have no demon at your side.",
+      "Рядом с тобой сейчас нет демона." },
+    { "You currently have no risen ghoul at your side.",
+      "Рядом с тобой сейчас нет восставшего вурдалака." },
+    { "You currently have no water elemental at your side.",
+      "Рядом с тобой сейчас нет элементаля воды." },
+
+    // ---- Pet: alive --------------------------------------------------
+    // {0} = family / demon type, {1} = pet name
+    { "Your {0} {1} is by your side, happy and alert.",
+      "Твой питомец {0} {1} рядом с тобой и отлично себя чувствует." },
+    // {0} = family / demon type, {1} = pet name
+    { "Your {0} {1} is by your side, content.",
+      "Твой питомец {0} {1} рядом с тобой и в удовлетворительном состоянии." },
+    // {0} = family / demon type, {1} = pet name
+    { "Your {0} {1} is by your side, but seems unhappy.",
+      "Твой питомец {0} {1} рядом с тобой, но выглядит недовольно." },
+    // {0} = demon type, {1} = pet name
+    { "Your {0} {1} is by your side.",
+      "Твой питомец {0} {1} рядом с тобой." },
+    // {0} = ghoul name
+    { "Your risen ghoul {0} is by your side.",
+      "Твой восставший вурдалак {0} рядом с тобой." },
+    { "Your water elemental is by your side.",
+      "Твой элементаль воды рядом с тобой." },
+
+    // ---- Pet: dead ---------------------------------------------------
+    // {0} = family, {1} = pet name
+    { "Your {0} {1} is seriously wounded.",
+      "Твой питомец {0} {1} при смерти." },
+
+    // ---- Group member pet snippets -----------------------------------
+    // {0} = family / demon type, {1} = pet name, {2} = owner name
+    { "{0} {1} ({2}'s pet)",
+      "{0} {1} (питомец {2})" },
+    // {0} = family, {1} = pet name, {2} = owner name
+    { "{0} {1} ({2}'s pet, seriously wounded)",
+      "{0} {1} (питомец {2}, при смерти)" },
+    // {0} = demon type, {1} = pet name, {2} = owner name
+    { "{0} {1} ({2}'s demon)",
+      "{0} {1} (призван {2})" },
+    // {0} = demon type, {1} = pet name, {2} = owner name
+    { "{0} {1} ({2}'s demon, seriously wounded)",
+      "{0} {1} (демон {2}, при смерти)" },
+    // {0} = pet name, {1} = owner name
+    { "{0} ({1}'s risen ghoul)",
+      "{0} (восставший вурдалак {1})" },
+    // {0} = pet name, {1} = owner name
+    { "{0} ({1}'s risen ghoul, seriously wounded)",
+      "{0} (восставший вурдалак {1}, при смерти)" },
+    // {0} = owner name
+    { "Water Elemental ({0}'s summon)",
+      "Элементаль Воды (призван {0})" },
+    // {0} = owner name
+    { "Water Elemental ({0}'s summon, seriously wounded)",
+      "Элементаль Воды (призван {0}, при смерти)" },
+
+    // ---- Pet family fallback -----------------------------------------
+    { "pet", "питомец" },
+
+    // ---- Group status ------------------------------------------------
+    { "You are not currently in a group.",
+      "Ты сейчас не в группе." },
+    { "You are currently in a group",
+      "Ты сейчас в группе" },
+    // {0} = member list string
+    { "You are currently in a group with the following members: {0}",
+      "Ты сейчас в группе со следующими участниками: {0}" },
+    // {0} = leader info string
+    { "You are currently in a group led by {0}",
+      "Ты сейчас в группе под руководством {0}" },
+    // {0} = leader info, {1} = member list
+    { "You are currently in a group led by {0} with the following members: {1}",
+      "Ты сейчас в группе под руководством {0} со следующими участниками: {1}" },
+
+    // ---- Natural list (LOS) ------------------------------------------
+    { "You see ",  "Ты видишь " },
+    { " nearby.",  " неподалёку." },
+
+    // ---- Default relationship ----------------------------------------
+    // {0} = target character name
+    { "You don't know much about {0}.",
+      "Ты мало знаешь о {0}." },
+
+    // ---- Class names -------------------------------------------------
+    { "Warrior",      "Воин" },
+    { "Paladin",      "Паладин" },
+    { "Hunter",       "Охотник" },
+    { "Rogue",        "Разбойник" },
+    { "Priest",       "Жрец" },
+    { "Death Knight", "Рыцарь смерти" },
+    { "Shaman",       "Шаман" },
+    { "Mage",         "Маг" },
+    { "Warlock",      "Чернокнижник" },
+    { "Druid",        "Друид" },
+    { "Adventurer",   "Искатель приключений" },
+
+    // ---- Race names --------------------------------------------------
+    { "Human",     "Человек" },
+    { "Orc",       "Орк" },
+    { "Dwarf",     "Дворф" },
+    { "Night Elf", "Ночной эльф" },
+    { "Forsaken",  "Отрекшийся" },
+    { "Tauren",    "Таурен" },
+    { "Gnome",     "Гном" },
+    { "Troll",     "Тролль" },
+    { "Blood Elf", "Эльф крови" },
+    { "Draenei",   "Дреней" },
+
+    // ---- Gender ------------------------------------------------------
+    { "male",   "мужчина" },
+    { "female", "женщина" },
+
+    // ---- Equipment: armour quality adjectives ------------------------
+    { "simple",      "простое" },
+    { "modest",      "скромное" },
+    { "fine",        "хорошее" },
+    { "excellent",   "отличное" },
+    { "exceptional", "исключительное" },
+
+    // ---- Equipment: armour materials ---------------------------------
+    { "cloth",   "ткань" },
+    { "leather", "кожа" },
+    { "mail",    "кольчуга" },
+    { "plate",   "латы" },
+
+    // ---- Equipment: description templates ----------------------------
+    { "You have no armor",
+      "У тебя нет брони" },
+    // {0} = quality adjective (e.g. "good", "excellent")
+    { "You have {0} equipment",
+      "У тебя {0} снаряжение" },
+    // {0} = material name (e.g. "cloth", "plate")
+    { " made of {0}",
+      " из материала {0}" },
+    { ", and ",
+      ", и " },
+    { "you are unarmed",
+      "у тебя нет оружия" },
+    { "you wield ",
+      "ты используешь " },
+    { "you carry ",
+      "ты несёшь " },
+    { " and carry ",
+      " и " },
+    { ", and carry ",
+      ", и " },
+    // {0} = quality, {1} = weapon type, {2} = main-hand name, {3} = off-hand name
+    { "you wield two {0} {1}s, called {2} and {3}",
+      "ты используешь два {0} {1}, под названием {2} и {3}" },
+
+    // ---- Equipment: off-hand types -----------------------------------
+    { "off-hand item",  "предмет в левой руке" },
+    { "off-hand focus", "фокус в левой руке" },
+
+    // ---- Bag space ---------------------------------------------------
+    { "Your bags are about half full.",
+      "Твои сумки заполнены примерно наполовину." },
+    { "Your bags are getting full.",
+      "Твои сумки тяжелеют." },
+    { "Your bags are almost full.",
+      "Твои сумки почти полны." },
+    { "Your bags are nearly full.",
+      "Твои сумки практически полны." },
+    { "Your bags are completely full.",
+      "Твои сумки полностью заполнены." },
+
+    // ---- Item quality names (PBC_ItemQualityStr) ---------------------
+    { "common",     "обычный" },
+    { "uncommon",   "необычный" },
+    { "rare",       "редкий" },
+    { "epic",       "эпический" },
+    { "legendary",  "легендарный" },
+    { "artifact",   "артефакт" },
+    { "heirloom",   "фамильная ценность" },
+
+    // ---- Weapon types ------------------------------------------------
+    { "one-handed axe",  "одноручный топор" },
+    { "two-handed axe",  "двуручный топор" },
+    { "bow",             "лук" },
+    { "gun",             "ружьё" },
+    { "one-handed mace", "одноручное дробящее" },
+    { "two-handed mace", "двуручное дробящее" },
+    { "polearm",         "древковое оружие" },
+    { "one-handed sword","одноручный меч" },
+    { "two-handed sword","двуручный меч" },
+    { "staff",           "посох" },
+    { "fist weapon",     "кистевое оружие" },
+    { "dagger",          "кинжал" },
+    { "thrown weapon",   "метательное оружие" },
+    { "crossbow",        "арбалет" },
+    { "wand",            "жезл" },
+    { "spear",           "копьё" },
+    { "weapon",          "оружие" },
+
+    // ---- Armor slot names --------------------------------------------
+    { "helm",         "шлем" },
+    { "necklace",     "ожерелье" },
+    { "shoulders",    "наплечники" },
+    { "shirt",        "рубашка" },
+    { "chest armor",  "нагрудник" },
+    { "belt",         "пояс" },
+    { "legguards",    "поножи" },
+    { "boots",        "сапоги" },
+    { "bracers",      "наручи" },
+    { "gloves",       "перчатки" },
+    { "ring",         "кольцо" },
+    { "trinket",      "аксессуар" },
+    { "cloak",        "плащ" },
+    { "tabard",       "накидка" },
+    { "robe",         "роба" },
+    { "shield",       "щит" },
+    { "relic",        "реликвия" },
+    { "armor",        "броня" },
+
+    // ---- Armor sub-types (shields / relics) --------------------------
+    { "buckler", "баклер" },
+    { "libram",  "либрам" },
+    { "idol",    "идол" },
+    { "totem",   "тотем" },
+    { "sigil",   "сигил" },
+
+    // ---- Consumable types --------------------------------------------
+    { "potion",            "зелье" },
+    { "elixir",            "эликсир" },
+    { "flask",             "настой" },
+    { "scroll",            "свиток" },
+    { "food",              "еда" },
+    { "item enhancement",  "улучшение предмета" },
+    { "bandage",           "бинт" },
+    { "consumable",        "расходуемый предмет" },
+
+    // ---- Gem types ---------------------------------------------------
+    { "red gem",        "красный камень" },
+    { "blue gem",       "синий камень" },
+    { "yellow gem",     "жёлтый камень" },
+    { "purple gem",     "фиолетовый камень" },
+    { "green gem",      "зелёный камень" },
+    { "orange gem",     "оранжевый камень" },
+    { "meta gem",       "мета-камень" },
+    { "prismatic gem",  "призматический камень" },
+    { "gem",            "камень" },
+
+    // ---- Recipe types ------------------------------------------------
+    { "book",                    "книга" },
+    { "leatherworking pattern",  "выкройка кожевничества" },
+    { "tailoring pattern",       "выкройка портняжного дела" },
+    { "engineering schematic",   "схема инженерного дела" },
+    { "blacksmithing plans",     "чертежи кузнечного дела" },
+    { "cooking recipe",          "рецепт кулинарии" },
+    { "alchemy recipe",          "рецепт алхимии" },
+    { "first aid manual",        "учебник первой помощи" },
+    { "enchanting formula",      "формула наложения чар" },
+    { "fishing manual",          "учебник рыбной ловли" },
+    { "jewelcrafting recipe",    "рецепт ювелирного дела" },
+    { "recipe",                  "рецепт" },
+
+    // ---- Trade goods -------------------------------------------------
+    { "trade goods",        "торговые товары" },
+    { "engineering parts",  "инженерные детали" },
+    { "explosives",         "взрывчатка" },
+    { "device",             "устройство" },
+    { "jewelcrafting material", "ювелирный материал" },
+    { "metal and stone",    "металл и камень" },
+    { "meat",               "мясо" },
+    { "herb",               "трава" },
+    { "elemental item",     "элементальный предмет" },
+    { "enchanting material","материал для наложения чар" },
+    { "material",           "материал" },
+
+    // ---- Projectile --------------------------------------------------
+    { "arrow",      "стрела" },
+    { "bullet",     "пуля" },
+    { "ammunition", "боеприпасы" },
+
+    // ---- Container ---------------------------------------------------
+    { "bag",                "сумка" },
+    { "soul bag",           "сумка душ" },
+    { "herb bag",           "сумка для трав" },
+    { "enchanting bag",     "сумка для чар" },
+    { "engineering bag",    "сумка инженера" },
+    { "gem bag",            "сумка для камней" },
+    { "mining bag",         "сумка горняка" },
+    { "leatherworking bag", "сумка кожевника" },
+    { "inscription bag",    "сумка начертателя" },
+
+    // ---- Key ---------------------------------------------------------
+    { "key",      "ключ" },
+    { "lockpick", "отмычка" },
+
+    // ---- Quiver ------------------------------------------------------
+    { "quiver",      "колчан" },
+    { "ammo pouch",  "подсумок" },
+
+    // ---- Misc --------------------------------------------------------
+    { "junk item",          "хлам" },
+    { "reagent",            "реагент" },
+    { "holiday item",       "праздничный предмет" },
+    { "miscellaneous item", "остальное" },
+    { "mount",              "средство передвижения" },
+    { "item",               "предмет" },
+
+    // ---- Fallback phrases --------------------------------------------
+    { "an item",     "предмет" },
+    { "quest item",  "предмет задания" },
+
+    // ---- Quest giver / ender types -----------------------------------
+    { "person",           "личность" },
+    { "object",           "предмет" },
+    { "person or object", "личность или предмет" },
+
+    // ---- Combat toughness --------------------------------------------
+    { "The party confidently disposed of the enemies.",
+      "Отряд уверенно расправился с врагами." },
+    { "The party members suffered minor wounds.",
+      "Члены отряда получили лёгкие ранения." },
+    { "The party members suffered major wounds.",
+      "Члены отряда получили серьёзные ранения." },
+    { "The party was almost wiped out and barely survived.",
+      "Отряд был почти уничтожен и едва выжил." },
+
+    // ---- Combat enemies section labels -------------------------------
+    { "Regular enemies defeated: ",
+      "Обычных врагов побеждено: " },
+    { "none",
+      "нет" },
+    { "Significant enemies defeated: ",
+      "Значимых врагов побеждено: " },
+
+    // ---- Combat duration ---------------------------------------------
+    { "short",     "короткий" },
+    { "average",   "средний" },
+    { "long",      "долгий" },
+    { "very long", "очень долгий" },
+
+    // ---- Chat history rendering (pbc_character.cpp) ------------------
+    // {0} = narrator message text
+    { "Narrator: *{0}*",
+      "Рассказчик: *{0}*" },
+    // {0} = message text — the character's own chat message
+    { "You: {0}",
+      "Ты: {0}" },
+    // {0} = target name, {1} = message text
+    { "You (privately to {0}): {1}",
+      "Ты (лично {0}): {1}" },
+    // {0} = message text
+    { "You (privately): {0}",
+      "Ты (лично): {0}" },
+    // {0} = sender name, {1} = message text
+    { "{0} (privately to you): {1}",
+      "{0} (лично тебе): {1}" },
+    // {0} = sender name, {1} = target name, {2} = message text
+    { "{0} (privately to {1}): {2}",
+      "{0} (лично {1}): {2}" },
+    // {0} = sender name, {1} = message text
+    { "{0} (privately): {1}",
+      "{0} (лично): {1}" },
+    // {0} = sender name, {1} = message text (regular chat)
+    { "{0}: {1}",
+      "{0}: {1}" },
+
+    // ---- Time gap ----------------------------------------------------
+    { "some time passes",
+      "проходит некоторое время" },
+
+    // ---- Whisper event lines (pbc_event_dispatch.cpp) ----------------
+    // {0} = sender name, {1} = message
+    { "{0} tells you privately: {1}",
+      "{0} говорит тебе лично: {1}" },
+    // {0} = sender name, {1} = message
+    { "{0} says: {1}",
+      "{0} говорит: {1}" },
+
+    // ---- Flight / location narrator texts (pbc_poll.cpp) -------------
+    // {0} = destination name
+    { "The party has started a flight to {0}",
+      "Отряд начал полёт в {0}" },
+    // {0} = destination name
+    { "The party started a flight to {0}",
+      "Отряд отправился в полёт в {0}" },
+    // {0} = zone name
+    { "Party has arrived in {0}",
+      "Отряд прибыл в {0}" },
+    // {0} = zone name
+    { "Party moved to {0}",
+      "Отряд переместился в {0}" },
+
+    // ---- Level up phrases (pbc_player_scripts.cpp) -------------------
+    { " can feel their abilities growing stronger",
+      " чувствует, как их способности становятся сильнее" },
+    { " grows more powerful, their skills sharpened by experience",
+      " становится сильнее, их навыки отточены опытом" },
+    { " has grown stronger through their trials and hardships",
+      " стал(а) сильнее, пройдя через испытания и трудности" },
+    { " feels a surge of power as their abilities improve",
+      " чувствует прилив сил по мере улучшения способностей" },
+    { " has become more capable, their experience forging them anew",
+      " стал(а) более способным, опыт выковывает их заново" },
+    { " grew stronger",
+      " стал(а) сильнее" },
+    { " became more powerful through experience",
+      " стал(а) могущественнее с опытом" },
+    { " emerged from their trials more capable than before",
+      " вышел(ла) из испытаний более способным(ой), чем прежде" },
+    { " felt their abilities sharpen and grow",
+      " почувствовал(а), как способности обостряются и растут" },
+    { " gained new strength and skill",
+      " обрёл(а) новую силу и умение" },
+
+    // ---- Trigger event lines (pbc_event_dispatch.cpp) ----------------
+    { "you want to comment on your surroundings",
+      "ты хочешь прокомментировать окружение" },
+    { "you want to ask a question",
+      "ты хочешь задать вопрос" },
+    { "you want to share something",
+      "ты хочешь чем-то поделиться" },
+    { "you want to comment on how you feel",
+      "ты хочешь прокомментировать своё самочувствие" },
+    { "you feel the urge to comment on the last thing that happened",
+      "ты чувствуешь желание прокомментировать последнее событие" },
+    { "you feel like saying more",
+      "ты чувствуешь, что хочешь сказать больше" },
+    { "you feel like answering that",
+      "ты чувствуешь, что хочешь ответить" },
+    { "you feel the urge to say something",
+      "ты чувствуешь желание что-то сказать" },
+
+    // ---- Item found / rewarded (pbc_player_scripts.cpp) --------------
+    // {0} = item phrase (e.g. "an epic sword"), {1} = item name
+    { "The party has found {0} named {1}",
+      "Отряд нашёл {0} {1}" },
+    // {0} = item phrase, {1} = item name
+    { "The party acquired {0} named {1}",
+      "Отряд получил {0} {1}" },
+    // {0} = item phrase, {1} = item name
+    { "The party has been rewarded with {0} named {1}",
+      "Отряд получил в награду {0} {1}" },
+    // {0} = item phrase, {1} = item name
+    { "The party was rewarded with {0} named {1}",
+      "Отряд получил в награду {0} {1}" },
+
+    // ---- Fallback names ----------------------------------------------
+    { "Unknown Item", "Неизвестный предмет" },
+};
+
+const PBC_LocaleMap* PBC_GetLocaleMap_ruRU()
+{
+    return &ruRU;
+}

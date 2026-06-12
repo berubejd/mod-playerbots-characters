@@ -2,6 +2,7 @@
 #include "pbc_config.h"
 #include "pbc_utils.h"
 #include "pbc_wmo_areas.h"
+#include "pbc_locales.h"
 #include "Log.h"
 #include "Player.h"
 #include "ObjectAccessor.h"
@@ -16,6 +17,7 @@
 #include "Group.h"
 #include "Pet.h"
 #include "SharedDefines.h"
+#include <fmt/core.h>
 
 #ifdef MOD_WEATHER_VIBE
 #include "mod_wv_core.h"
@@ -36,18 +38,18 @@ static std::string TimeOfDayLabel()
     struct tm* t = gmtime(&rawTime);
     int hour = t ? t->tm_hour : 12;
 
-    if (hour >= 0  && hour < 2)  return "early night";
-    if (hour >= 2  && hour < 4)  return "night";
-    if (hour >= 4  && hour < 6)  return "late night";
-    if (hour >= 6  && hour < 8)  return "early morning";
-    if (hour >= 8  && hour < 10) return "morning";
-    if (hour >= 10 && hour < 12) return "late morning";
-    if (hour >= 12 && hour < 14) return "noon";
-    if (hour >= 14 && hour < 16) return "afternoon";
-    if (hour >= 16 && hour < 18) return "late afternoon";
-    if (hour >= 18 && hour < 20) return "early evening";
-    if (hour >= 20 && hour < 22) return "late evening";
-    return "early night";
+    if (hour >= 0  && hour < 2)  return PBC_Localize("early night");
+    if (hour >= 2  && hour < 4)  return PBC_Localize("night");
+    if (hour >= 4  && hour < 6)  return PBC_Localize("late night");
+    if (hour >= 6  && hour < 8)  return PBC_Localize("early morning");
+    if (hour >= 8  && hour < 10) return PBC_Localize("morning");
+    if (hour >= 10 && hour < 12) return PBC_Localize("late morning");
+    if (hour >= 12 && hour < 14) return PBC_Localize("noon");
+    if (hour >= 14 && hour < 16) return PBC_Localize("afternoon");
+    if (hour >= 16 && hour < 18) return PBC_Localize("late afternoon");
+    if (hour >= 18 && hour < 20) return PBC_Localize("early evening");
+    if (hour >= 20 && hour < 22) return PBC_Localize("late evening");
+    return PBC_Localize("early night");
 }
 
 #ifdef MOD_WEATHER_VIBE
@@ -55,23 +57,23 @@ static std::string TimeOfDayLabel()
 // "it's foggy", "it's raining lightly", "there is a heavy sandstorm".
 // For WEATHER_STATE_FINE (clear sky) returns "the weather is fine" to
 // provide reliable context instead of silence.
-static char const* WeatherClause(WeatherState s)
+static std::string WeatherClause(WeatherState s)
 {
     switch (s)
     {
-        case WEATHER_STATE_FINE:             return "the weather is fine";
-        case WEATHER_STATE_FOG:              return "it's foggy";
-        case WEATHER_STATE_LIGHT_RAIN:       return "it's raining lightly";
-        case WEATHER_STATE_MEDIUM_RAIN:      return "it's raining";
-        case WEATHER_STATE_HEAVY_RAIN:       return "it's raining heavily";
-        case WEATHER_STATE_LIGHT_SNOW:       return "it's snowing lightly";
-        case WEATHER_STATE_MEDIUM_SNOW:      return "it's snowing";
-        case WEATHER_STATE_HEAVY_SNOW:       return "it's snowing heavily";
-        case WEATHER_STATE_LIGHT_SANDSTORM:  return "there is a light sandstorm";
-        case WEATHER_STATE_MEDIUM_SANDSTORM: return "there is a sandstorm";
-        case WEATHER_STATE_HEAVY_SANDSTORM:  return "there is a heavy sandstorm";
-        case WEATHER_STATE_THUNDERS:         return "there is a thunderstorm";
-        default:                             return nullptr;
+        case WEATHER_STATE_FINE:             return PBC_Localize("the weather is fine");
+        case WEATHER_STATE_FOG:              return PBC_Localize("it's foggy");
+        case WEATHER_STATE_LIGHT_RAIN:       return PBC_Localize("it's raining lightly");
+        case WEATHER_STATE_MEDIUM_RAIN:      return PBC_Localize("it's raining");
+        case WEATHER_STATE_HEAVY_RAIN:       return PBC_Localize("it's raining heavily");
+        case WEATHER_STATE_LIGHT_SNOW:       return PBC_Localize("it's snowing lightly");
+        case WEATHER_STATE_MEDIUM_SNOW:      return PBC_Localize("it's snowing");
+        case WEATHER_STATE_HEAVY_SNOW:       return PBC_Localize("it's snowing heavily");
+        case WEATHER_STATE_LIGHT_SANDSTORM:  return PBC_Localize("there is a light sandstorm");
+        case WEATHER_STATE_MEDIUM_SANDSTORM: return PBC_Localize("there is a sandstorm");
+        case WEATHER_STATE_HEAVY_SANDSTORM:  return PBC_Localize("there is a heavy sandstorm");
+        case WEATHER_STATE_THUNDERS:         return PBC_Localize("there is a thunderstorm");
+        default:                             return std::string{};
     }
 }
 #endif
@@ -131,7 +133,7 @@ std::string PBC_BuildPlaceName(Player* player)
     }
 
     if (names.empty())
-        return "Unknown";
+        return PBC_Localize("Unknown");
 
     if (names.size() == 1)
         return names[0];
@@ -170,7 +172,7 @@ std::string PBC_BuildZoneName(Player* player)
         currentId = entry->zone;
     }
 
-    return rootName.empty() ? "Unknown" : rootName;
+    return rootName.empty() ? PBC_Localize("Unknown") : rootName;
 }
 
 std::string PBC_BuildFlightDestination(Player* bot)
@@ -196,7 +198,7 @@ std::string PBC_BuildFlightDestination(Player* bot)
 std::string PBC_BuildCombatStatusStr(Player* bot)
 {
     if (!bot->IsInCombat())
-        return "You are not currently in combat.";
+        return PBC_Localize("You are not currently in combat.");
     if (Unit* victim = bot->GetVictim())
     {
         std::string victimName;
@@ -210,9 +212,9 @@ std::string PBC_BuildCombatStatusStr(Player* bot)
         {
             victimName = victim->GetName();
         }
-        return "You are currently fighting " + victimName + ".";
+        return PBC_Localize("You are currently fighting {0}.", victimName);
     }
-    return "You are currently in combat.";
+    return PBC_Localize("You are currently in combat.");
 }
 
 std::string PBC_BuildLosStr(Player* bot)
@@ -286,28 +288,28 @@ std::string PBC_BuildSceneStr(Player* bot)
         auto it = lastApplied.find(zoneId);
         if (it != lastApplied.end() && it->second.hasValue)
         {
-            char const* clause = WeatherClause(it->second.state);
-            if (clause)
+            std::string clause = WeatherClause(it->second.state);
+            if (!clause.empty())
             {
-                timeWeather = "it's " + timeLabel + " and " + std::string(clause);
+                timeWeather = PBC_Localize("it's ") + timeLabel + PBC_Localize(" and ") + clause;
                 // When indoors and weather is not fine, note that the character is sheltered
                 if (!bot->IsOutdoors() && it->second.state != WEATHER_STATE_FINE)
-                    timeWeather += ", but you are inside and sheltered from the weather";
+                    timeWeather += PBC_Localize(", but you are inside and sheltered from the weather");
             }
         }
     }
 #endif
 
     if (timeWeather.empty())
-        timeWeather = "it's " + timeLabel;
+        timeWeather = PBC_Localize("it's ") + timeLabel;
 
     // --- Taxi flight ---
     if (bot && bot->IsInFlight())
     {
         std::string dest = PBC_BuildFlightDestination(bot);
         if (!dest.empty())
-            return "You are currently flying to " + dest + ", " + timeWeather + ".";
-        return "You are currently flying, " + timeWeather + ".";
+            return PBC_Localize("You are currently flying to {0}, {1}.", dest, timeWeather);
+        return PBC_Localize("You are currently flying, {0}.", timeWeather);
     }
 
     // --- Mounted ---
@@ -318,21 +320,21 @@ std::string PBC_BuildSceneStr(Player* bot)
         if (!auraEffects.empty())
         {
             SpellInfo const* spellInfo = auraEffects.front()->GetSpellInfo();
-            std::string mountName = std::string(PBC_DbcString(spellInfo->SpellName));
+            std::string mountName = std::string(PBC_DbcString(spellInfo->SpellName.data()));
             bool isFlyingMount = (spellInfo->Effects[1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
                                   spellInfo->Effects[2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED);
             if (isFlyingMount)
-                return "You are currently flying " + mountName + " in " + place + ", " + timeWeather + ".";
+                return PBC_Localize("You are currently flying {0} in {1}, {2}.", mountName, place, timeWeather);
             else
-                return "You are currently riding " + mountName + " in " + place + ", " + timeWeather + ".";
+                return PBC_Localize("You are currently riding {0} in {1}, {2}.", mountName, place, timeWeather);
         }
         // Fallback if aura not found
-        return "You are currently riding a mount in " + place + ", " + timeWeather + ".";
+        return PBC_Localize("You are currently riding a mount in {0}, {1}.", place, timeWeather);
     }
 
     // --- On foot ---
     std::string place = PBC_BuildPlaceName(bot);
-    return "You are currently on foot in " + place + ", " + timeWeather + ".";
+    return PBC_Localize("You are currently on foot in {0}, {1}.", place, timeWeather);
 }
 
 // ---------------------------------------------------------------------------
@@ -343,17 +345,17 @@ std::string PBC_RoleStr(Player* bot)
 {
     switch (bot->getClass())
     {
-        case CLASS_WARRIOR:      return bot->GetSpec() == 2 ? "tank" : "melee DPS";
-        case CLASS_PALADIN:      return "paladin";
-        case CLASS_HUNTER:       return "ranged DPS";
-        case CLASS_ROGUE:        return "melee DPS";
-        case CLASS_PRIEST:       return "healer";
-        case CLASS_DEATH_KNIGHT: return "death knight";
-        case CLASS_SHAMAN:       return "shaman";
-        case CLASS_MAGE:         return "ranged DPS";
-        case CLASS_WARLOCK:      return "ranged DPS";
-        case CLASS_DRUID:        return "druid";
-        default:                 return "adventurer";
+        case CLASS_WARRIOR:      return bot->GetSpec() == 2 ? PBC_Localize("tank") : PBC_Localize("melee DPS");
+        case CLASS_PALADIN:      return PBC_Localize("paladin");
+        case CLASS_HUNTER:       return PBC_Localize("ranged DPS");
+        case CLASS_ROGUE:        return PBC_Localize("melee DPS");
+        case CLASS_PRIEST:       return PBC_Localize("healer");
+        case CLASS_DEATH_KNIGHT: return PBC_Localize("death knight");
+        case CLASS_SHAMAN:       return PBC_Localize("shaman");
+        case CLASS_MAGE:         return PBC_Localize("ranged DPS");
+        case CLASS_WARLOCK:      return PBC_Localize("ranged DPS");
+        case CLASS_DRUID:        return PBC_Localize("druid");
+        default:                 return PBC_Localize("adventurer");
     }
 }
 
@@ -362,16 +364,16 @@ std::string PBC_RoleStr(Player* bot)
 // ---------------------------------------------------------------------------
 
 // Map warlock demon NPC entry to a human-readable demon type name.
-static const char* GetDemonTypeName(uint32 entry)
+static std::string GetDemonTypeName(uint32 entry)
 {
     switch (entry)
     {
-        case 416:   return "imp";
-        case 1860:  return "voidwalker";
-        case 1863:  return "succubus";
-        case 417:   return "felhunter";
-        case 17252: return "felguard";
-        default:    return "demon";
+        case 416:   return PBC_Localize("imp");
+        case 1860:  return PBC_Localize("voidwalker");
+        case 1863:  return PBC_Localize("succubus");
+        case 417:   return PBC_Localize("felhunter");
+        case 17252: return PBC_Localize("felguard");
+        default:    return PBC_Localize("demon");
     }
 }
 
@@ -425,9 +427,9 @@ static std::string BuildNotCapableStr(Player* bot)
     switch (bot->getClass())
     {
         case CLASS_HUNTER:
-            return "You currently don't know how to tame or call a pet.";
+            return PBC_Localize("You currently don't know how to tame or call a pet.");
         case CLASS_WARLOCK:
-            return "You currently don't know how to summon a demon.";
+            return PBC_Localize("You currently don't know how to summon a demon.");
         default:
             return "";
     }
@@ -438,10 +440,10 @@ static std::string BuildNoPetStr(Player* bot)
 {
     switch (bot->getClass())
     {
-        case CLASS_HUNTER:       return "You currently have no pet at your side.";
-        case CLASS_WARLOCK:      return "You currently have no demon at your side.";
-        case CLASS_DEATH_KNIGHT: return "You currently have no risen ghoul at your side.";
-        case CLASS_MAGE:         return "You currently have no water elemental at your side.";
+        case CLASS_HUNTER:       return PBC_Localize("You currently have no pet at your side.");
+        case CLASS_WARLOCK:      return PBC_Localize("You currently have no demon at your side.");
+        case CLASS_DEATH_KNIGHT: return PBC_Localize("You currently have no risen ghoul at your side.");
+        case CLASS_MAGE:         return PBC_Localize("You currently have no water elemental at your side.");
         default:                 return "";
     }
 }
@@ -451,15 +453,15 @@ static std::string GetHunterPetFamilyName(Pet* pet)
 {
     CreatureTemplate const* ct = sObjectMgr->GetCreatureTemplate(pet->GetEntry());
     if (!ct || ct->family == 0)
-        return "pet";
+        return PBC_Localize("pet");
 
     CreatureFamilyEntry const* familyEntry = sCreatureFamilyStore.LookupEntry(ct->family);
     if (!familyEntry)
-        return "pet";
+        return PBC_Localize("pet");
 
     std::string_view familyName = PBC_DbcString(familyEntry->Name);
     if (familyName.empty())
-        return "pet";
+        return PBC_Localize("pet");
 
     return std::string(familyName);
 }
@@ -480,23 +482,23 @@ static std::string BuildAlivePetStr(Player* bot, Pet* pet)
             switch (happiness)
             {
                 case HAPPY:
-                    return "Your " + family + " " + petName + " is by your side, happy and alert.";
+                    return PBC_Localize("Your {0} {1} is by your side, happy and alert.", family, petName);
                 case CONTENT:
-                    return "Your " + family + " " + petName + " is by your side, content.";
+                    return PBC_Localize("Your {0} {1} is by your side, content.", family, petName);
                 case UNHAPPY:
                 default:
-                    return "Your " + family + " " + petName + " is by your side, but seems unhappy.";
+                    return PBC_Localize("Your {0} {1} is by your side, but seems unhappy.", family, petName);
             }
         }
         case CLASS_WARLOCK:
         {
             std::string demonType = GetDemonTypeName(pet->GetEntry());
-            return "Your " + demonType + " " + petName + " is by your side.";
+            return PBC_Localize("Your {0} {1} is by your side.", demonType, petName);
         }
         case CLASS_DEATH_KNIGHT:
-            return "Your risen ghoul " + petName + " is by your side.";
+            return PBC_Localize("Your risen ghoul {0} is by your side.", petName);
         case CLASS_MAGE:
-            return "Your water elemental is by your side.";
+            return PBC_Localize("Your water elemental is by your side.");
         default:
             return "";
     }
@@ -512,7 +514,7 @@ static std::string BuildDeadPetStr(Player* bott, Pet* pet)
         {
             std::string family = GetHunterPetFamilyName(pet);
             std::transform(family.begin(), family.end(), family.begin(), ::tolower);
-            return "Your " + family + " " + pet->GetName() + " is seriously wounded.";
+            return PBC_Localize("Your {0} {1} is seriously wounded.", family, pet->GetName());
         }
         default:
             // For non-hunters, a dead pet is effectively gone — fall through
@@ -564,27 +566,27 @@ static std::string BuildMemberPetSnippet(Player* owner, Pet* pet)
             std::string family = GetHunterPetFamilyName(pet);
             std::transform(family.begin(), family.end(), family.begin(), ::tolower);
             if (pet->isDead())
-                return family + " " + petName + " (" + ownerName + "'s pet, seriously wounded)";
-            return family + " " + petName + " (" + ownerName + "'s pet)";
+                return PBC_Localize("{0} {1} ({2}'s pet, seriously wounded)", family, petName, ownerName);
+            return PBC_Localize("{0} {1} ({2}'s pet)", family, petName, ownerName);
         }
         case CLASS_WARLOCK:
         {
             std::string demonType = GetDemonTypeName(pet->GetEntry());
             if (pet->isDead())
-                return demonType + " " + petName + " (" + ownerName + "'s demon, seriously wounded)";
-            return demonType + " " + petName + " (" + ownerName + "'s demon)";
+                return PBC_Localize("{0} {1} ({2}'s demon, seriously wounded)", demonType, petName, ownerName);
+            return PBC_Localize("{0} {1} ({2}'s demon)", demonType, petName, ownerName);
         }
         case CLASS_DEATH_KNIGHT:
         {
             if (pet->isDead())
-                return petName + " (" + ownerName + "'s risen ghoul, seriously wounded)";
-            return petName + " (" + ownerName + "'s risen ghoul)";
+                return PBC_Localize("{0} ({1}'s risen ghoul, seriously wounded)", petName, ownerName);
+            return PBC_Localize("{0} ({1}'s risen ghoul)", petName, ownerName);
         }
         case CLASS_MAGE:
         {
             if (pet->isDead())
-                return "Water Elemental (" + ownerName + "'s summon, seriously wounded)";
-            return "Water Elemental (" + ownerName + "'s summon)";
+                return PBC_Localize("Water Elemental ({0}'s summon, seriously wounded)", ownerName);
+            return PBC_Localize("Water Elemental ({0}'s summon)", ownerName);
         }
         default:
             return petName + " (" + ownerName + "'s pet)";
@@ -616,10 +618,10 @@ std::string PBC_BuildPetInfoForMember(Player* member)
 
 std::string PBC_BuildGroupStatusStr(Player* bot)
 {
-    if (!bot) return "You are not currently in a group.";
+    if (!bot) return PBC_Localize("You are not currently in a group.");
 
     Group* grp = bot->GetGroup();
-    if (!grp) return "You are not currently in a group.";
+    if (!grp) return PBC_Localize("You are not currently in a group.");
 
     ObjectGuid leaderGuid = grp->GetLeaderGUID();
 
@@ -659,14 +661,13 @@ std::string PBC_BuildGroupStatusStr(Player* bot)
     // Build the base group string
     std::string result;
     if (leaderStr.empty() && members.empty())
-        result = "You are currently in a group";
+        result = PBC_Localize("You are currently in a group");
     else if (leaderStr.empty())
-        result = "You are currently in a group with the following members: " + members;
+        result = PBC_Localize("You are currently in a group with the following members: {0}", members);
     else if (members.empty())
-        result = "You are currently in a group led by " + leaderStr;
+        result = PBC_Localize("You are currently in a group led by {0}", leaderStr);
     else
-        result = "You are currently in a group led by " + leaderStr
-               + " with the following members: " + members;
+        result = PBC_Localize("You are currently in a group led by {0} with the following members: {1}", leaderStr, members);
 
     // Append pet info before the closing period
     if (!groupPets.empty())

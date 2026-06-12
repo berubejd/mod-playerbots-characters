@@ -5,6 +5,7 @@
 #include "pbc_llm.h"
 #include "pbc_http.h"
 #include "pbc_utils.h"
+#include "pbc_locales.h"
 #include "pbc_event_dispatch.h"
 #include "pbc_condense.h"
 #include "pbc_log.h"
@@ -648,7 +649,7 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     for (PBC_CharacterSnapshot& snap : ev.respondingChars)
     {
         if (PBC_MaybeInsertTimeGap(snap.charGuidRaw, incomingIsWhisper))
-            snap.history.push_back("Narrator: *some time passes*");
+            snap.history.push_back(PBC_Localize("Narrator: *{0}*", PBC_Localize("some time passes")));
     }
     for (uint64_t guid : ev.silentCharGuids)
         PBC_MaybeInsertTimeGap(guid, incomingIsWhisper);
@@ -656,12 +657,12 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     if (ev.type == PBC_EventType::Condensation)
     {
         if (PBC_MaybeInsertTimeGap(ev.condensationChar.charGuidRaw, false))
-            ev.condensationChar.history.push_back("Narrator: *some time passes*");
+            ev.condensationChar.history.push_back(PBC_Localize("Narrator: *{0}*", PBC_Localize("some time passes")));
     }
     if (ev.type == PBC_EventType::RelationshipUpdate)
     {
         if (PBC_MaybeInsertTimeGap(ev.relationshipChar.charGuidRaw, false))
-            ev.relationshipChar.history.push_back("Narrator: *some time passes*");
+            ev.relationshipChar.history.push_back(PBC_Localize("Narrator: *{0}*", PBC_Localize("some time passes")));
     }
 
     // Capture config strings (read-only, safe without lock)

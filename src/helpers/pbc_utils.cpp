@@ -1,5 +1,6 @@
 #include "pbc_utils.h"
 #include "pbc_log.h"
+#include "pbc_locales.h"
 #include "Player.h"
 #include "Group.h"
 #include "WorldSession.h"
@@ -11,6 +12,7 @@
 #include "ItemTemplate.h"
 #include "QuestDef.h"
 
+#include <fmt/core.h>
 #include <chrono>
 #include <thread>
 #include <set>
@@ -195,7 +197,7 @@ std::string PBC_NaturalList(const std::vector<std::string>& items)
 {
     if (items.empty()) return "";
 
-    std::string s = "You see ";
+    std::string s = PBC_Localize("You see ");
     if (items.size() == 1)
     {
         s += items[0];
@@ -205,19 +207,19 @@ std::string PBC_NaturalList(const std::vector<std::string>& items)
         for (size_t i = 0; i < items.size(); ++i)
         {
             if (i > 0 && i == items.size() - 1)
-                s += " and ";
+                s += PBC_Localize(" and ");
             else if (i > 0)
                 s += ", ";
             s += items[i];
         }
     }
-    s += " nearby.";
+    s += PBC_Localize(" nearby.");
     return s;
 }
 
 std::string PBC_DefaultRelationshipText(const std::string& name)
 {
-    return "You don't know much about " + name + ".";
+    return PBC_Localize("You don't know much about {0}.", name);
 }
 
 
@@ -424,17 +426,17 @@ std::string PBC_ClassStr(uint8_t cls)
 {
     switch (cls)
     {
-        case CLASS_WARRIOR:      return "Warrior";
-        case CLASS_PALADIN:      return "Paladin";
-        case CLASS_HUNTER:       return "Hunter";
-        case CLASS_ROGUE:        return "Rogue";
-        case CLASS_PRIEST:       return "Priest";
-        case CLASS_DEATH_KNIGHT: return "Death Knight";
-        case CLASS_SHAMAN:       return "Shaman";
-        case CLASS_MAGE:         return "Mage";
-        case CLASS_WARLOCK:      return "Warlock";
-        case CLASS_DRUID:        return "Druid";
-        default:                 return "Adventurer";
+        case CLASS_WARRIOR:      return PBC_Localize("Warrior");
+        case CLASS_PALADIN:      return PBC_Localize("Paladin");
+        case CLASS_HUNTER:       return PBC_Localize("Hunter");
+        case CLASS_ROGUE:        return PBC_Localize("Rogue");
+        case CLASS_PRIEST:       return PBC_Localize("Priest");
+        case CLASS_DEATH_KNIGHT: return PBC_Localize("Death Knight");
+        case CLASS_SHAMAN:       return PBC_Localize("Shaman");
+        case CLASS_MAGE:         return PBC_Localize("Mage");
+        case CLASS_WARLOCK:      return PBC_Localize("Warlock");
+        case CLASS_DRUID:        return PBC_Localize("Druid");
+        default:                 return PBC_Localize("Adventurer");
     }
 }
 
@@ -442,23 +444,23 @@ std::string PBC_RaceStr(uint8_t race)
 {
     switch (race)
     {
-        case RACE_HUMAN:          return "Human";
-        case RACE_ORC:            return "Orc";
-        case RACE_DWARF:          return "Dwarf";
-        case RACE_NIGHTELF:       return "Night Elf";
-        case RACE_UNDEAD_PLAYER:  return "Forsaken";
-        case RACE_TAUREN:         return "Tauren";
-        case RACE_GNOME:          return "Gnome";
-        case RACE_TROLL:          return "Troll";
-        case RACE_BLOODELF:       return "Blood Elf";
-        case RACE_DRAENEI:        return "Draenei";
-        default:                  return "Unknown";
+        case RACE_HUMAN:          return PBC_Localize("Human");
+        case RACE_ORC:            return PBC_Localize("Orc");
+        case RACE_DWARF:          return PBC_Localize("Dwarf");
+        case RACE_NIGHTELF:       return PBC_Localize("Night Elf");
+        case RACE_UNDEAD_PLAYER:  return PBC_Localize("Forsaken");
+        case RACE_TAUREN:         return PBC_Localize("Tauren");
+        case RACE_GNOME:          return PBC_Localize("Gnome");
+        case RACE_TROLL:          return PBC_Localize("Troll");
+        case RACE_BLOODELF:       return PBC_Localize("Blood Elf");
+        case RACE_DRAENEI:        return PBC_Localize("Draenei");
+        default:                  return PBC_Localize("Unknown");
     }
 }
 
 std::string PBC_GenderStr(uint8_t gender)
 {
-    return gender == GENDER_FEMALE ? "female" : "male";
+    return gender == GENDER_FEMALE ? PBC_Localize("female") : PBC_Localize("male");
 }
 
 // ---------------------------------------------------------------------------

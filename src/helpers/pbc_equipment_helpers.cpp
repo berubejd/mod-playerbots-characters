@@ -1,10 +1,12 @@
 #include "pbc_equipment_helpers.h"
 #include "pbc_item_helpers.h"
 #include "pbc_utils.h"
+#include "pbc_locales.h"
 #include "Player.h"
 #include "Item.h"
 #include "ItemTemplate.h"
 #include "Bag.h"
+#include <fmt/core.h>
 
 // ---------------------------------------------------------------------------
 // Equipment quality / off-hand helpers (local to this TU)
@@ -14,38 +16,38 @@ static std::string EquipQualityStr(uint32 quality)
 {
     switch (quality)
     {
-        case ITEM_QUALITY_UNCOMMON: return "uncommon";
-        case ITEM_QUALITY_RARE:     return "rare";
-        case ITEM_QUALITY_EPIC:     return "epic";
-        case ITEM_QUALITY_LEGENDARY:return "legendary";
-        case ITEM_QUALITY_ARTIFACT: return "artifact";
-        case ITEM_QUALITY_HEIRLOOM: return "heirloom";
-        default:                    return "common";
+        case ITEM_QUALITY_UNCOMMON: return PBC_Localize("uncommon");
+        case ITEM_QUALITY_RARE:     return PBC_Localize("rare");
+        case ITEM_QUALITY_EPIC:     return PBC_Localize("epic");
+        case ITEM_QUALITY_LEGENDARY:return PBC_Localize("legendary");
+        case ITEM_QUALITY_ARTIFACT: return PBC_Localize("artifact");
+        case ITEM_QUALITY_HEIRLOOM: return PBC_Localize("heirloom");
+        default:                    return PBC_Localize("common");
     }
 }
 
 // Returns a human-readable off-hand type string (shield, relic, holdable, etc.)
 static std::string EquipOffhandTypeStr(ItemTemplate const* tmpl)
 {
-    if (!tmpl) return "off-hand item";
+    if (!tmpl) return PBC_Localize("off-hand item");
     if (tmpl->Class == ITEM_CLASS_WEAPON)
         return PBC_WeaponTypeStr(tmpl->SubClass);
     if (tmpl->Class == ITEM_CLASS_ARMOR)
     {
         switch (tmpl->SubClass)
         {
-            case ITEM_SUBCLASS_ARMOR_SHIELD:  return "shield";
-            case ITEM_SUBCLASS_ARMOR_BUCKLER: return "buckler";
-            case ITEM_SUBCLASS_ARMOR_LIBRAM:  return "libram";
-            case ITEM_SUBCLASS_ARMOR_IDOL:    return "idol";
-            case ITEM_SUBCLASS_ARMOR_TOTEM:   return "totem";
-            case ITEM_SUBCLASS_ARMOR_SIGIL:   return "sigil";
+            case ITEM_SUBCLASS_ARMOR_SHIELD:  return PBC_Localize("shield");
+            case ITEM_SUBCLASS_ARMOR_BUCKLER: return PBC_Localize("buckler");
+            case ITEM_SUBCLASS_ARMOR_LIBRAM:  return PBC_Localize("libram");
+            case ITEM_SUBCLASS_ARMOR_IDOL:    return PBC_Localize("idol");
+            case ITEM_SUBCLASS_ARMOR_TOTEM:   return PBC_Localize("totem");
+            case ITEM_SUBCLASS_ARMOR_SIGIL:   return PBC_Localize("sigil");
             default: break;
         }
         if (tmpl->InventoryType == INVTYPE_HOLDABLE)
-            return "off-hand focus";
+            return PBC_Localize("off-hand focus");
     }
-    return "off-hand item";
+    return PBC_Localize("off-hand item");
 }
 
 // Builds a phrase like "a rare dagger" or "an epic staff called Devastation".
@@ -111,14 +113,14 @@ static std::string BuildBagSpaceStr(Player* bot)
     if (fillPct < 40.0f)
         return "";
     if (fillPct <= 60.0f)
-        return "Your bags are about half full.";
+        return PBC_Localize("Your bags are about half full.");
     if (fillPct <= 80.0f)
-        return "Your bags are getting full.";
+        return PBC_Localize("Your bags are getting full.");
     if (fillPct <= 95.0f)
-        return "Your bags are almost full.";
+        return PBC_Localize("Your bags are almost full.");
     if (fillPct < 100.0f)
-        return "Your bags are nearly full.";
-    return "Your bags are completely full.";
+        return PBC_Localize("Your bags are nearly full.");
+    return PBC_Localize("Your bags are completely full.");
 }
 
 // ---------------------------------------------------------------------------
@@ -179,22 +181,22 @@ std::string PBC_BuildEquipmentStr(Player* bot)
 
     if (totalArmor == 0)
     {
-        armorDesc = "You have no armor";
+        armorDesc = PBC_Localize("You have no armor");
     }
     else
     {
         // Find dominant quality tier; on ties the highest quality wins
-        struct Tier { int count; const char* adj; };
+        struct Tier { int count; std::string adj; };
         Tier tiers[] = {
-            { poorCount,       "simple" },
-            { uncommonCount,   "modest" },
-            { rareCount,       "fine" },
-            { epicCount,       "excellent" },
-            { legendaryCount,  "exceptional" }
+            { poorCount,       PBC_Localize("simple") },
+            { uncommonCount,   PBC_Localize("modest") },
+            { rareCount,       PBC_Localize("fine") },
+            { epicCount,       PBC_Localize("excellent") },
+            { legendaryCount,  PBC_Localize("exceptional") }
         };
 
         int maxCount = 0;
-        const char* qualityAdj = "simple";
+        std::string qualityAdj = PBC_Localize("simple");
         for (const auto& t : tiers)
         {
             if (t.count >= maxCount && t.count > 0)
@@ -205,10 +207,15 @@ std::string PBC_BuildEquipmentStr(Player* bot)
         }
 
         // Find dominant armor material (cloth/leather/mail/plate)
-        const char* material = nullptr;
+        std::string material;
         int matMax = 0;
-        struct Mat { int count; const char* name; };
-        Mat mats[] = { {clothCount, "cloth"}, {leatherCount, "leather"}, {mailCount, "mail"}, {plateCount, "plate"} };
+        struct Mat { int count; std::string name; };
+        Mat mats[] = {
+            {clothCount, PBC_Localize("cloth")},
+            {leatherCount, PBC_Localize("leather")},
+            {mailCount, PBC_Localize("mail")},
+            {plateCount, PBC_Localize("plate")}
+        };
         for (const auto& m : mats)
         {
             if (m.count > matMax)
@@ -218,9 +225,9 @@ std::string PBC_BuildEquipmentStr(Player* bot)
             }
         }
 
-        armorDesc = "You have " + std::string(qualityAdj) + " equipment";
-        if (material && matMax >= 2)
-            armorDesc += " made of " + std::string(material);
+        armorDesc = PBC_Localize("You have {0} equipment", qualityAdj);
+        if (!material.empty() && matMax >= 2)
+            armorDesc += PBC_Localize(" made of {0}", material);
     }
 
     // --- Weapon assessment ---
@@ -241,13 +248,13 @@ std::string PBC_BuildEquipmentStr(Player* bot)
 
     if (!mhT && !ohT && !rgT)
     {
-        weaponDesc = "you are unarmed";
+        weaponDesc = PBC_Localize("you are unarmed");
     }
     else if (is2H)
     {
-        weaponDesc = "you wield " + DescribeWeapon(mhT);
+        weaponDesc = PBC_Localize("you wield ") + DescribeWeapon(mhT);
         if (rgIsWeapon)
-            weaponDesc += " and carry " + DescribeWeapon(rgT);
+            weaponDesc += PBC_Localize(" and carry ") + DescribeWeapon(rgT);
     }
     else if (mhT && ohT)
     {
@@ -257,34 +264,34 @@ std::string PBC_BuildEquipmentStr(Player* bot)
         {
             std::string qual = EquipQualityStr(mhT->Quality);
             std::string type = PBC_WeaponTypeStr(mhT->SubClass);
-            weaponDesc = "you wield two " + qual + " " + type + "s, called " + mhT->Name1 + " and " + ohT->Name1;
+            weaponDesc = PBC_Localize("you wield two {0} {1}s, called {2} and {3}", qual, type, mhT->Name1, ohT->Name1);
         }
         else
         {
             std::string mhDesc = mhIsWeapon ? DescribeWeapon(mhT) : DescribeOffhand(mhT);
             std::string ohDesc = ohIsWeapon ? DescribeWeapon(ohT) : DescribeOffhand(ohT);
-            weaponDesc = "you wield " + mhDesc + " and " + ohDesc;
+            weaponDesc = PBC_Localize("you wield ") + mhDesc + PBC_Localize(" and ") + ohDesc;
         }
         if (rgIsWeapon)
-            weaponDesc += ", and carry " + DescribeWeapon(rgT);
+            weaponDesc += PBC_Localize(", and carry ") + DescribeWeapon(rgT);
     }
     else if (mhT)
     {
-        weaponDesc = "you wield " + (mhIsWeapon ? DescribeWeapon(mhT) : DescribeOffhand(mhT));
+        weaponDesc = PBC_Localize("you wield ") + (mhIsWeapon ? DescribeWeapon(mhT) : DescribeOffhand(mhT));
         if (rgIsWeapon)
-            weaponDesc += " and carry " + DescribeWeapon(rgT);
+            weaponDesc += PBC_Localize(" and carry ") + DescribeWeapon(rgT);
     }
     else if (ohT)
     {
-        weaponDesc = "you carry " + DescribeOffhand(ohT);
+        weaponDesc = PBC_Localize("you carry ") + DescribeOffhand(ohT);
     }
     else
     {
         // Only ranged
-        weaponDesc = "you carry " + DescribeWeapon(rgT);
+        weaponDesc = PBC_Localize("you carry ") + DescribeWeapon(rgT);
     }
 
-    std::string result = armorDesc + ", and " + weaponDesc + ".";
+    std::string result = armorDesc + PBC_Localize(", and ") + weaponDesc + ".";
 
     // Append bag space summary when noteworthy (≥40% full)
     std::string bagSpace = BuildBagSpaceStr(bot);

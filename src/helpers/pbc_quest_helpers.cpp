@@ -1,5 +1,6 @@
 #include "pbc_quest_helpers.h"
 #include "pbc_utils.h"
+#include "pbc_locales.h"
 #include "pbc_group_helpers.h"
 #include "pbc_config.h"
 #include "ObjectMgr.h"
@@ -146,9 +147,9 @@ std::string PBC_GetQuestStarterType(uint32 questId)
     {
         if (it->second == questId) { hasGO = true; break; }
     }
-    if (hasCreature && hasGO) return "person or object";
-    if (hasCreature) return "person";
-    if (hasGO) return "object";
+    if (hasCreature && hasGO) return PBC_Localize("person or object");
+    if (hasCreature) return PBC_Localize("person");
+    if (hasGO) return PBC_Localize("object");
     return "";
 }
 
@@ -165,9 +166,9 @@ std::string PBC_GetQuestEnderType(uint32 questId)
     {
         if (it->second == questId) { hasGO = true; break; }
     }
-    if (hasCreature && hasGO) return "person or object";
-    if (hasCreature) return "person";
-    if (hasGO) return "object";
+    if (hasCreature && hasGO) return PBC_Localize("person or object");
+    if (hasCreature) return PBC_Localize("person");
+    if (hasGO) return PBC_Localize("object");
     return "";
 }
 
