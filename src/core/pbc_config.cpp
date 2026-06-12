@@ -278,45 +278,18 @@ void PBC_LoadConfig(bool /*isStartup*/)
         g_PBC_AltModelAPIType, g_PBC_AltModel, g_PBC_AltModelBaseUrl, g_PBC_AltModelRequestTimeoutSec);
 }
 
-// Helper: load a single prompt file. Tries customPath first, then defaultPath.
-static bool LoadPromptFile(const std::string& customPath,
-                           const std::string& defaultPath,
-                           std::string& target,
-                           bool& usedCustom)
+// Try to read a file into target. Returns true if the file exists and is non-empty.
+static bool TryReadFile(const std::string& path, std::string& target)
 {
-    usedCustom = false;
-
-    std::ifstream fCustom(customPath);
-    if (fCustom)
-    {
-        std::stringstream buf;
-        buf << fCustom.rdbuf();
-        if (buf.str().empty())
-        {
-            PBC_Log(PBC_LogLevel::PBC_WARNING, "Custom prompt file is empty: {}", customPath);
-        }
-        else
-        {
-            target = buf.str();
-            PBC_NormalizeNewlines(target);
-            usedCustom = true;
-            return true;
-        }
-    }
-
-    std::ifstream fDefault(defaultPath);
-    if (!fDefault)
-    {
-        PBC_Log(PBC_LogLevel::PBC_ERROR, "Cannot open prompt file: {}",
-                  defaultPath);
+    std::ifstream f(path);
+    if (!f)
         return false;
-    }
 
     std::stringstream buf;
-    buf << fDefault.rdbuf();
+    buf << f.rdbuf();
     if (buf.str().empty())
     {
-        PBC_Log(PBC_LogLevel::PBC_ERROR, "Default prompt file is empty: {}", defaultPath);
+        PBC_Log(PBC_LogLevel::PBC_WARNING, "Prompt file is empty: {}", path);
         return false;
     }
 
@@ -325,38 +298,78 @@ static bool LoadPromptFile(const std::string& customPath,
     return true;
 }
 
-// Resolve the locale subdirectory to load prompts from.
-// Tries <prompts_path>/<dbc_locale>/ first, falls back to <prompts_path>/enUS/.
-static std::filesystem::path PBC_ResolvePromptLocaleDir()
+// Load a prompt by name (e.g. "Main.system").  Checks in priority order:
+//   1. <prompts_path>/<DBC.Locale>/<name>.custom.txt
+//   2. <prompts_path>/<DBC.Locale>/<name>.default.txt
+//   3. <prompts_path>/enUS/<name>.custom.txt
+//   4. <prompts_path>/enUS/<name>.default.txt
+//
+// Sets isCustom=true if a .custom.txt file was loaded.
+// Returns true on success, false if no prompt file could be loaded.
+static bool PBC_GetPrompt(const std::string& promptName,
+                          std::string& promptText,
+                          bool& isCustom)
 {
     namespace fs = std::filesystem;
-    fs::path base(g_PBC_PromptsPath);
+    isCustom = false;
 
-    // Derive locale name from DBC.Locale (e.g. "deDE", "frFR", "enUS")
+    // Directories to try: configured locale first, then enUS fallback
+    fs::path base(g_PBC_PromptsPath);
     std::string localeName = GetNameByLocaleConstant(sWorld->GetDefaultDbcLocale());
 
-    // 1. Try the configured locale subdirectory
-    fs::path localeDir = base / localeName;
-    if (fs::exists(localeDir) && fs::is_directory(localeDir))
-        return localeDir;
+    std::vector<fs::path> dirs;
+    if (localeName != "enUS")
+    {
+        fs::path localeDir = base / localeName;
+        if (fs::exists(localeDir) && fs::is_directory(localeDir))
+            dirs.push_back(localeDir);
+    }
+    dirs.push_back(base / "enUS");
 
-    // 2. Fall back to enUS subdirectory
-    return base / "enUS";
+    // In each directory, try custom first, then default
+    for (auto const& dir : dirs)
+    {
+        std::string customPath = (dir / (promptName + ".custom.txt")).string();
+        if (TryReadFile(customPath, promptText))
+        {
+            isCustom = true;
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "Loaded custom prompt '{}' from '{}' ({} chars)",
+                     promptName, dir.string(), promptText.size());
+            return true;
+        }
+    }
+
+    for (auto const& dir : dirs)
+    {
+        std::string defaultPath = (dir / (promptName + ".default.txt")).string();
+        if (TryReadFile(defaultPath, promptText))
+        {
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "Loaded default prompt '{}' from '{}' ({} chars)",
+                     promptName, dir.string(), promptText.size());
+            return true;
+        }
+    }
+
+    PBC_Log(PBC_LogLevel::PBC_ERROR, "Prompt '{}' not found in '{}' or 'enUS' — module disabled.",
+             promptName, localeName);
+    return false;
 }
 
 bool PBC_LoadPrompts()
 {
-    std::filesystem::path dir = PBC_ResolvePromptLocaleDir();
-    if (!std::filesystem::exists(dir) || !std::filesystem::is_directory(dir))
+    // Verify enUS fallback directory exists
+    namespace fs = std::filesystem;
+    fs::path enusDir = fs::path(g_PBC_PromptsPath) / "enUS";
+    if (!fs::exists(enusDir) || !fs::is_directory(enusDir))
     {
-        PBC_Log(PBC_LogLevel::PBC_ERROR, "Prompts directory not found: {}", dir.string());
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Fallback prompts directory not found: {}", enusDir.string());
         return false;
     }
 
-    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Loading prompts from '{}' (DBC.Locale={})",
-             dir.string(), GetNameByLocaleConstant(sWorld->GetDefaultDbcLocale()));
+    std::string localeName = GetNameByLocaleConstant(sWorld->GetDefaultDbcLocale());
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Loading prompts (DBC.Locale={})", localeName);
 
-    struct PromptEntry { const char* filename; std::string& target; };
+    struct PromptEntry { const char* name; std::string& target; };
     const PromptEntry prompts[] = {
         { "Main.system",                      g_PBC_SystemPrompt                   },
         { "Main.user",                        g_PBC_UserPrompt                     },
@@ -379,18 +392,14 @@ bool PBC_LoadPrompts()
 
     for (auto const& entry : prompts)
     {
-        std::string customPath  = (dir / (std::string(entry.filename) + ".custom.txt")).string();
-        std::string defaultPath = (dir / (std::string(entry.filename) + ".default.txt")).string();
-
-        bool usedCustom = false;
-        if (!LoadPromptFile(customPath, defaultPath, entry.target, usedCustom))
+        bool isCustom = false;
+        if (!PBC_GetPrompt(entry.name, entry.target, isCustom))
         {
             allOk = false;
         }
-        else if (usedCustom)
+        else if (isCustom)
         {
             ++customCount;
-            PBC_Log(PBC_LogLevel::PBC_DEBUG, "Loaded custom prompt '{}' ({} chars)", entry.filename, entry.target.size());
         }
     }
 

@@ -1,8 +1,0 @@
-[CHARACTER]
-{character_card}
-
-[HISTORY]
-{chat_history}
-
-[RELATIONSHIP WITH {relationship_target}]
-{target_current_relationship}
