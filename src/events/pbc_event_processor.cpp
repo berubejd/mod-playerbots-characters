@@ -199,7 +199,7 @@ void ProcessRelationshipUpdate(PBC_EventItem& ev)
 
     // Notify real players that a lengthy background relationship update is starting
     PBC_PushNarratorSummary(ev.relationshipChar.charObjGuid,
-        PBC_MakeEventLine("Updating " + ev.relationshipChar.charName + "'s relationships..."));
+        PBC_MakeEventLine("Updating " + ev.relationshipChar.charName + "'s relationship with " + ev.relationshipTargetName + "..."));
 
     PBC_Log(PBC_LogLevel::PBC_DEBUG, "RelationshipUpdate: character={} target={}",
              ev.relationshipChar.charName, ev.relationshipTargetName);

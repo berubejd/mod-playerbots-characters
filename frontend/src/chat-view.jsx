@@ -942,66 +942,50 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       ? '#ffc107'
       : '#dc3545';
 
-  // Render: empty history
-  if (messages && messages.length === 0) {
-    return (
-      <div class="d-flex flex-column h-100">
-        <div class="d-flex justify-content-center align-items-center flex-grow-1 position-relative">
-          <p class="text-body-secondary">No messages yet</p>
-          {thinkingNames.length > 0 && (
-            <div class="position-absolute bottom-0 start-0 px-3 pb-1" style="font-size: 0.8rem; color: var(--bs-secondary-color);">
-              {formatThinkingLine(thinkingNames)}…
-            </div>
-          )}
-        </div>
-        {maxHistoryCtx > 0 && (
-          <div style="height: 3px; background: var(--bs-tertiary-bg, #2c2c2c);">
-            <div style={`height: 100%; width: ${contextPercent}%; background: ${contextBarColor}; transition: width 0.3s ease, background-color 0.3s ease;`}></div>
-          </div>
-        )}
-        <SendMessageInput token={token} selectedGuid={selectedGuid} playerGuid={playerGuid} onDesync={onDesync} onMessageSent={handleMessageSent} messageMode={messageMode} onMessageModeChange={handleManualModeChange} characters={characters} charCategory={charCategory} />
-      </div>
-    );
-  }
+  // Render: chat view (shared by both empty and non-empty history)
+  const hasMessages = messages && messages.length > 0;
 
-  // Render: messages
   return (
     <div class="d-flex flex-column h-100 position-relative">
-      {messages && messages.length > 0 && (
-        <ChatToolbar
-          token={token}
-          selectedGuid={selectedGuid}
-          charName={charName}
-          isDesktop={isDesktop}
-          selectionMode={selectionMode}
-          selectedIds={selectedIds}
-          onToggleSelectionMode={toggleSelectionMode}
-          onBatchDeleteOpen={handleBatchDeleteOpen}
-          onDesync={onDesync}
-        />
-      )}
+      <ChatToolbar
+        token={token}
+        selectedGuid={selectedGuid}
+        charName={charName}
+        isDesktop={isDesktop}
+        selectionMode={selectionMode}
+        selectedIds={selectedIds}
+        onToggleSelectionMode={toggleSelectionMode}
+        onBatchDeleteOpen={handleBatchDeleteOpen}
+        onDesync={onDesync}
+      />
       <div class="position-relative flex-grow-1" style="min-height: 0">
         <div ref={containerRef} class={`overflow-auto p-3${selectionMode ? ' selection-mode' : ''}`} style={`height: calc(100% - ${inputHeight}px); font-size: 1.25rem`} onScroll={handleScroll}>
-          {messages.map((msg) => (
-            <MessageLine
-              key={msg.id}
-              msg={msg}
-              nameColorMap={nameColorMap}
-              onEdit={handleEditOpen}
-              onDelete={handleDeleteOpen}
-              selectionMode={selectionMode}
-              selected={selectedIds.has(msg.id)}
-              onToggleSelect={toggleMessageSelection}
-              isNew={newMessageIds.has(msg.id)}
-            />
-          ))}
+          {hasMessages ? (
+            messages.map((msg) => (
+              <MessageLine
+                key={msg.id}
+                msg={msg}
+                nameColorMap={nameColorMap}
+                onEdit={handleEditOpen}
+                onDelete={handleDeleteOpen}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(msg.id)}
+                onToggleSelect={toggleMessageSelection}
+                isNew={newMessageIds.has(msg.id)}
+              />
+            ))
+          ) : (
+            <div class="d-flex justify-content-center align-items-center h-100">
+              <p class="text-body-secondary">No messages yet</p>
+            </div>
+          )}
         </div>
         {thinkingNames.length > 0 && (
           <div class="position-absolute start-0 px-3 pb-1" style={`font-size: 0.8rem; color: var(--bs-secondary-color); bottom: ${inputHeight}px;`}>
             {formatThinkingLine(thinkingNames)}…
           </div>
         )}
-        {showScrollDown && (
+        {showScrollDown && hasMessages && (
           <button
             class="btn btn-secondary position-absolute"
             style={`bottom: ${inputHeight + 18}px; right: 18px; border-radius: 50%; width: 36px; height: 36px; padding: 0; font-size: 1.3rem; line-height: 36px; text-align: center; z-index: 5;`}
