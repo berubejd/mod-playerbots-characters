@@ -441,6 +441,26 @@ static const PBC_LocaleMap deDE = {
     { "you feel the urge to say something",
       "du verspürst den Drang, etwas zu sagen" },
 
+    // ---- Relationship prompt line (pbc_character.cpp) ------------------
+    // {0} = target name, {1} = relationship description
+    { "Your relationship with {0}: {1}",
+      "Deine Beziehung zu {0}: {1}" },
+
+    // ---- Narrator progress messages (pbc_event_processor.cpp) -----------
+    // {0} = character name
+    { "Condensing {0}'s history...",
+      "Verdichte den Verlauf von {0}..." },
+    // {0} = character name, {1} = target name
+    { "Updating {0}'s relationship with {1}...",
+      "Aktualisiere die Beziehung von {0} zu {1}..." },
+
+    // ---- Duel event lines (pbc_player_scripts.cpp) ----------------------
+    // {0} = winner name, {1} = loser name
+    { "{0} just won the duel against {1}",
+      "{0} hat gerade das Duell gegen {1} gewonnen" },
+    { "{0} won the duel against {1}",
+      "{0} hat das Duell gegen {1} gewonnen" },
+
     // ---- Item phrase template (PBC_BuildItemPhrase) ------------------
     // {0}=quality (accusative masculine), {1}=item type.
     // All four event templates below use accusative so the adjective

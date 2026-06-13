@@ -161,7 +161,7 @@ void ProcessCondensation(PBC_EventItem& ev,
 {
     // Notify real players that a lengthy background condensation is starting
     PBC_PushNarratorSummary(ev.condensationChar.charObjGuid,
-        PBC_MakeEventLine("Condensing " + ev.condensationChar.charName + "'s history..."));
+        PBC_MakeEventLine(PBC_Localize("Condensing {0}'s history...", ev.condensationChar.charName)));
 
     // Capture the full history snapshot BEFORE condensation truncates it
     std::deque<std::string> preCondensationHistory = ev.condensationChar.history;
@@ -199,7 +199,7 @@ void ProcessRelationshipUpdate(PBC_EventItem& ev)
 
     // Notify real players that a lengthy background relationship update is starting
     PBC_PushNarratorSummary(ev.relationshipChar.charObjGuid,
-        PBC_MakeEventLine("Updating " + ev.relationshipChar.charName + "'s relationship with " + ev.relationshipTargetName + "..."));
+        PBC_MakeEventLine(PBC_Localize("Updating {0}'s relationship with {1}...", ev.relationshipChar.charName, ev.relationshipTargetName)));
 
     PBC_Log(PBC_LogLevel::PBC_DEBUG, "RelationshipUpdate: character={} target={}",
              ev.relationshipChar.charName, ev.relationshipTargetName);
@@ -443,7 +443,7 @@ void ProcessNormal(PBC_EventItem& ev,
         if (histTokens > static_cast<int>(g_PBC_MaxHistoryCtx))
         {
             PBC_PushNarratorSummary(snap.charObjGuid,
-                PBC_MakeEventLine("Condensing " + snap.charName + "'s history..."));
+                PBC_MakeEventLine(PBC_Localize("Condensing {0}'s history...", snap.charName)));
 
             std::deque<std::string> preCondensationHistory = snap.history;
 
@@ -561,7 +561,7 @@ void ProcessNormal(PBC_EventItem& ev,
         }
 
         // Advance the chain
-        currentEvent = snap.charName + " says: " + res.text;
+        currentEvent = PBC_Localize("{0} says: {1}", snap.charName, res.text);
 
         lastResponderGuid = snap.charGuidRaw;
         lastEventLine     = currentEvent;
@@ -641,28 +641,51 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     // Insert time-gap narrator lines BEFORE any event-type-specific
     // processing, so every character (responding, silent, or undergoing
     // condensation/relationship-update) knows about the time gap before
-    // the LLM prompt is built.  PBC_MaybeInsertTimeGap now handles its
-    // own DB and in-memory writes directly.
+    // the LLM prompt is built.
+    //
+    // We collect all relevant character GUIDs first, then create ONE
+    // shared "some time passes" entry owned by all of them, instead of
+    // inserting one duplicate DB row per character.
     // -------------------------------------------------------------------
     bool incomingIsWhisper = (ev.chatType == CHAT_MSG_WHISPER);
 
-    for (PBC_CharacterSnapshot& snap : ev.respondingChars)
-    {
-        if (PBC_MaybeInsertTimeGap(snap.charGuidRaw, incomingIsWhisper))
-            snap.history.push_back(PBC_Localize("Narrator: *{0}*", PBC_Localize("some time passes")));
-    }
-    for (uint64_t guid : ev.silentCharGuids)
-        PBC_MaybeInsertTimeGap(guid, incomingIsWhisper);
+    // Collect all character GUIDs that participate in this event
+    std::vector<uint64_t> allGuids;
+    allGuids.reserve(ev.respondingChars.size() + ev.silentCharGuids.size() + 2);
 
+    for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
+        allGuids.push_back(snap.charGuidRaw);
+    for (uint64_t guid : ev.silentCharGuids)
+        allGuids.push_back(guid);
     if (ev.type == PBC_EventType::Condensation)
-    {
-        if (PBC_MaybeInsertTimeGap(ev.condensationChar.charGuidRaw, false))
-            ev.condensationChar.history.push_back(PBC_Localize("Narrator: *{0}*", PBC_Localize("some time passes")));
-    }
+        allGuids.push_back(ev.condensationChar.charGuidRaw);
     if (ev.type == PBC_EventType::RelationshipUpdate)
+        allGuids.push_back(ev.relationshipChar.charGuidRaw);
+
+    // One shared batch call — creates a single DB row for all that need it
+    std::unordered_set<uint64_t> gapInserted =
+        PBC_MaybeInsertSharedTimeGap(allGuids, incomingIsWhisper);
+
+    if (!gapInserted.empty())
     {
-        if (PBC_MaybeInsertTimeGap(ev.relationshipChar.charGuidRaw, false))
-            ev.relationshipChar.history.push_back(PBC_Localize("Narrator: *{0}*", PBC_Localize("some time passes")));
+        std::string renderedGap = PBC_Localize("Narrator: *{0}*", PBC_Localize("some time passes"));
+
+        // Push the rendered line into snapshots that need it for prompt building
+        for (PBC_CharacterSnapshot& snap : ev.respondingChars)
+        {
+            if (gapInserted.count(snap.charGuidRaw))
+                snap.history.push_back(renderedGap);
+        }
+        if (ev.type == PBC_EventType::Condensation &&
+            gapInserted.count(ev.condensationChar.charGuidRaw))
+        {
+            ev.condensationChar.history.push_back(renderedGap);
+        }
+        if (ev.type == PBC_EventType::RelationshipUpdate &&
+            gapInserted.count(ev.relationshipChar.charGuidRaw))
+        {
+            ev.relationshipChar.history.push_back(renderedGap);
+        }
     }
 
     // Capture config strings (read-only, safe without lock)

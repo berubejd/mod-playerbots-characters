@@ -331,49 +331,57 @@ std::deque<std::string> PBC_GetChatHistoryPreRendered(uint64_t botGuid)
 }
 
 // ---------------------------------------------------------------------------
+// Internal helper: checks whether botGuid needs a time-gap line.
+// Must be called under g_PBC_HistoryMutex lock.
+// Returns true if a time-gap should be inserted for this character.
+// ---------------------------------------------------------------------------
+static bool PBC_TimeGapNeeded_Locked(uint64_t botGuid, bool incomingIsWhisper)
+{
+    static constexpr time_t kTimeGapThresholdSec = 300; // 5 minutes
+
+    auto timeIt = g_PBC_LastHistoryTime.find(botGuid);
+    if (timeIt == g_PBC_LastHistoryTime.end())
+        return false;
+
+    time_t now = time(nullptr);
+    if (now - timeIt->second < kTimeGapThresholdSec)
+        return false;
+
+    auto ownersIt = g_PBC_HistoryOwners.find(botGuid);
+    if (ownersIt == g_PBC_HistoryOwners.end() || ownersIt->second.empty())
+        return false;
+
+    uint64_t lastId = ownersIt->second.back();
+    auto entryIt = g_PBC_History.find(lastId);
+    if (entryIt == g_PBC_History.end())
+        return false;
+
+    // Don't insert if last line is already a narrator/time-passes line
+    if (entryIt->second.type == 0 && entryIt->second.message == PBC_Localize("some time passes"))
+        return false;
+
+    // Skip time-gap only when BOTH last message is a whisper AND incoming is whisper
+    if (incomingIsWhisper && entryIt->second.type == CHAT_MSG_WHISPER)
+        return false;
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Insert "Narrator: *some time passes*" if 5+ minutes since last entry
 // ---------------------------------------------------------------------------
 bool PBC_MaybeInsertTimeGap(uint64_t botGuid, bool incomingIsWhisper)
 {
-    static constexpr time_t kTimeGapThresholdSec = 300; // 5 minutes
-
     bool shouldInsert = false;
-
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
-        auto timeIt = g_PBC_LastHistoryTime.find(botGuid);
-        if (timeIt == g_PBC_LastHistoryTime.end())
-            return false;
-
-        time_t now = time(nullptr);
-        if (now - timeIt->second < kTimeGapThresholdSec)
-            return false;
-
-        auto ownersIt = g_PBC_HistoryOwners.find(botGuid);
-        if (ownersIt == g_PBC_HistoryOwners.end() || ownersIt->second.empty())
-            return false;
-
-        // Check the last message type
-        uint64_t lastId = ownersIt->second.back();
-        auto entryIt = g_PBC_History.find(lastId);
-        if (entryIt == g_PBC_History.end())
-            return false;
-
-        // Don't insert if last line is already a narrator/time-passes line
-        if (entryIt->second.type == 0 && entryIt->second.message == "some time passes")
-            return false;
-
-        // Skip time-gap only when BOTH last message is a whisper AND incoming is whisper
-        if (incomingIsWhisper && entryIt->second.type == CHAT_MSG_WHISPER)
-            return false;
-
-        shouldInsert = true;
+        shouldInsert = PBC_TimeGapNeeded_Locked(botGuid, incomingIsWhisper);
     }
 
     if (shouldInsert)
     {
         std::vector<uint64_t> owners = {botGuid};
-        uint64_t newId = DB_InsertHistoryMessage(0, 0, "some time passes", owners);
+        uint64_t newId = DB_InsertHistoryMessage(0, 0, PBC_Localize("some time passes"), owners);
 
         if (newId != 0)
         {
@@ -382,7 +390,7 @@ bool PBC_MaybeInsertTimeGap(uint64_t botGuid, bool incomingIsWhisper)
             entry.timestamp  = time(nullptr);
             entry.authorGuid = 0;
             entry.type       = 0;
-            entry.message    = "some time passes";
+            entry.message    = PBC_Localize("some time passes");
 
             std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
             g_PBC_History[newId] = std::move(entry);
@@ -394,6 +402,44 @@ bool PBC_MaybeInsertTimeGap(uint64_t botGuid, bool incomingIsWhisper)
     }
 
     return shouldInsert;
+}
+
+// ---------------------------------------------------------------------------
+// Batch version: creates ONE shared "some time passes" entry for all
+// characters that need it, instead of one duplicate per character.
+// Returns the set of GUIDs for which a time-gap was actually inserted,
+// so the caller can push the rendered line into each snapshot's history.
+// Thread-safe.
+// ---------------------------------------------------------------------------
+std::unordered_set<uint64_t> PBC_MaybeInsertSharedTimeGap(
+    const std::vector<uint64_t>& botGuids, bool incomingIsWhisper)
+{
+    std::unordered_set<uint64_t> needGap;
+
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+        for (uint64_t guid : botGuids)
+        {
+            if (PBC_TimeGapNeeded_Locked(guid, incomingIsWhisper))
+                needGap.insert(guid);
+        }
+    }
+
+    if (needGap.empty())
+        return needGap;
+
+    // Create ONE shared entry owned by all characters that need it.
+    // PBC_AppendHistoryMessage handles DB write, in-memory update,
+    // g_PBC_LastHistoryTime refresh, and WS notifications for all owners.
+    std::vector<uint64_t> owners(needGap.begin(), needGap.end());
+    uint64_t newId = PBC_AppendHistoryMessage(0, 0, PBC_Localize("some time passes"), owners);
+
+    // If AppendHistoryMessage deduped (extremely rare race), no new entry
+    // was created — return empty so the caller doesn't push to snapshots.
+    if (newId == 0)
+        return {};
+
+    return needGap;
 }
 
 // ---------------------------------------------------------------------------
@@ -800,9 +846,9 @@ std::string PBC_GetRelationshipsBlock(const PBC_CharacterSnapshot& snap)
             return;
         auto it = relTexts.find(name);
         if (it != relTexts.end() && !it->second.empty())
-            oss << "Your relationship with " << name << ": " << it->second << "\n";
+            oss << PBC_Localize("Your relationship with {0}: {1}", name, it->second) << "\n";
         else
-            oss << "Your relationship with " << name << ": " << PBC_DefaultRelationshipText(name) << "\n";
+            oss << PBC_Localize("Your relationship with {0}: {1}", name, PBC_DefaultRelationshipText(name)) << "\n";
         emitted.insert(name);
     };
 
@@ -826,7 +872,7 @@ std::string PBC_GetRelationshipsBlock(const PBC_CharacterSnapshot& snap)
             continue;
         if (text.empty())
             continue;   // empty stored text = never set / default, skip
-        oss << "Your relationship with " << name << ": " << text << "\n";
+        oss << PBC_Localize("Your relationship with {0}: {1}", name, text) << "\n";
     }
 
     std::string result = oss.str();

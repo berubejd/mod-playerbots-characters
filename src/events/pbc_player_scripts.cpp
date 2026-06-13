@@ -188,8 +188,8 @@ void PBC_PlayerEvents::OnPlayerDuelEnd(Player* winner, Player* loser, DuelComple
     if (!g_PBC_Enable) return;
     if (!PBC_PTR_VALID(winner) || !PBC_PTR_VALID(loser) || type != DUEL_WON) return;
     PBC_DispatchGroupEvent(winner,
-        PBC_MakeEventLine(winner->GetName() + " just won the duel against " + loser->GetName()),
-        winner->GetName() + " won the duel against " + loser->GetName(),
+        PBC_MakeEventLine(PBC_Localize("{0} just won the duel against {1}", winner->GetName(), loser->GetName())),
+        PBC_Localize("{0} won the duel against {1}", winner->GetName(), loser->GetName()),
         g_PBC_ReplyChanceDuel);
 }
 

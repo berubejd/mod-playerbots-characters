@@ -77,6 +77,18 @@ int PBC_EstimateHistoryTokens(uint64_t botGuid);
 bool PBC_MaybeInsertTimeGap(uint64_t botGuid, bool incomingIsWhisper = false);
 
 // ---------------------------------------------------------------------------
+// Batch version of PBC_MaybeInsertTimeGap for use inside PBC_ProcessEventItem.
+// Collects all botGuids that need a time-gap line, then creates ONE shared
+// "Narrator: *some time passes*" entry owned by all of them (instead of
+// creating one duplicate DB row per character).  Returns the set of GUIDs
+// for which a time-gap was actually inserted, so the caller can push the
+// rendered line into each snapshot's history.
+// Thread-safe.
+// ---------------------------------------------------------------------------
+std::unordered_set<uint64_t> PBC_MaybeInsertSharedTimeGap(
+    const std::vector<uint64_t>& botGuids, bool incomingIsWhisper = false);
+
+// ---------------------------------------------------------------------------
 // Mutation result (thread-safe, also updates the database)
 // ---------------------------------------------------------------------------
 enum class PBC_HistoryResult { Ok, NotFound, Desync };

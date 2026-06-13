@@ -29,7 +29,7 @@ std::string PBC_MakeHistLineFromSource(const PBC_EventSource& source)
     if (source.IsNarrator())
         return PBC_MakeHistLine(source.narratorText);
     if (source.IsChat())
-        return source.senderName + ": " + source.message;
+        return PBC_Localize("{0}: {1}", source.senderName, source.message);
     return "";
 }
 
@@ -333,7 +333,7 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
                 lastIsNarrator   = (entry.type == 0);
                 lastIsWhisper    = (entry.type == CHAT_MSG_WHISPER);
                 lastIsOwn        = (entry.authorGuid == botGuid);
-                lastIsTimePasses = (entry.type == 0 && entry.message == "some time passes");
+                lastIsTimePasses = (entry.type == 0 && entry.message == PBC_Localize("some time passes"));
             }
         }
     }
@@ -345,7 +345,7 @@ std::string PBC_PickTriggerEventLine(uint64_t botGuid, const std::string& charNa
     {
         PBC_Log(PBC_LogLevel::PBC_DEBUG, "PickTriggerEventLine: guid={} char='{}' — no history, using default",
                 botGuid, charName);
-        return "you feel the urge to say something";
+        return PBC_Localize("you feel the urge to say something");
     }
 
     PBC_Log(PBC_LogLevel::PBC_DEBUG,

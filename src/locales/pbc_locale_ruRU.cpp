@@ -441,6 +441,26 @@ static const PBC_LocaleMap ruRU = {
     { "you feel the urge to say something",
       "ты чувствуешь желание что-то сказать" },
 
+    // ---- Relationship prompt line (pbc_character.cpp) ------------------
+    // {0} = target name, {1} = relationship description
+    { "Your relationship with {0}: {1}",
+      "Твои отношения с {0}: {1}" },
+
+    // ---- Narrator progress messages (pbc_event_processor.cpp) -----------
+    // {0} = character name
+    { "Condensing {0}'s history...",
+      "Сжатие истории персонажа {0}..." },
+    // {0} = character name, {1} = target name
+    { "Updating {0}'s relationship with {1}...",
+      "Обновление отношений {0} с {1}..." },
+
+    // ---- Duel event lines (pbc_player_scripts.cpp) ----------------------
+    // {0} = winner name, {1} = loser name
+    { "{0} just won the duel against {1}",
+      "{0} только что победил(а) в дуэли против {1}" },
+    { "{0} won the duel against {1}",
+      "{0} победил(а) в дуэли против {1}" },
+
     // ---- Item phrase template (PBC_BuildItemPhrase) ------------------
     // {0}=quality, {1}=item type.  Uses a fixed-gender anchor word
     // ("предмет", masc.) to carry the quality adjective safely, then
