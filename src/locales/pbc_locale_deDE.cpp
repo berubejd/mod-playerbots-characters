@@ -229,10 +229,14 @@ static const PBC_LocaleMap deDE = {
       "Hauptwaffe: {1} namens {2}." },
     { "Your main weapon is a {0}.",
       "Hauptwaffe: {0}." },
-    { "In your off-hand you wield a {0} {1} called {2}.",
-      "Schildhand: {1} namens {2}." },
-    { "In your off-hand you wield a {0}.",
-      "Schildhand: {0}." },
+    // -- Dual-wield combined line ("Your main weapons are … and …") --
+    { "Your main weapons are {0} and {1}.",
+      "Hauptwaffen: {0} und {1}." },
+    // -- Standalone weapon item phrases (no sentence wrapper, no period) --
+    { "a {0} {1} called {2}",
+      "{1} namens {2}" },
+    { "a {0}",
+      "{0}" },
     { "Your ranged weapon is a {0} {1} called {2}.",
       "Fernkampfwaffe: {1} namens {2}." },
     { "Your ranged weapon is a {0}.",

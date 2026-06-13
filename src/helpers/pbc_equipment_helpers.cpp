@@ -101,9 +101,13 @@ static std::string BuildBagSpaceStr(Player* bot)
 // Builds a single-line human-readable equipment summary:
 //
 //   You have {quality} equipment made of {material}. Your main weapon is a
-//   {rarity} {type}[ called {name}]. In your off-hand you wield a {rarity}
-//   {type}[ called {name}]. Your ranged weapon is a {rarity} {type}[ called
-//   {name}].
+//   {rarity} {type}[ called {name}].  (single weapon)
+//   — or —
+//   You have {quality} equipment made of {material}. Your main weapons are a
+//   {rarity} {type}[ called {name}] and a {rarity} {type}[ called {name}].
+//   (dual-wield)
+//
+// Your ranged weapon is a {rarity} {type}[ called {name}].
 //
 // Weapon names are included only for rare+ items.  Sentences are omitted when
 // the corresponding slot is empty (e.g. no off-hand, no ranged weapon).
@@ -224,32 +228,48 @@ std::string PBC_BuildEquipmentStr(Player* bot)
     std::vector<std::string> lines;
     lines.push_back(armorLine);
 
-    // Main weapon line
+    // Main weapon line (combined with off-hand when both present and not 2H)
     if (mhT)
     {
-        std::string rarity = EquipQualityStr(mhT->Quality);
-        std::string type   = (mhT->Class == ITEM_CLASS_WEAPON)
+        std::string mhRarity = EquipQualityStr(mhT->Quality);
+        std::string mhType   = (mhT->Class == ITEM_CLASS_WEAPON)
                                 ? PBC_WeaponTypeStr(mhT->SubClass)
                                 : EquipItemTypeStr(mhT);
 
-        if (mhT->Quality >= ITEM_QUALITY_RARE)
-            lines.push_back(PBC_Localize("Your main weapon is a {0} {1} called {2}.", rarity, type, PBC_GetItemName(mhT->ItemId)));
-        else
-            lines.push_back(PBC_Localize("Your main weapon is a {0}.", type));
-    }
+        // Build off-hand item phrase when present and not two-handed
+        std::string ohPhrase;
+        if (!is2H && ohT)
+        {
+            std::string ohRarity = EquipQualityStr(ohT->Quality);
+            std::string ohType   = (ohT->Class == ITEM_CLASS_WEAPON)
+                                    ? PBC_WeaponTypeStr(ohT->SubClass)
+                                    : EquipItemTypeStr(ohT);
 
-    // Off-hand line (suppressed when the main-hand weapon is two-handed)
-    if (!is2H && ohT)
-    {
-        std::string rarity = EquipQualityStr(ohT->Quality);
-        std::string type   = (ohT->Class == ITEM_CLASS_WEAPON)
-                                ? PBC_WeaponTypeStr(ohT->SubClass)
-                                : EquipItemTypeStr(ohT);
+            if (ohT->Quality >= ITEM_QUALITY_RARE)
+                ohPhrase = PBC_Localize("a {0} {1} called {2}", ohRarity, ohType, PBC_GetItemName(ohT->ItemId));
+            else
+                ohPhrase = PBC_Localize("a {0}", ohType);
+        }
 
-        if (ohT->Quality >= ITEM_QUALITY_RARE)
-            lines.push_back(PBC_Localize("In your off-hand you wield a {0} {1} called {2}.", rarity, type, PBC_GetItemName(ohT->ItemId)));
+        if (!ohPhrase.empty())
+        {
+            // Dual-wield: combine main + off-hand (plural "weapons")
+            std::string mhPhrase;
+            if (mhT->Quality >= ITEM_QUALITY_RARE)
+                mhPhrase = PBC_Localize("a {0} {1} called {2}", mhRarity, mhType, PBC_GetItemName(mhT->ItemId));
+            else
+                mhPhrase = PBC_Localize("a {0}", mhType);
+
+            lines.push_back(PBC_Localize("Your main weapons are {0} and {1}.", mhPhrase, ohPhrase));
+        }
         else
-            lines.push_back(PBC_Localize("In your off-hand you wield a {0}.", type));
+        {
+            // Single weapon (no off-hand or two-handed) — singular "weapon"
+            if (mhT->Quality >= ITEM_QUALITY_RARE)
+                lines.push_back(PBC_Localize("Your main weapon is a {0} {1} called {2}.", mhRarity, mhType, PBC_GetItemName(mhT->ItemId)));
+            else
+                lines.push_back(PBC_Localize("Your main weapon is a {0}.", mhType));
+        }
     }
 
     // Ranged weapon / relic line

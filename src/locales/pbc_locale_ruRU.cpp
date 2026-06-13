@@ -229,10 +229,14 @@ static const PBC_LocaleMap ruRU = {
       "Твоё основное оружие — {1} {2}." },
     { "Your main weapon is a {0}.",
       "Твоё основное оружие — {0}." },
-    { "In your off-hand you wield a {0} {1} called {2}.",
-      "В левой руке ты держишь {1} {2}." },
-    { "In your off-hand you wield a {0}.",
-      "В левой руке ты держишь {0}." },
+    // -- Dual-wield combined line ("Your main weapons are … and …") --
+    { "Your main weapons are {0} and {1}.",
+      "Твоё оружие — {0} и {1}." },
+    // -- Standalone weapon item phrases (no sentence wrapper, no period) --
+    { "a {0} {1} called {2}",
+      "{1} {2}" },
+    { "a {0}",
+      "{0}" },
     { "Your ranged weapon is a {0} {1} called {2}.",
       "Твоё оружие дальнего боя — {1} {2}." },
     { "Your ranged weapon is a {0}.",
