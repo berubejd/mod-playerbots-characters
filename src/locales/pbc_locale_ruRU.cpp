@@ -239,8 +239,8 @@ static const PBC_LocaleMap ruRU = {
       "Твоё оружие дальнего боя — {0}." },
 
     // ---- Equipment: off-hand types -----------------------------------
-    { "off-hand item",  "предмет в левой руке" },
-    { "off-hand focus", "фокус в левой руке" },
+    { "off-hand item",  "предмет" },
+    { "off-hand focus", "фокус" },
 
     // ---- Bag space ---------------------------------------------------
     { "Your bags are about half full.",
@@ -268,15 +268,15 @@ static const PBC_LocaleMap ruRU = {
     { "two-handed axe",  "двуручный топор" },
     { "bow",             "лук" },
     { "gun",             "ружьё" },
-    { "one-handed mace", "одноручное дробящее" },
-    { "two-handed mace", "двуручное дробящее" },
-    { "polearm",         "древковое оружие" },
+    { "one-handed mace", "одноручная булава" },
+    { "two-handed mace", "двуручная булава" },
+    { "polearm",         "древковое" },
     { "one-handed sword","одноручный меч" },
     { "two-handed sword","двуручный меч" },
     { "staff",           "посох" },
-    { "fist weapon",     "кистевое оружие" },
+    { "fist weapon",     "кистевое" },
     { "dagger",          "кинжал" },
-    { "thrown weapon",   "метательное оружие" },
+    { "thrown weapon",   "метательное" },
     { "crossbow",        "арбалет" },
     { "wand",            "жезл" },
     { "spear",           "копьё" },
@@ -307,91 +307,11 @@ static const PBC_LocaleMap ruRU = {
     { "libram",  "либрам" },
     { "idol",    "идол" },
     { "totem",   "тотем" },
-    { "sigil",   "сигил" },
-
-    // ---- Consumable types --------------------------------------------
-    { "potion",            "зелье" },
-    { "elixir",            "эликсир" },
-    { "flask",             "настой" },
-    { "scroll",            "свиток" },
-    { "food",              "еда" },
-    { "item enhancement",  "улучшение предмета" },
-    { "bandage",           "бинт" },
-    { "consumable",        "расходуемый предмет" },
-
-    // ---- Gem types ---------------------------------------------------
-    { "red gem",        "красный камень" },
-    { "blue gem",       "синий камень" },
-    { "yellow gem",     "жёлтый камень" },
-    { "purple gem",     "фиолетовый камень" },
-    { "green gem",      "зелёный камень" },
-    { "orange gem",     "оранжевый камень" },
-    { "meta gem",       "мета-камень" },
-    { "prismatic gem",  "призматический камень" },
-    { "gem",            "камень" },
-
-    // ---- Recipe types ------------------------------------------------
-    { "book",                    "книга" },
-    { "leatherworking pattern",  "выкройка кожевничества" },
-    { "tailoring pattern",       "выкройка портняжного дела" },
-    { "engineering schematic",   "схема инженерного дела" },
-    { "blacksmithing plans",     "чертежи кузнечного дела" },
-    { "cooking recipe",          "рецепт кулинарии" },
-    { "alchemy recipe",          "рецепт алхимии" },
-    { "first aid manual",        "учебник первой помощи" },
-    { "enchanting formula",      "формула наложения чар" },
-    { "fishing manual",          "учебник рыбной ловли" },
-    { "jewelcrafting recipe",    "рецепт ювелирного дела" },
-    { "recipe",                  "рецепт" },
-
-    // ---- Trade goods -------------------------------------------------
-    { "trade goods",        "торговые товары" },
-    { "engineering parts",  "инженерные детали" },
-    { "explosives",         "взрывчатка" },
-    { "device",             "устройство" },
-    { "jewelcrafting material", "ювелирный материал" },
-    { "metal and stone",    "металл и камень" },
-    { "meat",               "мясо" },
-    { "herb",               "трава" },
-    { "elemental item",     "элементальный предмет" },
-    { "enchanting material","материал для наложения чар" },
-    { "material",           "материал" },
-
-    // ---- Projectile --------------------------------------------------
-    { "arrow",      "стрела" },
-    { "bullet",     "пуля" },
-    { "ammunition", "боеприпасы" },
-
-    // ---- Container ---------------------------------------------------
-    { "bag",                "сумка" },
-    { "soul bag",           "сумка душ" },
-    { "herb bag",           "сумка для трав" },
-    { "enchanting bag",     "сумка для чар" },
-    { "engineering bag",    "сумка инженера" },
-    { "gem bag",            "сумка для камней" },
-    { "mining bag",         "сумка горняка" },
-    { "leatherworking bag", "сумка кожевника" },
-    { "inscription bag",    "сумка начертателя" },
-
-    // ---- Key ---------------------------------------------------------
-    { "key",      "ключ" },
-    { "lockpick", "отмычка" },
-
-    // ---- Quiver ------------------------------------------------------
-    { "quiver",      "колчан" },
-    { "ammo pouch",  "подсумок" },
-
-    // ---- Misc --------------------------------------------------------
-    { "junk item",          "хлам" },
-    { "reagent",            "реагент" },
-    { "holiday item",       "праздничный предмет" },
-    { "miscellaneous item", "остальное" },
-    { "mount",              "средство передвижения" },
-    { "item",               "предмет" },
+    { "sigil",   "печать" },
 
     // ---- Fallback phrases --------------------------------------------
     { "an item",     "предмет" },
-    { "quest item",  "предмет задания" },
+    { "item",        "предмет" },
 
     // ---- Quest giver / ender types -----------------------------------
     { "person",           "личность" },
@@ -483,21 +403,21 @@ static const PBC_LocaleMap ruRU = {
     { " grows more powerful, their skills sharpened by experience",
       " становится сильнее, их навыки отточены опытом" },
     { " has grown stronger through their trials and hardships",
-      " стал(а) сильнее, пройдя через испытания и трудности" },
+      " крепнет, проходя через испытания и трудности" },
     { " feels a surge of power as their abilities improve",
       " чувствует прилив сил по мере улучшения способностей" },
     { " has become more capable, their experience forging them anew",
-      " стал(а) более способным, опыт выковывает их заново" },
+      " обретает мастерство, закаляясь в опыте" },
     { " grew stronger",
-      " стал(а) сильнее" },
+      " становится сильнее" },
     { " became more powerful through experience",
-      " стал(а) могущественнее с опытом" },
+      " крепнет с опытом, набираясь могущества" },
     { " emerged from their trials more capable than before",
-      " вышел(ла) из испытаний более способным(ой), чем прежде" },
+      " выходит из испытаний сильнее и искуснее прежнего" },
     { " felt their abilities sharpen and grow",
-      " почувствовал(а), как способности обостряются и растут" },
+      " чувствует, как способности обостряются и растут" },
     { " gained new strength and skill",
-      " обрёл(а) новую силу и умение" },
+      " обретает новую силу и умение" },
 
     // ---- Trigger event lines (pbc_event_dispatch.cpp) ----------------
     { "you want to comment on your surroundings",

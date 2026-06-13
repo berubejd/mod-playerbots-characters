@@ -98,14 +98,14 @@ static std::string BuildBagSpaceStr(Player* bot)
 // ---------------------------------------------------------------------------
 // PBC_BuildEquipmentStr  (main-thread only)
 //
-// Builds a multi-line human-readable equipment summary:
+// Builds a single-line human-readable equipment summary:
 //
-//   You have {quality} equipment made of {material}.
-//   Your main weapon is a {rarity} {type}[ called {name}].
-//   In your off-hand you wield a {rarity} {type}[ called {name}].
-//   Your ranged weapon is a {rarity} {type}[ called {name}].
+//   You have {quality} equipment made of {material}. Your main weapon is a
+//   {rarity} {type}[ called {name}]. In your off-hand you wield a {rarity}
+//   {type}[ called {name}]. Your ranged weapon is a {rarity} {type}[ called
+//   {name}].
 //
-// Weapon names are included only for rare+ items.  Lines are omitted when
+// Weapon names are included only for rare+ items.  Sentences are omitted when
 // the corresponding slot is empty (e.g. no off-hand, no ranged weapon).
 // A bag-space summary is appended when bags are ≥40% full.
 // ---------------------------------------------------------------------------
@@ -266,11 +266,11 @@ std::string PBC_BuildEquipmentStr(Player* bot)
             lines.push_back(PBC_Localize("Your ranged weapon is a {0}.", type));
     }
 
-    // Assemble: each line on its own row
+    // Assemble: single line with sentences separated by spaces
     std::string result;
     for (size_t i = 0; i < lines.size(); ++i)
     {
-        if (i > 0) result += "\n";
+        if (i > 0) result += " ";
         result += lines[i];
     }
 

@@ -239,8 +239,8 @@ static const PBC_LocaleMap deDE = {
       "Fernkampfwaffe: {0}." },
 
     // ---- Equipment: off-hand types -----------------------------------
-    { "off-hand item",  "Schildhand-Gegenstand" },
-    { "off-hand focus", "Schildhand-Fokus" },
+    { "off-hand item",  "Gegenstand" },
+    { "off-hand focus", "Fokus" },
 
     // ---- Bag space ---------------------------------------------------
     { "Your bags are about half full.",
@@ -309,89 +309,9 @@ static const PBC_LocaleMap deDE = {
     { "totem",   "Totem" },
     { "sigil",   "Siegel" },
 
-    // ---- Consumable types --------------------------------------------
-    { "potion",            "Trank" },
-    { "elixir",            "Elixier" },
-    { "flask",             "Fläschchen" },
-    { "scroll",            "Schriftrolle" },
-    { "food",              "Essen" },
-    { "item enhancement",  "Gegenstandsverbesserung" },
-    { "bandage",           "Verband" },
-    { "consumable",        "Verbrauchsgegenstand" },
-
-    // ---- Gem types ---------------------------------------------------
-    { "red gem",        "roter Edelstein" },
-    { "blue gem",       "blauer Edelstein" },
-    { "yellow gem",     "gelber Edelstein" },
-    { "purple gem",     "violetter Edelstein" },
-    { "green gem",      "grüner Edelstein" },
-    { "orange gem",     "orangener Edelstein" },
-    { "meta gem",       "Meta-Edelstein" },
-    { "prismatic gem",  "prismatischer Edelstein" },
-    { "gem",            "Edelstein" },
-
-    // ---- Recipe types ------------------------------------------------
-    { "book",                    "Buch" },
-    { "leatherworking pattern",  "Lederverarbeitungsmuster" },
-    { "tailoring pattern",       "Schneidereimuster" },
-    { "engineering schematic",   "Ingenieurskunst-Schema" },
-    { "blacksmithing plans",     "Schmiedekunst-Pläne" },
-    { "cooking recipe",          "Kochrezept" },
-    { "alchemy recipe",          "Alchemierezept" },
-    { "first aid manual",        "Erste-Hilfe-Handbuch" },
-    { "enchanting formula",      "Verzauberungsformel" },
-    { "fishing manual",          "Angelhandbuch" },
-    { "jewelcrafting recipe",    "Juwelenschleifrezept" },
-    { "recipe",                  "Rezept" },
-
-    // ---- Trade goods -------------------------------------------------
-    { "trade goods",        "Handelswaren" },
-    { "engineering parts",  "Ingenieursteile" },
-    { "explosives",         "Sprengstoff" },
-    { "device",             "Gerät" },
-    { "jewelcrafting material", "Juwelenschleifmaterial" },
-    { "metal and stone",    "Metall und Stein" },
-    { "meat",               "Fleisch" },
-    { "herb",               "Kraut" },
-    { "elemental item",     "Elementargegenstand" },
-    { "enchanting material","Verzauberungsmaterial" },
-    { "material",           "Material" },
-
-    // ---- Projectile --------------------------------------------------
-    { "arrow",      "Pfeil" },
-    { "bullet",     "Kugel" },
-    { "ammunition", "Munition" },
-
-    // ---- Container ---------------------------------------------------
-    { "bag",                "Tasche" },
-    { "soul bag",           "Seelentasche" },
-    { "herb bag",           "Kräutertasche" },
-    { "enchanting bag",     "Verzauberungstasche" },
-    { "engineering bag",    "Ingenieurstasche" },
-    { "gem bag",            "Edelsteintasche" },
-    { "mining bag",         "Bergbautasche" },
-    { "leatherworking bag", "Lederverarbeitungstasche" },
-    { "inscription bag",    "Inschriftentasche" },
-
-    // ---- Key ---------------------------------------------------------
-    { "key",      "Schlüssel" },
-    { "lockpick", "Dietrich" },
-
-    // ---- Quiver ------------------------------------------------------
-    { "quiver",      "Köcher" },
-    { "ammo pouch",  "Munitionstasche" },
-
-    // ---- Misc --------------------------------------------------------
-    { "junk item",          "Schrottgegenstand" },
-    { "reagent",            "Reagenz" },
-    { "holiday item",       "Festtagsgegenstand" },
-    { "miscellaneous item", "sonstiger Gegenstand" },
-    { "mount",              "Reittier" },
-    { "item",               "Gegenstand" },
-
     // ---- Fallback phrases --------------------------------------------
     { "an item",     "ein Gegenstand" },
-    { "quest item",  "Questgegenstand" },
+    { "item",        "Gegenstand" },
 
     // ---- Quest giver / ender types -----------------------------------
     { "person",           "Person" },
