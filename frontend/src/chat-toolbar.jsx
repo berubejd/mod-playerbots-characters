@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'preact/hooks';
 import { fetchDebugRequest, fetchCharData, fetchMemoryCount, updateCharData, fetchMemories, editMemory, deleteMemory, formatApiError } from './api.js';
 import { useToast } from './toast-provider.jsx';
 
@@ -213,8 +213,10 @@ export function MemoriesModal({ show, token, guid, charName, onClose, onDesync }
   const [orderDir, setOrderDir] = useState('desc');
   const [editMemoryModal, setEditMemoryModal] = useState({ show: false, memory: null });
   const [deleteMemoryModal, setDeleteMemoryModal] = useState({ show: false, memory: null });
+  const [jumpInput, setJumpInput] = useState('');
   const toast = useToast();
   const PAGE_SIZE = 10;
+  const MAX_VISIBLE_PAGES = 5;
 
   const loadMemories = useCallback(async (p, ob, od) => {
     if (!token || !guid) return;
@@ -309,6 +311,28 @@ export function MemoriesModal({ show, token, guid, charName, onClose, onDesync }
     setDeleteMemoryModal({ show: false, memory: null });
   }, []);
 
+  const handleJump = useCallback(() => {
+    const target = parseInt(jumpInput, 10);
+    if (Number.isFinite(target) && target >= 1 && target <= totalPages) {
+      loadMemories(target, orderBy, orderDir);
+      setJumpInput('');
+    }
+  }, [jumpInput, totalPages, orderBy, orderDir, loadMemories]);
+
+  // Compute visible page window (max MAX_VISIBLE_PAGES pages, centered on current page)
+  const visiblePages = useMemo(() => {
+    if (totalPages <= MAX_VISIBLE_PAGES) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    let start = Math.max(1, page - Math.floor(MAX_VISIBLE_PAGES / 2));
+    let end = start + MAX_VISIBLE_PAGES - 1;
+    if (end > totalPages) {
+      end = totalPages;
+      start = Math.max(1, end - MAX_VISIBLE_PAGES + 1);
+    }
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  }, [page, totalPages]);
+
   const sortIcon = (col) => {
     if (orderBy !== col) return <i class="bi bi-dash opacity-25 ms-1"></i>;
     return orderDir === 'asc'
@@ -385,19 +409,43 @@ export function MemoriesModal({ show, token, guid, charName, onClose, onDesync }
                 </div>
                 {totalPages > 1 && (
                   <nav class="px-3 py-2">
-                    <ul class="pagination pagination-sm mb-0 justify-content-center">
-                      <li class={`page-item ${page <= 1 ? 'disabled' : ''}`}>
-                        <button class="page-link" onClick={() => handlePageChange(page - 1)}>‹</button>
-                      </li>
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                        <li key={p} class={`page-item ${p === page ? 'active' : ''}`}>
-                          <button class="page-link" onClick={() => handlePageChange(p)}>{p}</button>
+                    <div class="d-flex justify-content-center align-items-center gap-1 flex-wrap">
+                      <ul class="pagination pagination-sm mb-0">
+                        <li class={`page-item ${page <= 1 ? 'disabled' : ''}`}>
+                          <button class="page-link" onClick={() => handlePageChange(1)} title="First page">«</button>
                         </li>
-                      ))}
-                      <li class={`page-item ${page >= totalPages ? 'disabled' : ''}`}>
-                        <button class="page-link" onClick={() => handlePageChange(page + 1)}>›</button>
-                      </li>
-                    </ul>
+                        <li class={`page-item ${page <= 1 ? 'disabled' : ''}`}>
+                          <button class="page-link" onClick={() => handlePageChange(page - 1)} title="Previous">‹</button>
+                        </li>
+                        {visiblePages.map((p) => (
+                          <li key={p} class={`page-item ${p === page ? 'active' : ''}`}>
+                            <button class="page-link" onClick={() => handlePageChange(p)}>{p}</button>
+                          </li>
+                        ))}
+                        <li class={`page-item ${page >= totalPages ? 'disabled' : ''}`}>
+                          <button class="page-link" onClick={() => handlePageChange(page + 1)} title="Next">›</button>
+                        </li>
+                        <li class={`page-item ${page >= totalPages ? 'disabled' : ''}`}>
+                          <button class="page-link" onClick={() => handlePageChange(totalPages)} title="Last page">»</button>
+                        </li>
+                      </ul>
+                      <span class="d-flex align-items-center gap-1 ms-2" style="font-size: 0.875rem;">
+                        <span class="text-body-secondary">Page</span>
+                        <input
+                          type="number"
+                          class="form-control form-control-sm"
+                          style="width: 60px;"
+                          min="1"
+                          max={totalPages}
+                          value={jumpInput}
+                          onInput={(e) => setJumpInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleJump(); }}
+                          placeholder={String(page)}
+                        />
+                        <span class="text-body-secondary">of {totalPages}</span>
+                        <button class="btn btn-sm btn-outline-secondary" onClick={handleJump}>Go</button>
+                      </span>
+                    </div>
                   </nav>
                 )}
               </>
