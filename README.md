@@ -18,7 +18,10 @@ Over time, chat history grows. When it reaches the configured token limit, a con
 
 Relationships are tracked between characters and real players, as well as other characters. When a name is mentioned enough times in a character's history, a relationship update is triggered — generating or updating a brief description of how the character feels about that person. These are included in future prompts, giving characters continuity with their companions.
 
-The module supports multiple languages based on the server's `DBC.Locale` setting.
+The module supports multiple languages based on the server's `DBC.Locale` setting:
+- enUS (default, picked if the needed locale is not found)
+- deDE
+- ruRU
 
 
 ## Installation
@@ -94,14 +97,14 @@ Choosing the right model can be tricky. Two tested configurations are listed bel
 |---|---|
 | `PBC.APIType` | `openai` |
 | `PBC.BaseUrl` | `https://api.deepseek.com/v1` |
-| `PBC.Model` | `deepseek-chat` |
-| `PBC.Temperature` | `1.6` |
+| `PBC.Model` | `deepseek-v4-pro` |
+| `PBC.Temperature` | `1.0` |
 | `PBC.MaxHistoryCtx` | `32768` |
 | `PBC.MaxMemoriesCtx` | `8192` |
-| `PBC.ModelExtraParameters` | `'frequency_penalty':0.5,'presence_penalty':0.2` |
+| `PBC.ModelExtraParameters` | `'thinking':{'type':'disabled'}` |
 | `PBC.ApiKey` | your API key from [DeepSeek platform](https://platform.deepseek.com/) |
 
-DeepSeek offers a reasonable cost/capabilities compromise and can be considered the cheapest viable option. The `frequency_penalty` and `presence_penalty` extra parameters help reduce repetitive output. Expect to spend under $0.5 for several hours of play.
+DeepSeek offers a reasonable cost/capabilities compromise and can be considered the cheapest viable option. Expect to spend under $1 for several hours of play.
 
 #### GLM (Zhipu AI)
 
@@ -116,7 +119,7 @@ DeepSeek offers a reasonable cost/capabilities compromise and can be considered 
 | `PBC.ModelExtraParameters` | `'thinking':{'type':'disabled'}` |
 | `PBC.ApiKey` | your API key from [Z.ai](https://z.ai/manage-apikey/apikey-list) |
 
-GLM 5.1 has a built-in "thinking" mode that would reach `PBC.MaxResponseLength` very fast — disabling it via `ModelExtraParameters` is required for this case, unless you lift the limit. The model handles the required tasks impressively well, though the cost adds up fairly quickly. Expect to spend around $2 per long game session with a full party.
+GLM 5.1 handles the required tasks impressively well, though the cost adds up fairly quickly. Expect to spend around $2 per long game session with a full party.
 
 #### Other Models
 
@@ -135,6 +138,8 @@ When switching providers, pay attention to `PBC.Temperature` — acceptable rang
 ### Alternative Model
 
 Condensation and relationship updates are critical — their output becomes permanent parts of the character's context. The `ALTERNATIVE API` config section lets you route these tasks to a more capable model while keeping the main chat on a cheaper/faster one. Parameters follow the same format as the main model, prefixed with `AltModel`.
+
+You can also enable thinking mode (if the model supports it of course) to improve the results further.
 
 ### HTTP Server & Web App
 
