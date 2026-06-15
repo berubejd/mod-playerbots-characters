@@ -199,12 +199,15 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 oldLevel)
 
     if (player->GetLevel() % 5 != 0) return;
 
+    // Event phrases use present tense ("happening now" for in-game chat).
+    // History phrases use past tense ("happened earlier" for DB storage).
+    // Each pair shares the same wording, differing only in tense.
     static const char* levelUpEventPhrases[] = {
-        " can feel their abilities growing stronger",
-        " grows more powerful, their skills sharpened by experience",
-        " has grown stronger through their trials and hardships",
-        " feels a surge of power as their abilities improve",
-        " has become more capable, their experience forging them anew",
+        " grows stronger",
+        " becomes more powerful through experience",
+        " emerges from their trials more capable than before",
+        " feels their abilities sharpen and grow",
+        " gains new strength and skill",
     };
     static const char* levelUpHistPhrases[] = {
         " grew stronger",

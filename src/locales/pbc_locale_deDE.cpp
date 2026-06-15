@@ -402,16 +402,18 @@ static const PBC_LocaleMap deDE = {
       "Die Gruppe zog nach {0}" },
 
     // ---- Level up phrases (pbc_player_scripts.cpp) -------------------
-    { " can feel their abilities growing stronger",
-      " spürt, wie die eigenen Fähigkeiten stärker werden" },
-    { " grows more powerful, their skills sharpened by experience",
-      " wird mächtiger, die eigenen Fertigkeiten wurden durch Erfahrung geschärft" },
-    { " has grown stronger through their trials and hardships",
-      " ist durch Herausforderungen und Entbehrungen stärker geworden" },
-    { " feels a surge of power as their abilities improve",
-      " fühlt einen Energieschub, als sich die eigenen Fähigkeiten verbessern" },
-    { " has become more capable, their experience forging them anew",
-      " ist fähiger geworden, geprägt durch die eigene Erfahrung" },
+    // Event (present tense)
+    { " grows stronger",
+      " wird stärker" },
+    { " becomes more powerful through experience",
+      " wird durch Erfahrung mächtiger" },
+    { " emerges from their trials more capable than before",
+      " geht aus den bestandenen Prüfungen fähiger hervor als zuvor" },
+    { " feels their abilities sharpen and grow",
+      " spürt, wie die eigenen Fähigkeiten sich schärfen und wachsen" },
+    { " gains new strength and skill",
+      " erlangt neue Stärke und Fertigkeit" },
+    // History (past tense)
     { " grew stronger",
       " wurde stärker" },
     { " became more powerful through experience",
