@@ -1,6 +1,7 @@
 #ifndef MOD_PBC_WORLD_H
 #define MOD_PBC_WORLD_H
 
+#include <cstdint>
 #include "ScriptMgr.h"
 
 // ---------------------------------------------------------------------------

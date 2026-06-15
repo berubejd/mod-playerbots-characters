@@ -1,6 +1,7 @@
 #ifndef MOD_PBC_LOCALES_H
 #define MOD_PBC_LOCALES_H
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 

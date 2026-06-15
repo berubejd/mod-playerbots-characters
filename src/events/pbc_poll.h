@@ -1,6 +1,7 @@
 #ifndef MOD_PBC_POLL_H
 #define MOD_PBC_POLL_H
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <map>

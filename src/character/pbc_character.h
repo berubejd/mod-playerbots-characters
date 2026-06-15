@@ -1,6 +1,7 @@
 #ifndef MOD_PBC_CHARACTER_H
 #define MOD_PBC_CHARACTER_H
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include "Player.h"
