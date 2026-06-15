@@ -27,6 +27,16 @@ std::string PBC_GetQuestEnderNames(uint32 questId);
 std::string PBC_GetQuestStarterType(uint32 questId);
 std::string PBC_GetQuestEnderType(uint32 questId);
 
+// Look up a single creature's gender from creature_template → model info.
+// Returns PBC_Localize("male"), PBC_Localize("female"), or empty string.
+std::string PBC_GetCreatureGender(uint32 entry);
+
+// Look up quest starter/ender names with gender appended for creatures.
+// Returns e.g. "Gryan Stoutmantle (male), Wanted Poster" — gameobjects are
+// included as plain names (no gender).
+std::string PBC_GetQuestStarterNamesWithGender(uint32 questId);
+std::string PBC_GetQuestEnderNamesWithGender(uint32 questId);
+
 // Substitute quest-related placeholders in a prompt template string.
 std::string PBC_SubstituteQuestVars(const std::string& tmpl,
                                      const std::string& title,

@@ -5,6 +5,7 @@
 #include "pbc_config.h"
 #include "ObjectMgr.h"
 #include "Creature.h"
+#include "CreatureData.h"
 #include "GameObject.h"
 #include "Player.h"
 #include "Group.h"
@@ -170,6 +171,121 @@ std::string PBC_GetQuestEnderType(uint32 questId)
     if (hasCreature) return PBC_Localize("person");
     if (hasGO) return PBC_Localize("object");
     return "";
+}
+
+// ---------------------------------------------------------------------------
+// Look up a single creature's gender from creature_template → model info.
+// Returns PBC_Localize("male"), PBC_Localize("female"), or empty string.
+// ---------------------------------------------------------------------------
+std::string PBC_GetCreatureGender(uint32 entry)
+{
+    CreatureTemplate const* ct = sObjectMgr->GetCreatureTemplate(entry);
+    if (!ct)
+        return "";
+
+    CreatureModel const* model = ct->GetFirstValidModel();
+    if (!model || model->CreatureDisplayID == 0)
+        return "";
+
+    CreatureModelInfo const* modelInfo = sObjectMgr->GetCreatureModelInfo(model->CreatureDisplayID);
+    if (!modelInfo)
+        return "";
+
+    switch (modelInfo->gender)
+    {
+        case GENDER_MALE:   return PBC_Localize("male");
+        case GENDER_FEMALE: return PBC_Localize("female");
+        default:            return "";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Look up quest starter/ender names with gender appended for creatures.
+// Returns e.g. "Gryan Stoutmantle (male), Wanted Poster" — gameobjects are
+// included as plain names (no gender).
+// ---------------------------------------------------------------------------
+std::string PBC_GetQuestStarterNamesWithGender(uint32 questId)
+{
+    std::string result;
+
+    // Creature starters
+    auto* relMap = sObjectMgr->GetCreatureQuestRelationMap();
+    for (auto it = relMap->begin(); it != relMap->end(); ++it)
+    {
+        if (it->second == questId)
+        {
+            std::string name = PBC_GetCreatureName(it->first);
+            if (!name.empty())
+            {
+                if (!result.empty()) result += ", ";
+                result += name;
+                std::string gender = PBC_GetCreatureGender(it->first);
+                if (!gender.empty())
+                {
+                    result += " (";
+                    result += gender;
+                    result += ")";
+                }
+            }
+        }
+    }
+    // Gameobject starters (no gender)
+    auto* goRelMap = sObjectMgr->GetGOQuestRelationMap();
+    for (auto it = goRelMap->begin(); it != goRelMap->end(); ++it)
+    {
+        if (it->second == questId)
+        {
+            std::string name = PBC_GetGameObjectName(it->first);
+            if (!name.empty())
+            {
+                if (!result.empty()) result += ", ";
+                result += name;
+            }
+        }
+    }
+    return result;
+}
+
+std::string PBC_GetQuestEnderNamesWithGender(uint32 questId)
+{
+    std::string result;
+
+    // Creature enders
+    auto* relMap = sObjectMgr->GetCreatureQuestInvolvedRelationMap();
+    for (auto it = relMap->begin(); it != relMap->end(); ++it)
+    {
+        if (it->second == questId)
+        {
+            std::string name = PBC_GetCreatureName(it->first);
+            if (!name.empty())
+            {
+                if (!result.empty()) result += ", ";
+                result += name;
+                std::string gender = PBC_GetCreatureGender(it->first);
+                if (!gender.empty())
+                {
+                    result += " (";
+                    result += gender;
+                    result += ")";
+                }
+            }
+        }
+    }
+    // Gameobject enders (no gender)
+    auto* goRelMap = sObjectMgr->GetGOQuestInvolvedRelationMap();
+    for (auto it = goRelMap->begin(); it != goRelMap->end(); ++it)
+    {
+        if (it->second == questId)
+        {
+            std::string name = PBC_GetGameObjectName(it->first);
+            if (!name.empty())
+            {
+                if (!result.empty()) result += ", ";
+                result += name;
+            }
+        }
+    }
+    return result;
 }
 
 // ---------------------------------------------------------------------------

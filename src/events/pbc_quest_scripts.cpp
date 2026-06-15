@@ -44,14 +44,15 @@ static void HandleQuestTaken(Player* player, Quest const* quest,
     std::string questDescription    = PBC_StripWowTextCodes(PBC_GetQuestDetails(quest->GetQuestId()));
     std::string questLogDescription = PBC_StripWowTextCodes(PBC_GetQuestObjectives(quest->GetQuestId()));
     std::string questCompletionLog  = PBC_StripWowTextCodes(PBC_GetQuestCompletedText(quest->GetQuestId()));
+    std::string questGiverWithGender = PBC_GetQuestStarterNamesWithGender(quest->GetQuestId());
 
     PBC_Log(PBC_LogLevel::PBC_DEBUG, "HandleQuestTaken: leader={} quest='{}' (id={}) giver='{}' type='{}'",
-             player->GetName(), questTitle, quest->GetQuestId(), questGiver, questGiverType);
+             player->GetName(), questTitle, quest->GetQuestId(), questGiverWithGender, questGiverType);
 
     std::string userPrompt = PBC_SubstituteQuestVars(
         g_PBC_QuestTakenUserPrompt,
         questTitle, questDescription, questLogDescription, questCompletionLog,
-        /*rewardText=*/"", questGiver, /*questEnder=*/"", questGiverType, /*questEnderType=*/"");
+        /*rewardText=*/"", questGiverWithGender, /*questEnder=*/"", questGiverType, /*questEnderType=*/"");
 
     PBC_EventItem ev;
     ev.type               = PBC_EventType::QuestSummarization;

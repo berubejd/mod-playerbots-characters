@@ -280,8 +280,8 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     std::string questLogDescription = PBC_StripWowTextCodes(PBC_GetQuestObjectives(quest->GetQuestId()));
     std::string questCompletionLog  = PBC_StripWowTextCodes(PBC_GetQuestCompletedText(quest->GetQuestId()));
     std::string questRewardText     = PBC_StripWowTextCodes(PBC_GetQuestOfferRewardText(quest->GetQuestId()));
-    std::string questGiver          = PBC_GetQuestStarterNames(quest->GetQuestId());
-    std::string questEnder          = PBC_GetQuestEnderNames(quest->GetQuestId());
+    std::string questGiver          = PBC_GetQuestStarterNamesWithGender(quest->GetQuestId());
+    std::string questEnder          = PBC_GetQuestEnderNamesWithGender(quest->GetQuestId());
     std::string questGiverType      = PBC_GetQuestStarterType(quest->GetQuestId());
     std::string questEnderType      = PBC_GetQuestEnderType(quest->GetQuestId());
 
