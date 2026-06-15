@@ -1,6 +1,7 @@
 #ifndef MOD_PBC_CONDENSE_H
 #define MOD_PBC_CONDENSE_H
 
+#include <cstdint>
 #include <string>
 #include <deque>
 

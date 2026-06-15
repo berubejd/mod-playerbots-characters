@@ -193,7 +193,7 @@ void PBC_PlayerEvents::OnPlayerDuelEnd(Player* winner, Player* loser, DuelComple
         g_PBC_ReplyChanceDuel);
 }
 
-void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 oldLevel)
+void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
 {
     if (!g_PBC_Enable || !PBC_PTR_VALID(player)) return;
 

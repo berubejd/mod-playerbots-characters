@@ -458,6 +458,7 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
             {
                 case PBC_EventType::Normal:
                 case PBC_EventType::QuestSummarization:
+                case PBC_EventType::CombatSummarization:
                     PBC_Log(PBC_LogLevel::PBC_DEBUG, "OnUpdate: spawning event thread for type={} event=\"{}\"",
                              static_cast<int>(nextEvent.type), nextEvent.eventLine);
                     break;
@@ -471,6 +472,9 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 case PBC_EventType::RelationshipUpdate:
                     PBC_Log(PBC_LogLevel::PBC_DEBUG, "OnUpdate: spawning event thread for type=RelationshipUpdate character=\"{}\" target=\"{}\"",
                              nextEvent.relationshipChar.charName, nextEvent.relationshipTargetName);
+                    break;
+                case PBC_EventType::CardAdditionsMigration:
+                    PBC_Log(PBC_LogLevel::PBC_DEBUG, "OnUpdate: spawning event thread for type=CardAdditionsMigration");
                     break;
             }
 

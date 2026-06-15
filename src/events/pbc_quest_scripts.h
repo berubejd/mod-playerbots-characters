@@ -10,7 +10,7 @@ class Player;
 class Creature;
 class GameObject;
 class Item;
-struct Quest const;
+struct Quest;
 
 // Captures quest-accept events from all creatures.
 class PBC_AllCreatureQuestScript : public AllCreatureScript
