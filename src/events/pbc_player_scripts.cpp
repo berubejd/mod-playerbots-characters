@@ -32,8 +32,12 @@
 // Local helpers
 // ---------------------------------------------------------------------------
 
-static bool IsBlacklisted(const std::string& msg)
+static bool IsBlacklisted(uint32 lang, const std::string& msg)
 {
+    // When IgnoreAllAddonMessages is enabled, drop ALL addon traffic silently.
+    if (lang == LANG_ADDON && g_PBC_IgnoreAllAddonMessages)
+        return true;
+
     for (const auto& prefix : g_PBC_Blacklist)
         if (!prefix.empty() && msg.rfind(prefix, 0) == 0)
             return true;
@@ -44,13 +48,14 @@ static bool IsBlacklisted(const std::string& msg)
 // HandleChatMessage  (shared for all chat types)
 // ---------------------------------------------------------------------------
 
-static void HandleChatMessage(Player* sender, uint32 type, const std::string& rawMsg,
+static void HandleChatMessage(Player* sender, uint32 type, uint32 lang,
+                               const std::string& rawMsg,
                                Player* whisperTarget = nullptr)
 {
     if (!g_PBC_Enable) return;
     if (!PBC_PTR_VALID(sender)) return;
     if (type == CHAT_MSG_AFK || type == CHAT_MSG_DND) return;
-    if (IsBlacklisted(rawMsg)) return;
+    if (IsBlacklisted(lang, rawMsg)) return;
 
     const std::string msg = PBC_SanitizeChatMessage(rawMsg);
 
@@ -100,24 +105,24 @@ PBC_PlayerEvents::PBC_PlayerEvents() : PlayerScript("PBC_PlayerEvents",
     PLAYERHOOK_ON_PLAYER_JUST_DIED,
 }) {}
 
-bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
+bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang,
                                           std::string& msg, Player* receiver)
 {
-    HandleChatMessage(player, type, msg, receiver);
+    HandleChatMessage(player, type, lang, msg, receiver);
     return true;
 }
 
-bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
+bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang,
                                           std::string& msg)
 {
-    HandleChatMessage(player, type, msg);
+    HandleChatMessage(player, type, lang, msg);
     return true;
 }
 
-bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/,
+bool PBC_PlayerEvents::OnPlayerCanUseChat(Player* player, uint32 type, uint32 lang,
                                           std::string& msg, Group* /*group*/)
 {
-    HandleChatMessage(player, type, msg);
+    HandleChatMessage(player, type, lang, msg);
     return true;
 }
 

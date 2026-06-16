@@ -90,6 +90,8 @@ std::string g_PBC_CombatEndedUserPrompt;
 
 std::vector<std::string> g_PBC_Blacklist;
 
+bool        g_PBC_IgnoreAllAddonMessages   = true;
+
 int         g_PBC_HttpServerPort            = 0;
 std::string g_PBC_HttpServerBind            = "127.0.0.1";
 int         g_PBC_HttpServerTimeout         = 15;
@@ -199,6 +201,8 @@ void PBC_LoadConfig(bool /*isStartup*/)
 
     std::string blacklistStr = sConfigMgr->GetOption<std::string>("PBC.Blacklist", "");
     g_PBC_Blacklist = SplitByComma(blacklistStr);
+
+    g_PBC_IgnoreAllAddonMessages = sConfigMgr->GetOption<bool>("PBC.IgnoreAllAddonMessages", true);
 
     g_PBC_HttpServerPort         = sConfigMgr->GetOption<int>("PBC.HttpServerPort", 0);
     g_PBC_HttpServerBind         = sConfigMgr->GetOption<std::string>("PBC.HttpServerBind", "127.0.0.1");

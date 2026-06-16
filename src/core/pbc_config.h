@@ -101,6 +101,11 @@ extern std::string g_PBC_HttpServerFrontendPath;
 // Blacklist prefixes
 extern std::vector<std::string> g_PBC_Blacklist;
 
+// When enabled (1), all addon messages (LANG_ADDON) are silently ignored.
+// The PBC.Blacklist is bypassed entirely in this mode.
+// When disabled (0), the blacklist logic applies as normal.
+extern bool g_PBC_IgnoreAllAddonMessages;
+
 // Per-character roll chance modifiers (bot_guid -> modifier, -100..100)
 extern std::unordered_map<uint64_t, int32_t> g_PBC_RollChanceModifiers;
 extern std::mutex g_PBC_DataMutex;

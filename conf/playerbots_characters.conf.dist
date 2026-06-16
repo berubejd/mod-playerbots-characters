@@ -23,7 +23,7 @@ PBC.DebugEnabled = 0
 # PBC.DebugShowFullRequest
 #     Description: When enabled (1), logs the request body and response body
 #                  for every LLM API call.  Only active when PBC.DebugEnabled is also enabled.
-#                  Long payloads (>1000 symbols) are truncated to first 100 + " ... " + last 900 symbols.
+#                  Long payloads (>2000 symbols) are truncated to first 500 + " ... " + last 1500 symbols.
 #                  When disabled (0), only standard logging is used.
 #     Default:     0 (false)
 PBC.DebugShowFullRequest = 0
@@ -339,6 +339,14 @@ PBC.HttpServerFrontendPath = ../../../modules/mod-playerbots-characters/frontend
 # --------------------------------------------
 # BLACKLIST
 # --------------------------------------------
+
+# PBC.IgnoreAllAddonMessages
+#     Description: When enabled (1), ALL messages sent by client addons
+#                  are silently ignored by the characters.
+#                  When disabled (0), the PBC.Blacklist below applies instead
+#                  and addon messages are filtered the same way as regular chat.
+#     Default:     1 (true)
+PBC.IgnoreAllAddonMessages = 1
 
 # PBC.Blacklist
 #     Description: A comma-separated list of prefixes that should be ignored by the characters.
