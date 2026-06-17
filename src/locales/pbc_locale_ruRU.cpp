@@ -39,7 +39,7 @@ static const PBC_LocaleMap ruRU = {
     { "it's ",                            "сейчас " },
     { " and ",                            " и " },
     { ", but you are inside and sheltered from the weather",
-      ", но ты внутри и укрыт от непогоды" },
+      ", но ты внутри и [m:укрыт|f:укрыта] от непогоды" },
 
     // ---- Scene templates (travel state) ------------------------------
     // {0} = destination / mount name / place, {1} = time+weather
@@ -410,21 +410,20 @@ static const PBC_LocaleMap ruRU = {
     { " emerges from their trials more capable than before",
       " выходит из испытаний сильнее и искуснее прежнего" },
     { " feels their abilities sharpen and grow",
-      " чувствует, как способности обостряются и растут" },
+      " чувствует, как [m:его|f:её] способности обостряются и растут" },
     { " gains new strength and skill",
       " обретает новую силу и умение" },
-    // History (present tense — Russian past tense is gendered so we
-    // use the same present-tense forms as the event phrases above)
+    // History (past tense)
     { " grew stronger",
-      " становится сильнее" },
+      " [m:стал|f:стала] сильнее" },
     { " became more powerful through experience",
-      " набирается могущества с опытом" },
+      " [m:набрался|f:набралась] могущества с опытом" },
     { " emerged from their trials more capable than before",
-      " выходит из испытаний сильнее и искуснее прежнего" },
+      " [m:вышел|f:вышла] из испытаний сильнее и искуснее прежнего" },
     { " felt their abilities sharpen and grow",
-      " чувствует, как способности обостряются и растут" },
+      " [m:почувствовал|f:почувствовала], как [m:его|f:её] способности обостряются и растут" },
     { " gained new strength and skill",
-      " обретает новую силу и умение" },
+      " [m:обрёл|f:обрела] новую силу и умение" },
 
     // ---- Trigger event lines (pbc_event_dispatch.cpp) ----------------
     { "you want to comment on your surroundings",
@@ -460,9 +459,9 @@ static const PBC_LocaleMap ruRU = {
     // ---- Duel event lines (pbc_player_scripts.cpp) ----------------------
     // {0} = winner name, {1} = loser name
     { "{0} just won the duel against {1}",
-      "{0} только что победил(а) в дуэли против {1}" },
+      "{0} только что [m:победил|f:победила] в дуэли против {1}" },
     { "{0} won the duel against {1}",
-      "{0} победил(а) в дуэли против {1}" },
+      "{0} [m:победил|f:победила] в дуэли против {1}" },
 
     // ---- Item phrase template (PBC_BuildItemPhrase) ------------------
     // {0}=quality, {1}=item type.  Uses a fixed-gender anchor word

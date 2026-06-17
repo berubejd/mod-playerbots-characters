@@ -192,9 +192,10 @@ void PBC_PlayerEvents::OnPlayerDuelEnd(Player* winner, Player* loser, DuelComple
 {
     if (!g_PBC_Enable) return;
     if (!PBC_PTR_VALID(winner) || !PBC_PTR_VALID(loser) || type != DUEL_WON) return;
+    uint8_t winnerGender = winner->GetGender();
     PBC_DispatchGroupEvent(winner,
-        PBC_MakeEventLine(PBC_Localize("{0} just won the duel against {1}", winner->GetName(), loser->GetName())),
-        PBC_Localize("{0} won the duel against {1}", winner->GetName(), loser->GetName()),
+        PBC_MakeEventLine(PBC_Localize("{0} just won the duel against {1}", winner->GetName(), loser->GetName(), winnerGender)),
+        PBC_Localize("{0} won the duel against {1}", winner->GetName(), loser->GetName(), winnerGender),
         g_PBC_ReplyChanceDuel);
 }
 
@@ -223,9 +224,10 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
     };
 
     const std::string& name = player->GetName();
+    uint8_t gender = player->GetGender();
     int idx = std::uniform_int_distribution<int>(0, 4)(PBC_GetRNG());
-    std::string eventLine = PBC_MakeEventLine(name + PBC_Localize(levelUpEventPhrases[idx]));
-    std::string narratorText = name + PBC_Localize(levelUpHistPhrases[idx]);
+    std::string eventLine = PBC_MakeEventLine(name + PBC_Localize(levelUpEventPhrases[idx], gender));
+    std::string narratorText = name + PBC_Localize(levelUpHistPhrases[idx], gender);
 
     PBC_DispatchGroupEvent(player, eventLine, narratorText, g_PBC_ReplyChanceLevelUp);
 }
