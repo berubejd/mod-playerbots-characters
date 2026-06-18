@@ -12,6 +12,7 @@
 #include <thread>
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include "ObjectGuid.h"
 #include "ScriptMgr.h"
 
@@ -162,6 +163,7 @@ enum class PBC_EventType : uint8_t
     HistoryReload,          // Reload all histories from DB
     RelationshipUpdate,     // Update one character's relationship with a target
     CardAdditionsMigration, // Convert legacy card additions into memories
+    Regen,                  // Regenerate the last event's responses
 };
 
 // ---------------------------------------------------------------------------
@@ -192,6 +194,64 @@ struct PBC_EventSource
     bool IsNarrator() const { return !narratorText.empty(); }
     bool IsChat() const     { return senderGuid != 0 && !message.empty(); }
     bool HasSource() const  { return IsNarrator() || IsChat(); }
+};
+
+// ---------------------------------------------------------------------------
+// PBC_LastEventRecord
+//
+// Snapshot of the last Normal event that produced at least one character
+// response.  Captured at the end of ProcessNormal so the responses can be
+// regenerated later (see the Regen event type).
+//
+// The record stores:
+//   - The pre-mutation copies of every responding character's snapshot
+//     (history captured BEFORE the event's replies were appended).
+//   - The event metadata needed to re-run ProcessNormal identically
+//     (eventLine, source, chatType, canCreateEvents, whisper info, the
+//     full participant GUID lists, and the event-local history buffer
+//     as it was BEFORE any replies were added — i.e. just the source).
+//   - The DB history IDs of every message created by the event (source
+//     line + each reply), in chronological order.  These are used to
+//     edit the existing messages in place during regeneration so the
+//     message IDs (and therefore every character's ownership of them)
+//     remain stable.
+//   - The GUID of the real player who triggered the original event
+//     (used for the regen authorization check).
+// ---------------------------------------------------------------------------
+struct PBC_LastEventRecord
+{
+    // Event metadata (copied from the original PBC_EventItem)
+    std::string eventLine;
+    PBC_EventSource source;
+    uint32_t chatType = 0;
+    bool canCreateEvents = false;
+    std::string whisperSenderName;
+    std::string whisperTargetName;
+
+    // Pre-mutation snapshots of the responding characters.
+    // Each snapshot's history is the state BEFORE the event's replies
+    // were appended, so re-running ProcessNormal reproduces the exact
+    // same prompt context.
+    std::vector<PBC_CharacterSnapshot> respondingChars;
+
+    // Participant GUID lists (copied from the original event).
+    std::vector<uint64_t> silentCharGuids;
+    std::vector<uint64_t> playerCharGuids;
+    std::vector<uint64_t> replyOnlyCharGuids;
+
+    // The event-local history buffer as it was BEFORE any replies were
+    // added — i.e. just the source entry (if any).  Re-running
+    // ProcessNormal re-seeds eventHistory from this.
+    std::vector<PBC_HistoryEntry> seedEventHistory;
+
+    // DB history IDs of every message created by the original event,
+    // in chronological order: [source line (if any), reply 1, reply 2, ...].
+    // During regeneration these messages are edited in place.
+    std::vector<uint64_t> createdHistoryIds;
+
+    // The real player GUID that triggered the original event (0 if none).
+    // Used by the regen authorization check.
+    uint64_t requesterGuid = 0;
 };
 
 // A single unit of work for the event queue.
@@ -249,6 +309,17 @@ struct PBC_EventItem
     // CardAdditionsMigration fields
     std::string     migrationCondensationSystemPrompt;
     std::string     migrationCondensationUserPromptTmpl;
+
+    // -----------------------------------------------------------------------
+    // Regen fields
+    //
+    // A Regen event re-runs the last Normal event's responses.  It carries:
+    //   - regenRecord: the saved PBC_LastEventRecord (snapshots + metadata)
+    //   - regenRequesterGuid: the real player who requested the regen
+    //     (used only for logging / WS notifications)
+    // -----------------------------------------------------------------------
+    std::shared_ptr<PBC_LastEventRecord> regenRecord;
+    uint64_t regenRequesterGuid = 0;
 };
 
 // Chat-send action posted from event thread to main thread.
@@ -323,6 +394,18 @@ extern std::mutex                 g_PBC_EventQueueMutex;
 
 // True when no event thread is running.
 extern std::atomic<bool> g_PBC_EventThreadDone;
+
+// ---------------------------------------------------------------------------
+// Last event record — snapshot of the most recent Normal event that produced
+// at least one character response.  Used by the Regen event type to
+// regenerate the responses.  Guarded by g_PBC_LastEventMutex.
+//
+// g_PBC_LastEventRecord is nullptr when no regen-eligible event has been
+// processed yet (or when the record has been invalidated — e.g. because new
+// messages were appended to an affected character's history after the event).
+// ---------------------------------------------------------------------------
+extern std::shared_ptr<PBC_LastEventRecord> g_PBC_LastEventRecord;
+extern std::mutex                           g_PBC_LastEventMutex;
 
 // All messages, keyed by mod_pbc_history.id
 extern std::unordered_map<uint64_t, PBC_HistoryEntry> g_PBC_History;

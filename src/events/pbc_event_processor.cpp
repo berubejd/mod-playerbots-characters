@@ -19,6 +19,7 @@
 #include "GameTime.h"
 
 #include <algorithm>
+#include <memory>
 #include <regex>
 #include <sstream>
 #include <thread>
@@ -385,35 +386,78 @@ struct PendingReply {
     std::string messageText;  // Raw text (no speaker prefix)
 };
 
+// ---------------------------------------------------------------------------
+// ProcessNormal
+//
+// Processes a Normal / QuestSummarization / CombatSummarization event.
+//
+// regenRecord: when non-null, the event is a regeneration of a previous
+//   event.  In that mode the responder loop runs identically, but instead
+//   of appending new history messages it edits the existing messages
+//   (identified by regenRecord->createdHistoryIds) in place.  The
+//   snapshots in ev.respondingChars must already be the pre-mutation
+//   copies captured during the original event.  No new
+//   PBC_LastEventRecord is saved in regen mode (the existing record is
+//   reused so regen can be triggered repeatedly).
+//
+// outCreatedIds: when non-null, populated with the DB history IDs of
+//   every message created by this event (source line + each reply), in
+//   chronological order.  Used by the caller to build the
+//   PBC_LastEventRecord for normal (non-regen) events.
+// ---------------------------------------------------------------------------
 void ProcessNormal(PBC_EventItem& ev,
                    const std::string& sysPrompt,
                    const std::string& condenseSysPrompt,
-                   const std::string& condenseUsrTmpl)
+                   const std::string& condenseUsrTmpl,
+                   PBC_LastEventRecord* regenRecord = nullptr,
+                   std::vector<uint64_t>* outCreatedIds = nullptr)
 {
-    PBC_Log(PBC_LogLevel::PBC_DEBUG, "ProcessEvent: type={} respondingChars={} silentChars={} event=\"{}\"",
-             static_cast<int>(ev.type), ev.respondingChars.size(), ev.silentCharGuids.size(), ev.eventLine);
+    bool isRegen = (regenRecord != nullptr);
+
+    PBC_Log(PBC_LogLevel::PBC_DEBUG, "ProcessEvent: type={} isRegen={} respondingChars={} silentChars={} event=\"{}\"",
+             static_cast<int>(ev.type), isRegen, ev.respondingChars.size(), ev.silentCharGuids.size(), ev.eventLine);
 
     // -------------------------------------------------------------------
     // Seed the event-local history buffer with the source event (if any).
     // This buffer accumulates every message in chronological order and is
     // rendered into each responder's snapshot before their LLM call so
     // they see the full chain of what happened before their turn.
+    //
+    // In regen mode the seed is already in ev.eventHistory (restored from
+    // the saved record), so we only seed in normal mode.
     // -------------------------------------------------------------------
-    if (ev.source.IsChat())
+    if (!isRegen)
     {
-        PBC_HistoryEntry srcEntry;
-        srcEntry.authorGuid = ev.source.senderGuid;
-        srcEntry.type       = static_cast<uint8_t>(ev.chatType);
-        srcEntry.message    = ev.source.message;
-        ev.eventHistory.push_back(std::move(srcEntry));
+        if (ev.source.IsChat())
+        {
+            PBC_HistoryEntry srcEntry;
+            srcEntry.authorGuid = ev.source.senderGuid;
+            srcEntry.type       = static_cast<uint8_t>(ev.chatType);
+            srcEntry.message    = ev.source.message;
+            ev.eventHistory.push_back(std::move(srcEntry));
+        }
+        else if (ev.source.IsNarrator())
+        {
+            PBC_HistoryEntry srcEntry;
+            srcEntry.authorGuid = 0;
+            srcEntry.type       = 0;
+            srcEntry.message    = ev.source.narratorText;
+            ev.eventHistory.push_back(std::move(srcEntry));
+        }
     }
-    else if (ev.source.IsNarrator())
+
+    // -------------------------------------------------------------------
+    // Capture pre-mutation copies of the responding snapshots and the
+    // seed eventHistory for the PBC_LastEventRecord (normal mode only).
+    // The snapshots' history must be the state BEFORE any event replies
+    // are appended so a future regen reproduces the same prompt context.
+    // -------------------------------------------------------------------
+    std::vector<PBC_CharacterSnapshot> preMutationSnapshots;
+    std::vector<PBC_HistoryEntry>      seedEventHistory;
+    if (!isRegen && outCreatedIds)
     {
-        PBC_HistoryEntry srcEntry;
-        srcEntry.authorGuid = 0;
-        srcEntry.type       = 0;
-        srcEntry.message    = ev.source.narratorText;
-        ev.eventHistory.push_back(std::move(srcEntry));
+        preMutationSnapshots = ev.respondingChars;   // deep copy
+        seedEventHistory     = ev.eventHistory;      // deep copy (source only)
     }
 
     std::string currentEvent = ev.eventLine;
@@ -571,34 +615,100 @@ void ProcessNormal(PBC_EventItem& ev,
 
     // -----------------------------------------------------------------------
     // Flush event-local history to DB and global memory
+    //
+    // Normal mode: append every entry from the event-local buffer in order.
+    // Regen mode: edit the existing messages in place using the saved
+    //   history IDs (regenRecord->createdHistoryIds).  The message IDs —
+    //   and therefore every character's ownership of them — stay stable,
+    //   so we don't need to touch ownership rows at all.
     // -----------------------------------------------------------------------
 
-    // Collect all unique participant GUIDs
-    std::vector<uint64_t> allOwners;
-    for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
-        allOwners.push_back(snap.charGuidRaw);
-    for (uint64_t g : ev.silentCharGuids)
-        allOwners.push_back(g);
-    for (uint64_t g : ev.replyOnlyCharGuids)
-        allOwners.push_back(g);
-    for (uint64_t g : ev.playerCharGuids)
-        allOwners.push_back(g);
-    std::sort(allOwners.begin(), allOwners.end());
-    allOwners.erase(std::unique(allOwners.begin(), allOwners.end()), allOwners.end());
-
-    // Write every entry from the event-local buffer in order.
-    // For public chat all participants see everything; for whispers
-    // allOwners already correctly contains only {bot, sender}.
-    for (const auto& entry : ev.eventHistory)
+    if (!isRegen)
     {
-        PBC_AppendHistoryMessage(entry.authorGuid, entry.type,
-                                 entry.message, allOwners);
+        // Collect all unique participant GUIDs
+        std::vector<uint64_t> allOwners;
+        for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
+            allOwners.push_back(snap.charGuidRaw);
+        for (uint64_t g : ev.silentCharGuids)
+            allOwners.push_back(g);
+        for (uint64_t g : ev.replyOnlyCharGuids)
+            allOwners.push_back(g);
+        for (uint64_t g : ev.playerCharGuids)
+            allOwners.push_back(g);
+        std::sort(allOwners.begin(), allOwners.end());
+        allOwners.erase(std::unique(allOwners.begin(), allOwners.end()), allOwners.end());
+
+        // Write every entry from the event-local buffer in order.
+        // For public chat all participants see everything; for whispers
+        // allOwners already correctly contains only {bot, sender}.
+        for (const auto& entry : ev.eventHistory)
+        {
+            uint64_t newId = PBC_AppendHistoryMessage(entry.authorGuid, entry.type,
+                                                      entry.message, allOwners);
+            if (outCreatedIds)
+                outCreatedIds->push_back(newId);
+        }
+    }
+    else
+    {
+        // Regen mode: edit the existing messages in place.  The number of
+        // entries in ev.eventHistory must match the number of saved IDs
+        // (seed + replies).  If the counts don't line up — which should
+        // never happen under normal operation — we abort the regen
+        // entirely and leave the original messages untouched, rather
+        // than risk corrupting the history.
+        const auto& savedIds = regenRecord->createdHistoryIds;
+        if (ev.eventHistory.size() != savedIds.size())
+        {
+            PBC_Log(PBC_LogLevel::PBC_WARNING,
+                     "ProcessEvent: regen aborted — eventHistory size {} != savedIds size {} "
+                     "(original messages left untouched)",
+                     ev.eventHistory.size(), savedIds.size());
+        }
+        else
+        {
+            for (size_t i = 0; i < ev.eventHistory.size(); ++i)
+            {
+                const auto& entry = ev.eventHistory[i];
+                if (savedIds[i] != 0)
+                    PBC_UpdateHistoryMessage(savedIds[i], entry.message);
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
-    // Secondary event
+    // Save the PBC_LastEventRecord (normal mode only, when there were
+    // replies and the caller requested capture via outCreatedIds).
+    // The record is reused across regens — a regen does not replace it,
+    // so regeneration can be triggered repeatedly.
     // -----------------------------------------------------------------------
-    if (ev.canCreateEvents && lastResponderGuid != 0 && !replies.empty())
+    if (!isRegen && outCreatedIds && !replies.empty())
+    {
+        auto record = std::make_shared<PBC_LastEventRecord>();
+        record->eventLine          = ev.eventLine;
+        record->source              = ev.source;
+        record->chatType            = ev.chatType;
+        record->canCreateEvents     = ev.canCreateEvents;
+        record->whisperSenderName   = ev.whisperSenderName;
+        record->whisperTargetName   = ev.whisperTargetName;
+        record->respondingChars      = std::move(preMutationSnapshots);
+        record->silentCharGuids     = ev.silentCharGuids;
+        record->playerCharGuids      = ev.playerCharGuids;
+        record->replyOnlyCharGuids  = ev.replyOnlyCharGuids;
+        record->seedEventHistory     = std::move(seedEventHistory);
+        record->createdHistoryIds    = *outCreatedIds;
+        record->requesterGuid        = ev.regenRequesterGuid;
+
+        {
+            std::lock_guard<std::mutex> lk(g_PBC_LastEventMutex);
+            g_PBC_LastEventRecord = std::move(record);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Secondary event (normal mode only — regen never spawns secondaries)
+    // -----------------------------------------------------------------------
+    if (!isRegen && ev.canCreateEvents && lastResponderGuid != 0 && !replies.empty())
     {
         std::unordered_set<uint64_t> excluded;
         for (const auto& rs : ev.respondingChars)
@@ -629,6 +739,159 @@ void ProcessNormal(PBC_EventItem& ev,
     }
 }
 
+// ===========================================================================
+// ProcessRegen
+//
+// Regenerates the responses of the last Normal event.  The saved
+// PBC_LastEventRecord provides the pre-mutation snapshots and the DB
+// history IDs of the original messages.  We re-run ProcessNormal in
+// regen mode, which edits the existing messages in place (keeping their
+// IDs and ownership stable).
+//
+// Before re-running, we verify that no new messages were appended to any
+// affected character's history since the original event — i.e. the
+// trailing history IDs of every participant still match the ones created
+// by the original event.  If anything was added (e.g. narration), the
+// regen is aborted.
+// ===========================================================================
+void ProcessRegen(PBC_EventItem& ev,
+                  const std::string& sysPrompt,
+                  const std::string& condenseSysPrompt,
+                  const std::string& condenseUsrTmpl)
+{
+    auto& record = ev.regenRecord;
+    if (!record)
+    {
+        PBC_Log(PBC_LogLevel::PBC_WARNING, "ProcessRegen: no regen record attached, aborting");
+        return;
+    }
+
+    PBC_Log(PBC_LogLevel::PBC_DEBUG, "ProcessRegen: requester={} characters={} savedIds={}",
+             ev.regenRequesterGuid, record->respondingChars.size(), record->createdHistoryIds.size());
+
+    // -------------------------------------------------------------------
+    // Guardrail: verify that no new messages were appended to any
+    // affected character's history since the original event.
+    //
+    // For each participant, the trailing history IDs must end with the
+    // exact sequence of IDs created by the original event (the event's
+    // createdHistoryIds, filtered to those owned by that participant).
+    // If any extra messages were appended after them, the regen is
+    // aborted and the record is invalidated.
+    // -------------------------------------------------------------------
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+
+        // Build a per-owner list of the history IDs created by the original
+        // event.  A message is "owned" by a participant if it appears in
+        // their g_PBC_HistoryOwners deque.  We check ownership for every
+        // participant GUID.
+        std::vector<uint64_t> participants;
+        for (const auto& snap : record->respondingChars)
+            participants.push_back(snap.charGuidRaw);
+        for (uint64_t g : record->silentCharGuids)
+            participants.push_back(g);
+        for (uint64_t g : record->replyOnlyCharGuids)
+            participants.push_back(g);
+        for (uint64_t g : record->playerCharGuids)
+            participants.push_back(g);
+        std::sort(participants.begin(), participants.end());
+        participants.erase(std::unique(participants.begin(), participants.end()), participants.end());
+
+        for (uint64_t guid : participants)
+        {
+            auto ownersIt = g_PBC_HistoryOwners.find(guid);
+            if (ownersIt == g_PBC_HistoryOwners.end())
+            {
+                // History was cleared (e.g. condensation) — can't regen.
+                PBC_Log(PBC_LogLevel::PBC_WARNING,
+                         "ProcessRegen: aborted — history for guid={} was cleared since the original event",
+                         guid);
+                return;
+            }
+
+            const auto& ownerIds = ownersIt->second;
+
+            // Collect the subset of createdHistoryIds owned by this guid,
+            // preserving chronological order.
+            std::vector<uint64_t> ownedCreated;
+            for (uint64_t hid : record->createdHistoryIds)
+            {
+                if (std::find(ownerIds.begin(), ownerIds.end(), hid) != ownerIds.end())
+                    ownedCreated.push_back(hid);
+            }
+
+            if (ownedCreated.empty())
+                continue;   // this participant owns none of the event messages
+
+            // The trailing entries of ownerIds must exactly match
+            // ownedCreated.  If ownerIds is shorter, or the trailing
+            // sequence differs, new messages were appended (or the
+            // history was mutated) — abort.
+            if (ownerIds.size() < ownedCreated.size())
+            {
+                PBC_Log(PBC_LogLevel::PBC_WARNING,
+                         "ProcessRegen: aborted — history for guid={} has fewer entries than the original event produced",
+                         guid);
+                return;
+            }
+
+            size_t offset = ownerIds.size() - ownedCreated.size();
+            for (size_t i = 0; i < ownedCreated.size(); ++i)
+            {
+                if (ownerIds[offset + i] != ownedCreated[i])
+                {
+                    PBC_Log(PBC_LogLevel::PBC_WARNING,
+                             "ProcessRegen: aborted — new messages were appended to guid={} history since the original event",
+                             guid);
+                    return;
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // All checks passed — rebuild the event item from the saved record
+    // and re-run ProcessNormal in regen mode.
+    // -------------------------------------------------------------------
+    ev.eventLine         = record->eventLine;
+    ev.source            = record->source;
+    ev.chatType          = record->chatType;
+    ev.canCreateEvents   = false;   // regen never spawns secondary events
+    ev.whisperSenderName = record->whisperSenderName;
+    ev.whisperTargetName = record->whisperTargetName;
+    ev.respondingChars   = record->respondingChars;   // pre-mutation snapshots
+    ev.silentCharGuids   = record->silentCharGuids;
+    ev.playerCharGuids   = record->playerCharGuids;
+    ev.replyOnlyCharGuids = record->replyOnlyCharGuids;
+    ev.eventHistory      = record->seedEventHistory;  // source-only seed
+
+    ProcessNormal(ev, sysPrompt, condenseSysPrompt, condenseUsrTmpl,
+                  /*regenRecord=*/record.get(), /*outCreatedIds=*/nullptr);
+
+    // Notify WS clients of the regen so the frontend can replace the
+    // affected messages in place.  Every participant (responding chars,
+    // silent chars, players) owns the regenerated messages, so we notify
+    // each one with the full list of affected IDs rendered from their
+    // perspective.
+    {
+        std::vector<uint64_t> participants;
+        for (const auto& snap : record->respondingChars)
+            participants.push_back(snap.charGuidRaw);
+        for (uint64_t g : record->silentCharGuids)
+            participants.push_back(g);
+        for (uint64_t g : record->replyOnlyCharGuids)
+            participants.push_back(g);
+        for (uint64_t g : record->playerCharGuids)
+            participants.push_back(g);
+        std::sort(participants.begin(), participants.end());
+        participants.erase(std::unique(participants.begin(), participants.end()), participants.end());
+
+        for (uint64_t guid : participants)
+            PBC_WsNotifyRegen(guid, record->createdHistoryIds);
+    }
+}
+
 } // anonymous namespace
 
 // ===========================================================================
@@ -638,53 +901,64 @@ void ProcessNormal(PBC_EventItem& ev,
 void PBC_ProcessEventItem(PBC_EventItem ev)
 {
     // -------------------------------------------------------------------
-    // Insert time-gap narrator lines BEFORE any event-type-specific
-    // processing, so every character (responding, silent, or undergoing
-    // condensation/relationship-update) knows about the time gap before
-    // the LLM prompt is built.
-    //
-    // We collect all relevant character GUIDs first, then create ONE
-    // shared "some time passes" entry owned by all of them, instead of
-    // inserting one duplicate DB row per character.
+    // Regen events skip the time-gap insertion entirely.  The saved
+    // snapshots already contain whatever time-gap lines were present at
+    // the time of the original event, and we don't want to insert a new
+    // "some time passes" line just because the regen was triggered later.
     // -------------------------------------------------------------------
-    bool incomingIsWhisper = (ev.chatType == CHAT_MSG_WHISPER);
+    bool isRegen = (ev.type == PBC_EventType::Regen);
 
-    // Collect all character GUIDs that participate in this event
-    std::vector<uint64_t> allGuids;
-    allGuids.reserve(ev.respondingChars.size() + ev.silentCharGuids.size() + 2);
-
-    for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
-        allGuids.push_back(snap.charGuidRaw);
-    for (uint64_t guid : ev.silentCharGuids)
-        allGuids.push_back(guid);
-    if (ev.type == PBC_EventType::Condensation)
-        allGuids.push_back(ev.condensationChar.charGuidRaw);
-    if (ev.type == PBC_EventType::RelationshipUpdate)
-        allGuids.push_back(ev.relationshipChar.charGuidRaw);
-
-    // One shared batch call — creates a single DB row for all that need it
-    std::unordered_set<uint64_t> gapInserted =
-        PBC_MaybeInsertSharedTimeGap(allGuids, incomingIsWhisper);
-
-    if (!gapInserted.empty())
+    if (!isRegen)
     {
-        std::string renderedGap = PBC_Localize("Narrator: *{0}*", PBC_Localize("some time passes"));
+        // -------------------------------------------------------------------
+        // Insert time-gap narrator lines BEFORE any event-type-specific
+        // processing, so every character (responding, silent, or undergoing
+        // condensation/relationship-update) knows about the time gap before
+        // the LLM prompt is built.
+        //
+        // We collect all relevant character GUIDs first, then create ONE
+        // shared "some time passes" entry owned by all of them, instead of
+        // inserting one duplicate DB row per character.
+        // -------------------------------------------------------------------
+        bool incomingIsWhisper = (ev.chatType == CHAT_MSG_WHISPER);
 
-        // Push the rendered line into snapshots that need it for prompt building
-        for (PBC_CharacterSnapshot& snap : ev.respondingChars)
+        // Collect all character GUIDs that participate in this event
+        std::vector<uint64_t> allGuids;
+        allGuids.reserve(ev.respondingChars.size() + ev.silentCharGuids.size() + 2);
+
+        for (const PBC_CharacterSnapshot& snap : ev.respondingChars)
+            allGuids.push_back(snap.charGuidRaw);
+        for (uint64_t guid : ev.silentCharGuids)
+            allGuids.push_back(guid);
+        if (ev.type == PBC_EventType::Condensation)
+            allGuids.push_back(ev.condensationChar.charGuidRaw);
+        if (ev.type == PBC_EventType::RelationshipUpdate)
+            allGuids.push_back(ev.relationshipChar.charGuidRaw);
+
+        // One shared batch call — creates a single DB row for all that need it
+        std::unordered_set<uint64_t> gapInserted =
+            PBC_MaybeInsertSharedTimeGap(allGuids, incomingIsWhisper);
+
+        if (!gapInserted.empty())
         {
-            if (gapInserted.count(snap.charGuidRaw))
-                snap.history.push_back(renderedGap);
-        }
-        if (ev.type == PBC_EventType::Condensation &&
-            gapInserted.count(ev.condensationChar.charGuidRaw))
-        {
-            ev.condensationChar.history.push_back(renderedGap);
-        }
-        if (ev.type == PBC_EventType::RelationshipUpdate &&
-            gapInserted.count(ev.relationshipChar.charGuidRaw))
-        {
-            ev.relationshipChar.history.push_back(renderedGap);
+            std::string renderedGap = PBC_Localize("Narrator: *{0}*", PBC_Localize("some time passes"));
+
+            // Push the rendered line into snapshots that need it for prompt building
+            for (PBC_CharacterSnapshot& snap : ev.respondingChars)
+            {
+                if (gapInserted.count(snap.charGuidRaw))
+                    snap.history.push_back(renderedGap);
+            }
+            if (ev.type == PBC_EventType::Condensation &&
+                gapInserted.count(ev.condensationChar.charGuidRaw))
+            {
+                ev.condensationChar.history.push_back(renderedGap);
+            }
+            if (ev.type == PBC_EventType::RelationshipUpdate &&
+                gapInserted.count(ev.relationshipChar.charGuidRaw))
+            {
+                ev.relationshipChar.history.push_back(renderedGap);
+            }
         }
     }
 
@@ -730,6 +1004,16 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     }
 
     // -----------------------------------------------------------------------
+    // Regen: re-run the last event's responses from the saved record.
+    // -----------------------------------------------------------------------
+    if (ev.type == PBC_EventType::Regen)
+    {
+        ProcessRegen(ev, sysPrompt, condenseSysPrompt, condenseUsrTmpl);
+        g_PBC_EventThreadDone.store(true);
+        return;
+    }
+
+    // -----------------------------------------------------------------------
     // CombatSummarization: generate summary, then fall through to Normal
     // -----------------------------------------------------------------------
     if (ev.type == PBC_EventType::CombatSummarization)
@@ -749,8 +1033,13 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
 
     // -----------------------------------------------------------------------
     // Normal event processing
+    //
+    // Pass outCreatedIds so ProcessNormal can capture the PBC_LastEventRecord
+    // (the pre-mutation snapshots + created message IDs) for regen support.
     // -----------------------------------------------------------------------
-    ProcessNormal(ev, sysPrompt, condenseSysPrompt, condenseUsrTmpl);
+    std::vector<uint64_t> createdIds;
+    ProcessNormal(ev, sysPrompt, condenseSysPrompt, condenseUsrTmpl,
+                  /*regenRecord=*/nullptr, /*outCreatedIds=*/&createdIds);
 
     g_PBC_EventThreadDone.store(true);
 }

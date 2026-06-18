@@ -128,4 +128,28 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
 // ---------------------------------------------------------------------------
 void AddTrackedPlayersToEvent(PBC_EventItem& ev, Player* anchor);
 
+// ---------------------------------------------------------------------------
+// Regeneration of the last event's responses.
+//
+// PBC_CanRegenLastEvent returns true if there is a regen-eligible last event
+// record (i.e. the last Normal event produced at least one character
+// response and no messages have been appended to any affected character's
+// history since).  Thread-safe.
+//
+// PBC_IsPlayerInLastEventGroup returns true if 'player' is in the same group
+// as at least one of the characters that participated in the last event
+// (responding or silent).  This is the authorization check used by the
+// .chars regen-last command and the /api/regen-last endpoint.  Main-thread
+// only (walks group membership).
+//
+// PBC_DispatchRegenEvent builds a Regen PBC_EventItem from the saved
+// PBC_LastEventRecord and pushes it onto the global event queue.  The
+// 'requesterGuid' is stored in the event for logging/WS.  Returns true if
+// a regen event was queued, false if no regen-eligible record exists.
+// Safe to call from the main thread.
+// ---------------------------------------------------------------------------
+bool PBC_CanRegenLastEvent();
+bool PBC_IsPlayerInLastEventGroup(Player* player);
+bool PBC_DispatchRegenEvent(uint64_t requesterGuid);
+
 #endif // MOD_PBC_EVENT_DISPATCH_H

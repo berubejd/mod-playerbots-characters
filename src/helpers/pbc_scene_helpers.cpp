@@ -294,7 +294,7 @@ std::string PBC_BuildSceneStr(Player* bot)
                 timeWeather = PBC_Localize("it's ") + timeLabel + PBC_Localize(" and ") + clause;
                 // When indoors and weather is not fine, note that the character is sheltered
                 if (!bot->IsOutdoors() && it->second.state != WEATHER_STATE_FINE)
-                    timeWeather += PBC_Localize(", but you are inside and sheltered from the weather", bot->GetGender());
+                    timeWeather += PBC_Localize(", but you are inside and sheltered from the weather", bot->getGender());
             }
         }
     }

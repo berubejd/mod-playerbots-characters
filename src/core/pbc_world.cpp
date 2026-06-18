@@ -476,6 +476,10 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 case PBC_EventType::CardAdditionsMigration:
                     PBC_Log(PBC_LogLevel::PBC_DEBUG, "OnUpdate: spawning event thread for type=CardAdditionsMigration");
                     break;
+                case PBC_EventType::Regen:
+                    PBC_Log(PBC_LogLevel::PBC_DEBUG, "OnUpdate: spawning event thread for type=Regen requester={}",
+                             nextEvent.regenRequesterGuid);
+                    break;
             }
 
             std::thread([ev = std::move(nextEvent)]() mutable {

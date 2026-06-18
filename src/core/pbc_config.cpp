@@ -118,6 +118,9 @@ std::queue<PBC_EventItem>  g_PBC_EventQueue;
 std::mutex                 g_PBC_EventQueueMutex;
 std::atomic<bool>          g_PBC_EventThreadDone{ true };
 
+std::shared_ptr<PBC_LastEventRecord> g_PBC_LastEventRecord;
+std::mutex                           g_PBC_LastEventMutex;
+
 std::unordered_map<uint64_t, PBC_HistoryEntry>     g_PBC_History;
 std::unordered_map<uint64_t, std::deque<uint64_t>> g_PBC_HistoryOwners;
 std::mutex g_PBC_HistoryMutex;

@@ -377,6 +377,21 @@ Emulate a party message sent by the authenticated account's real player. The mes
 
 The authenticated account must have a real (non-bot) player online and in a group. Returns immediately with "queued" status. Body: `{"message": "Let's move forward"}`.
 
+#### `POST /api/regen-last`
+
+Regenerate the responses of the last event that produced character replies. The same characters respond again in the same order — their original messages are edited in place (message IDs stay stable). No request body required.
+
+Guardrails:
+- Only the **last** event is eligible. If it produced no character responses, returns `409`.
+- If any new messages were added to an affected character's history since the original event (e.g. narration), the regen is aborted — returns `409` when the guardrail check runs.
+- The event queue must be empty; otherwise returns `409`.
+
+Authorization: the authenticated account must have a real (non-bot) player online who is in the same group as at least one of the event's characters. Returns `403` otherwise, `410` if no real player is online.
+
+Returns `{"status": "queued"}` immediately — the actual LLM calls and in-game replies happen asynchronously. A `regen` WebSocket event is sent to all participants when the regeneration completes.
+
+Regeneration can be triggered multiple times — each regen re-runs the same saved event record.
+
 
 ## WebSocket
 
@@ -407,9 +422,12 @@ Invalid or expired tokens are rejected with `401` before the connection is estab
 | `online` | A character on the account logged in | `{"event":"online","guid":12345}` |
 | `offline` | A character on the account logged out | `{"event":"offline","guid":12345}` |
 | `party` | Party membership changed for the account | `{"event":"party"}` |
+| `regen` | Last event's responses were regenerated | `{"event":"regen","guid":12345,"messages":[{"id":42,"text":"You: Hello again!"}]}` |
 | `shutdown` | Server is shutting down | `{"event":"shutdown"}` |
 
 `thinks`, `relationship`, `memory`, `online`, `offline`, and `party` events are simple triggers — fetch updated data via the REST API when received.
+
+`regen` carries an array of updated messages (`id` + rendered `text`) so the frontend can replace the affected history entries in place without a full reload. One `regen` event is sent per participant (each receives the messages rendered from their own perspective).
 
 `shutdown` indicates the server is going down.
 

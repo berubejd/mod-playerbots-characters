@@ -1465,3 +1465,46 @@ void HandlePostPartyMessage(const httplib::Request& req, httplib::Response& res,
              player->GetGUID().GetCounter());
     res.set_content("{\"status\":\"queued\"}", "application/json");
 }
+
+// ---------------------------------------------------------------------------
+// POST /api/regen-last
+// ---------------------------------------------------------------------------
+void HandlePostRegenLast(const httplib::Request& /*req*/, httplib::Response& res,
+                         const PBC_AuthInfo& authInfo)
+{
+    // Find the real player for this account
+    Player* player = FindOnlinePlayerForAccount(authInfo.accountId);
+    if (!player)
+    {
+        res.status = 410;
+        res.set_content("{\"error\":\"No real player from your account is online\"}", "application/json");
+        return;
+    }
+
+    if (!PBC_CanRegenLastEvent())
+    {
+        res.status = 409;
+        res.set_content("{\"error\":\"No regen-eligible last event available\"}", "application/json");
+        return;
+    }
+
+    if (!PBC_IsPlayerInLastEventGroup(player))
+    {
+        res.status = 403;
+        res.set_content("{\"error\":\"You are not in a group with the characters from the last event\"}", "application/json");
+        return;
+    }
+
+    // Queue the regen request for the main thread (the dispatch function
+    // checks the event queue is empty and pushes the Regen event).
+    uint64_t requesterGuid = player->GetGUID().GetCounter();
+    if (!PBC_DispatchRegenEvent(requesterGuid))
+    {
+        res.status = 409;
+        res.set_content("{\"error\":\"Could not queue regeneration (event queue is busy)\"}", "application/json");
+        return;
+    }
+
+    PBC_Log(PBC_LogLevel::PBC_DEBUG, "API regen-last queued: player GUID={}", requesterGuid);
+    res.set_content("{\"status\":\"queued\"}", "application/json");
+}

@@ -141,6 +141,10 @@ void HandlePostCharTrigger(const pbc_httplib::Request& req, pbc_httplib::Respons
 
 // POST /api/party/message — party message
 void HandlePostPartyMessage(const pbc_httplib::Request& req, pbc_httplib::Response& res,
-                            const PBC_AuthInfo& authInfo);
+                             const PBC_AuthInfo& authInfo);
+
+// POST /api/regen-last — regenerate the last event's responses
+void HandlePostRegenLast(const pbc_httplib::Request& req, pbc_httplib::Response& res,
+                         const PBC_AuthInfo& authInfo);
 
 #endif // MOD_PBC_HTTP_HANDLERS_H

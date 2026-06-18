@@ -84,6 +84,12 @@ void PBC_WsNotifyHistoryPreview(uint64_t botGuid, const std::string& text);
 // triggered the event (set to 0 for events like "party" that have no single guid).
 void PBC_WsNotifyAccount(uint32_t accountId, const std::string& eventType, uint64_t relatedGuid = 0);
 
+// Notify WS clients subscribed to the same account as botGuid that a regen
+// has occurred.  Sends the character guid and an array of objects
+// ({id, text}) containing the affected history IDs and their new rendered
+// text, so the frontend can replace the messages in place without a reload.
+void PBC_WsNotifyRegen(uint64_t botGuid, const std::vector<uint64_t>& messageIds);
+
 // Broadcast a "shutdown" event to every connected WS client.
 // Called from PBC_HttpServerStop before the server is stopped.
 void PBC_WsBroadcastShutdown();

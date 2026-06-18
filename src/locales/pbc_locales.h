@@ -34,7 +34,7 @@
 using PBC_LocaleMap = std::unordered_map<std::string, std::string>;
 
 // Gender values mirror the core Gender enum (GENDER_MALE = 0, GENDER_FEMALE =
-// 1, GENDER_NONE = 2) so that Player::GetGender() can be passed directly.
+// 1, GENDER_NONE = 2) so that Player::getGender() can be passed directly.
 // PBC_GENDER_UNSPECIFIED is the default and means "no gender given" — the
 // resolver falls back to the male form in that case.
 enum PBC_Gender : uint8_t

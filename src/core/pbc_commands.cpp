@@ -781,6 +781,55 @@ static bool HandleCharsMigrateCardAdditions(ChatHandler* handler, Optional<std::
 }
 
 
+// ---------------------------------------------------------------------------
+// .chars regen-last
+// Regenerates the responses of the last event that produced character
+// replies.  Only available when the last event is regen-eligible (no new
+// messages appended to affected characters' histories since) and the
+// caller is in the same group as the event's characters.
+// In-game only.
+// ---------------------------------------------------------------------------
+static bool HandleCharsRegenLast(ChatHandler* handler, Optional<std::string_view>)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+
+    if (!handler->GetSession())
+    {
+        handler->PSendSysMessage("[PBC] This command is only available in-game.");
+        return false;
+    }
+
+    Player* player = handler->GetSession()->GetPlayer();
+    if (!player)
+    {
+        handler->PSendSysMessage("[PBC] Could not retrieve player data.");
+        return false;
+    }
+
+    if (!PBC_CanRegenLastEvent())
+    {
+        handler->PSendSysMessage("[PBC] No regen-eligible last event available.");
+        return true;
+    }
+
+    if (!PBC_IsPlayerInLastEventGroup(player))
+    {
+        handler->PSendSysMessage("[PBC] You are not in a group with the characters from the last event.");
+        return false;
+    }
+
+    uint64_t requesterGuid = player->GetGUID().GetCounter();
+    if (!PBC_DispatchRegenEvent(requesterGuid))
+    {
+        handler->PSendSysMessage("[PBC] Could not queue regeneration (event queue is busy or no record available).");
+        return false;
+    }
+
+    handler->PSendSysMessage("[PBC] Regeneration of the last event's responses queued.");
+    return true;
+}
+
+
 PBC_CommandScript::PBC_CommandScript() : CommandScript("PBC_CommandScript") {}
 
 ChatCommandTable PBC_CommandScript::GetCommands() const
@@ -802,6 +851,7 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
         { "narrate",                  HandleCharsNarrate,                 SEC_PLAYER,    Console::No  },
         { "narrate-party",            HandleCharsNarrateParty,            SEC_PLAYER,    Console::No  },
         { "trigger",                  HandleCharsTrigger,                 SEC_PLAYER,    Console::Yes },
+        { "regen-last",               HandleCharsRegenLast,               SEC_PLAYER,    Console::No  },
         { "migrate-card-additions",   HandleCharsMigrateCardAdditions,    SEC_GAMEMASTER, Console::Yes },
     };
 

@@ -134,6 +134,10 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
     ev.chatType        = CHAT_MSG_PARTY;
     ev.canCreateEvents = true;
 
+    // Record the real player who triggered this event (for regen logging).
+    if (anchorIsReal)
+        ev.regenRequesterGuid = anchor->GetGUID().GetCounter();
+
     PBC_RollBotsWithPenalty(ev, bots, chance, "event");
 
     if (anchorIsBot)
@@ -283,6 +287,13 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
 
     ev.whisperSenderName = senderName;
     ev.whisperTargetName = targetName;
+
+    // Record the real player who triggered this event (for regen logging).
+    {
+        WorldSession* senderSess = sender->GetSession();
+        if (PBC_PTR_VALID(senderSess) && !senderSess->IsBot())
+            ev.regenRequesterGuid = sender->GetGUID().GetCounter();
+    }
 
     if (PBC_RollChance(g_PBC_ReplyChanceWhisper))
     {
@@ -497,6 +508,13 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
     ev.chatType           = chatType ? chatType : CHAT_MSG_PARTY;
     ev.canCreateEvents    = canCreateEvents;
 
+    // Record the real player who triggered this event (for regen logging).
+    {
+        WorldSession* senderSess = sender->GetSession();
+        if (PBC_PTR_VALID(senderSess) && !senderSess->IsBot())
+            ev.regenRequesterGuid = sender->GetGUID().GetCounter();
+    }
+
     PBC_RollBotsForMessage(ev, bots, msg);
 
     AddTrackedPlayersToEvent(ev, sender);
@@ -505,4 +523,88 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
              senderName, chatType, ev.respondingChars.size(), bots.size());
 
     PBC_PushEvent(std::move(ev));
+}
+
+// ---------------------------------------------------------------------------
+// Regeneration of the last event's responses
+// ---------------------------------------------------------------------------
+
+bool PBC_CanRegenLastEvent()
+{
+    std::lock_guard<std::mutex> lock(g_PBC_LastEventMutex);
+    return g_PBC_LastEventRecord != nullptr;
+}
+
+bool PBC_IsPlayerInLastEventGroup(Player* player)
+{
+    if (!PBC_PTR_VALID(player)) return false;
+
+    std::shared_ptr<PBC_LastEventRecord> record;
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_LastEventMutex);
+        record = g_PBC_LastEventRecord;
+    }
+    if (!record) return false;
+
+    // Collect all character GUIDs that participated in the last event.
+    std::unordered_set<uint64_t> eventGuids;
+    for (const auto& snap : record->respondingChars)
+        eventGuids.insert(snap.charGuidRaw);
+    for (uint64_t g : record->silentCharGuids)
+        eventGuids.insert(g);
+
+    if (eventGuids.empty()) return false;
+
+    // Check if the player is in the same group as any of the event characters.
+    Group* playerGroup = player->GetGroup();
+    if (!playerGroup) return false;
+
+    for (GroupReference* ref = playerGroup->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || !member->IsInWorld()) continue;
+
+        if (eventGuids.count(member->GetGUID().GetCounter()))
+            return true;
+    }
+
+    return false;
+}
+
+bool PBC_DispatchRegenEvent(uint64_t requesterGuid)
+{
+    std::shared_ptr<PBC_LastEventRecord> record;
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_LastEventMutex);
+        record = g_PBC_LastEventRecord;
+    }
+
+    if (!record)
+    {
+        PBC_Log(PBC_LogLevel::PBC_WARNING, "DispatchRegenEvent: no regen-eligible last event record");
+        return false;
+    }
+
+    // The event queue must be empty — otherwise pending events would execute
+    // before our regen and change what we consider "the last event", making
+    // the guardrail checks (no new messages since the event) unreliable.
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_EventQueueMutex);
+        if (!g_PBC_EventQueue.empty())
+        {
+            PBC_Log(PBC_LogLevel::PBC_WARNING, "DispatchRegenEvent: event queue is not empty, aborting regen");
+            return false;
+        }
+    }
+
+    PBC_EventItem ev;
+    ev.type              = PBC_EventType::Regen;
+    ev.regenRecord       = record;          // shared_ptr copy — keeps the record alive
+    ev.regenRequesterGuid = requesterGuid;
+
+    PBC_Log(PBC_LogLevel::PBC_DEBUG, "DispatchRegenEvent: requester={} characters={} savedIds={}",
+             requesterGuid, record->respondingChars.size(), record->createdHistoryIds.size());
+
+    PBC_PushEvent(std::move(ev));
+    return true;
 }

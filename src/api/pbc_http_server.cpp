@@ -252,6 +252,41 @@ void PBC_WsNotifyAccount(uint32_t accountId, const std::string& eventType, uint6
     WsSendToAccount(accountId, j.dump());
 }
 
+void PBC_WsNotifyRegen(uint64_t botGuid, const std::vector<uint64_t>& messageIds)
+{
+    if (!s_httpRunning.load())
+        return;
+    if (messageIds.empty())
+        return;
+
+    // Build the array of {id, text} for every affected message, rendering
+    // each from the bot's perspective so the frontend can replace them
+    // in place.
+    json messages = json::array();
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+        for (uint64_t id : messageIds)
+        {
+            auto it = g_PBC_History.find(id);
+            if (it == g_PBC_History.end())
+                continue;
+            messages.push_back({
+                {"id", id},
+                {"text", PBC_RenderHistoryLine(it->second, botGuid)}
+            });
+        }
+    }
+
+    if (messages.empty())
+        return;
+
+    json j;
+    j["event"]    = "regen";
+    j["guid"]     = botGuid;
+    j["messages"] = messages;
+    WsSendToGuidOwner(botGuid, j.dump());
+}
+
 void PBC_WsBroadcastShutdown()
 {
     if (!s_httpRunning.load())
@@ -580,6 +615,14 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandlePostPartyMessage(req, res, authInfo);
+        });
+
+        // POST /api/regen-last
+        svr->Post("/api/regen-last", [](const httplib::Request& req, httplib::Response& res) {
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostRegenLast(req, res, authInfo);
         });
 
         // -------------------------------------------------------------------
