@@ -342,9 +342,12 @@ PBC.HttpServerFrontendPath = ../../../modules/mod-playerbots-characters/frontend
 
 # PBC.IgnoreAllAddonMessages
 #     Description: When enabled (1), ALL messages sent by client addons
-#                  are silently ignored by the characters.
-#                  When disabled (0), the PBC.Blacklist below applies instead
-#                  and addon messages are filtered the same way as regular chat.
+#                  are silently dropped before any other filtering.
+#                  When disabled (0), addon messages are treated like regular
+#                  chat and go through PBC.Blacklist below.
+#                  In both cases PBC.Blacklist is always applied to every
+#                  non-addon message, so manually typed commands are filtered
+#                  regardless of this setting.
 #     Default:     1 (true)
 PBC.IgnoreAllAddonMessages = 1
 
