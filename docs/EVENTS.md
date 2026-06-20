@@ -14,7 +14,7 @@ Events are in-game occurrences that characters may react to. When an event fires
 | **Quest completed** | The party leader completes a quest. A preliminary LLM call generates a one-line narrative summary. | `*The party has delivered the supplies to Crossroads*` |
 | **Party flight started** | All party members are in flight at the same time (polled every 1 s). | `*The party has started a flight to Crossroads*` |
 | **Party location changed** | All party members share the same zone and it differs from the last tracked zone. The new zone must remain stable for `PBC.LocationChangeDebounceCycles` consecutive cycles before the event fires. Sub-zone changes within the same zone do not trigger this. Location checks are skipped while in flight. | `*Party has arrived in Elwynn Forest*` |
-| **Trigger** | Fired manually via the `.chars trigger` command or the `POST /api/char/:guid/trigger` API endpoint. The character always responds (no roll). The event is **not** written into the character's history. Response is sent as a party message if grouped, or as a say otherwise. The event line is picked dynamically based on the character's last history message. | `*you feel the urge to say something*` (default) |
+| **Trigger** | Fired manually via the `.chars trigger` command or the `POST /api/char/:guid/trigger` API endpoint. The character always responds (no roll). The event is **not** written into the character's history. Response is sent as a raid message if the character is in a raid group, a party message if in a regular party, or a say otherwise. The event line is picked dynamically based on the character's last history message. | `*you feel the urge to say something*` (default) |
 
 ### Time-gap narrator line
 

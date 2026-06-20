@@ -302,7 +302,7 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
 
     PBC_EventItem ev;
     ev.type               = PBC_EventType::QuestSummarization;
-    ev.chatType           = CHAT_MSG_PARTY;
+    ev.chatType           = PBC_GetGroupChatType(player);
     ev.canCreateEvents    = true;
     ev.questSystemPrompt  = g_PBC_QuestCompletedSystemPrompt;
     ev.questUserPrompt    = userPrompt;

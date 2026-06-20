@@ -470,7 +470,7 @@ void PBC_PollPartyState()
 
                 PBC_EventItem ev;
                 ev.type               = PBC_EventType::CombatSummarization;
-                ev.chatType           = CHAT_MSG_PARTY;
+                ev.chatType           = PBC_GetGroupChatType(gi.anchor);
                 ev.canCreateEvents    = true;
                 ev.combatSystemPrompt = g_PBC_CombatEndedSystemPrompt;
                 ev.combatUserPrompt   = userPrompt;

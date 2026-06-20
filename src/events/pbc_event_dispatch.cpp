@@ -73,11 +73,13 @@ void PBC_PushEvent(PBC_EventItem item)
 // ---------------------------------------------------------------------------
 // AddTrackedPlayersToEvent
 // ---------------------------------------------------------------------------
-void AddTrackedPlayersToEvent(PBC_EventItem& ev, Player* anchor)
+void AddTrackedPlayersToEvent(PBC_EventItem& ev, Player* anchor, bool subGroupOnly)
 {
     if (!PBC_PTR_VALID(anchor)) return;
 
-    auto realPlayers = PBC_FindRealPlayersInGroup(anchor);
+    auto realPlayers = subGroupOnly
+        ? PBC_FindRealPlayersInSubGroup(anchor)
+        : PBC_FindRealPlayersInGroup(anchor);
     for (Player* rp : realPlayers)
     {
         uint64_t guid = rp->GetGUID().GetCounter();
@@ -131,7 +133,9 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
     ev.type            = PBC_EventType::Normal;
     ev.eventLine       = eventLine;
     ev.source.narratorText = narratorText;
-    ev.chatType        = CHAT_MSG_PARTY;
+    // Use raid chat when the anchor is in a raid group so that members in
+    // other sub-groups can see the responses; party chat otherwise.
+    ev.chatType        = PBC_GetGroupChatType(anchor);
     ev.canCreateEvents = true;
 
     // Record the real player who triggered this event (for regen logging).
@@ -433,7 +437,10 @@ void PBC_DispatchTriggerEvent(Player* bot)
 {
     if (!PBC_PTR_VALID(bot)) return;
 
-    uint32_t chatType = bot->GetGroup() ? CHAT_MSG_PARTY : CHAT_MSG_SAY;
+    // Raid chat when in a raid group, party chat for a regular party, say
+    // otherwise — so triggered characters in different raid sub-groups are
+    // still heard by everyone.
+    uint32_t chatType = PBC_GetGroupChatType(bot);
 
     uint64_t botGuid = bot->GetGUID().GetCounter();
 
@@ -455,7 +462,7 @@ void PBC_DispatchTriggerEvent(Player* bot)
     PBC_CharacterSnapshot snap = PBC_SnapshotCharacter(bot);
     ev.respondingChars.push_back(std::move(snap));
 
-    if (chatType == CHAT_MSG_PARTY)
+    if (chatType == CHAT_MSG_PARTY || chatType == CHAT_MSG_RAID)
     {
         auto groupBots = PBC_FindGroupBots(bot);
         for (Player* groupBot : groupBots)
@@ -484,11 +491,24 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
     std::string historyLine = PBC_Localize("{0}: {1}", senderName, msg);
     std::string eventLine   = PBC_Localize("{0} says: {1}", senderName, msg);
 
-    bool isGroupChat = (chatType == CHAT_MSG_PARTY || chatType == CHAT_MSG_PARTY_LEADER ||
-                        chatType == CHAT_MSG_RAID  || chatType == CHAT_MSG_RAID_LEADER  ||
+    bool isPartyChat = (chatType == CHAT_MSG_PARTY || chatType == CHAT_MSG_PARTY_LEADER);
+    bool isRaidChat  = (chatType == CHAT_MSG_RAID  || chatType == CHAT_MSG_RAID_LEADER  ||
                         chatType == CHAT_MSG_RAID_WARNING);
+    bool isGroupChat = isPartyChat || isRaidChat;
 
-    std::vector<Player*> bots = isGroupChat ? PBC_FindGroupBots(sender) : PBC_FindNearbyBots(sender);
+    // Raid chat reaches the whole raid, so all group bots are eligible.
+    // Party chat inside a raid only reaches the sender's own sub-group, so
+    // only those bots can hear — and therefore answer — the message.  For a
+    // regular (non-raid) party PBC_FindSubGroupBots is equivalent to
+    // PBC_FindGroupBots.
+    std::vector<Player*> bots;
+    if (isRaidChat)
+        bots = PBC_FindGroupBots(sender);
+    else if (isPartyChat)
+        bots = PBC_FindSubGroupBots(sender);
+    else
+        bots = PBC_FindNearbyBots(sender);
+
     if (bots.empty())
     {
         PBC_Log(PBC_LogLevel::PBC_DEBUG, "Chat message event from {} type={} discarded — no bots found ({})",
@@ -517,7 +537,10 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
 
     PBC_RollBotsForMessage(ev, bots, msg);
 
-    AddTrackedPlayersToEvent(ev, sender);
+    // Party chat inside a raid only reaches the sender's sub-group, so only
+    // the real players in that sub-group should receive the history.  Raid
+    // chat and regular-party chat reach the whole group.
+    AddTrackedPlayersToEvent(ev, sender, /*subGroupOnly=*/isPartyChat && PBC_IsInRaidGroup(sender));
 
     PBC_Log(PBC_LogLevel::PBC_DEBUG, "Chat from {} type={} -> {}/{} bots will respond",
              senderName, chatType, ev.respondingChars.size(), bots.size());

@@ -58,6 +58,64 @@ std::vector<Player*> PBC_FindRealPlayersInGroup(Player* player)
 }
 
 // ---------------------------------------------------------------------------
+// PBC_FindRealPlayersInSubGroup
+// ---------------------------------------------------------------------------
+std::vector<Player*> PBC_FindRealPlayersInSubGroup(Player* player)
+{
+    std::vector<Player*> realPlayers;
+    if (!PBC_PTR_VALID(player)) return realPlayers;
+
+    Group* grp = player->GetGroup();
+    if (!grp) return realPlayers;
+
+    uint8 mySubGroup = grp->GetMemberGroup(player->GetGUID());
+
+    for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!PBC_PTR_VALID(member) || member == player) continue;
+        if (!member->IsInWorld()) continue;
+        WorldSession* sess = member->GetSession();
+        if (!PBC_PTR_VALID(sess) || sess->IsBot()) continue;
+        if (grp->GetMemberGroup(member->GetGUID()) != mySubGroup) continue;
+        realPlayers.push_back(member);
+    }
+    return realPlayers;
+}
+
+// ---------------------------------------------------------------------------
+// PBC_FindSubGroupBots
+//
+// In a raid group, party chat only reaches the members of the sender's own
+// sub-group.  This helper returns exactly those bots so that party-chat
+// messages inside a raid are answered only by the characters who actually
+// heard them.  For a regular (non-raid) party it behaves like
+// PBC_FindGroupBots.
+// ---------------------------------------------------------------------------
+std::vector<Player*> PBC_FindSubGroupBots(Player* player)
+{
+    std::vector<Player*> bots;
+    if (!PBC_PTR_VALID(player)) return bots;
+
+    Group* grp = player->GetGroup();
+    if (!grp) return bots;
+
+    uint8 mySubGroup = grp->GetMemberGroup(player->GetGUID());
+
+    for (GroupReference* ref = grp->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!PBC_PTR_VALID(member) || member == player) continue;
+        if (!member->IsInWorld()) continue;
+        WorldSession* sess = member->GetSession();
+        if (!PBC_PTR_VALID(sess) || !sess->IsBot()) continue;
+        if (grp->GetMemberGroup(member->GetGUID()) != mySubGroup) continue;
+        bots.push_back(member);
+    }
+    return bots;
+}
+
+// ---------------------------------------------------------------------------
 // PBC_FindGroupBotsExcluding
 // ---------------------------------------------------------------------------
 
@@ -124,4 +182,34 @@ bool PBC_BotIsGroupedWithRealPlayer(Player* bot)
         if (!sess->IsBot()) return true;
     }
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// PBC_IsInRaidGroup
+//
+// A "raid group" is a group that has been converted to a raid (more than one
+// sub-group).  In such a group party chat only reaches the members of the
+// sender's own sub-group, so event replies must go to raid chat instead.
+// ---------------------------------------------------------------------------
+bool PBC_IsInRaidGroup(Player* player)
+{
+    if (!PBC_PTR_VALID(player)) return false;
+    Group* grp = player->GetGroup();
+    if (!grp) return false;
+    return grp->isRaidGroup();
+}
+
+// ---------------------------------------------------------------------------
+// PBC_GetGroupChatType
+//
+// Single source of truth for "which group channel do event replies go to".
+// Returns CHAT_MSG_RAID for raid groups, CHAT_MSG_PARTY for regular parties,
+// and CHAT_MSG_SAY when the player is not grouped.
+// ---------------------------------------------------------------------------
+ChatMsg PBC_GetGroupChatType(Player* player)
+{
+    if (!PBC_PTR_VALID(player)) return CHAT_MSG_SAY;
+    Group* grp = player->GetGroup();
+    if (!grp) return CHAT_MSG_SAY;
+    return grp->isRaidGroup() ? CHAT_MSG_RAID : CHAT_MSG_PARTY;
 }

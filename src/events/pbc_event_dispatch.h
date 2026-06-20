@@ -125,8 +125,13 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
 // itself if it's a real player) to the event's silentCharGuids and
 // playerCharGuids.  This ensures player characters receive history passively
 // during play sessions.
+//
+// When subGroupOnly is true, only the real players in the anchor's own
+// sub-group (party) within a raid are tracked.  This is used for party-chat
+// messages sent inside a raid, which only reach the sender's sub-group.
 // ---------------------------------------------------------------------------
-void AddTrackedPlayersToEvent(PBC_EventItem& ev, Player* anchor);
+void AddTrackedPlayersToEvent(PBC_EventItem& ev, Player* anchor,
+                              bool subGroupOnly = false);
 
 // ---------------------------------------------------------------------------
 // Regeneration of the last event's responses.
