@@ -53,6 +53,13 @@ PBC.DisplayNarratorEvents = 1
 #                  "anthropic"  — Anthropic Messages API /messages endpoint.
 #                                 The module appends /messages to PBC.BaseUrl.
 #                                 Uses x-api-key header and anthropic-version header.
+#                  "ollama"     — Ollama native /api/chat endpoint.
+#                                 The module appends /api/chat to PBC.BaseUrl.
+#                                 Exposes Ollama-specific controls (think, keep_alive,
+#                                 num_ctx, num_predict) via the OLLAMA OPTIONS section
+#                                 below. Recommended for local Ollama instances — it can
+#                                 suppress the reasoning tokens that the OpenAI-compatible
+#                                 shim cannot disable.
 #     Default:     openai
 PBC.APIType = openai
 
@@ -60,6 +67,8 @@ PBC.APIType = openai
 #     Description: The base URL of the LLM API.
 #                  When PBC.APIType = openai:     the module appends /chat/completions to this URL.
 #                  When PBC.APIType = anthropic:  the module appends /messages to this URL.
+#                  When PBC.APIType = ollama:     the module appends /api/chat to this URL
+#                                                 (e.g. http://127.0.0.1:11434).
 #                  REQUIRED. The module will be disabled if missing.
 #     Default:     (empty)
 PBC.BaseUrl =
@@ -111,6 +120,11 @@ PBC.Temperature = 1.0
 #                  Leave empty for no extra parameters.
 #     Example (DeepSeek): 'frequency_penalty':0.5,'presence_penalty':0.2
 #     Example (GLM):       'thinking':{'type':'disabled'}
+#     Note (ollama): This is spliced at the TOP LEVEL of the request body, which
+#                    is correct for genuine top-level fields (e.g. 'format', 'tools').
+#                    Ollama sampling knobs (top_p, top_k, repeat_penalty, seed, stop, ...)
+#                    must instead go in PBC.OllamaExtraOptions — Ollama ignores them at
+#                    the top level.
 #     Default:     (empty)
 PBC.ModelExtraParameters =
 
@@ -130,6 +144,53 @@ PBC.MaxHistoryCtx = 32768
 #                  the budget is increased.
 #     Default:     8192
 PBC.MaxMemoriesCtx = 8192
+
+
+# --------------------------------------------
+# OLLAMA OPTIONS
+# --------------------------------------------
+
+# These settings apply ONLY when PBC.APIType = ollama. They are ignored for the
+# openai and anthropic API types.
+
+# PBC.OllamaThink
+#     Description: Controls Ollama's "think" parameter (reasoning output).
+#                  0 (false) — sends think:false, suppressing the reasoning tokens
+#                              that otherwise add latency. Recommended for chatter.
+#                  1 (true)  — sends think:true; only enable for models that support
+#                              thinking (a non-thinking model may reject the request).
+#     Default:     0 (false)
+PBC.OllamaThink = 0
+
+# PBC.OllamaKeepAlive
+#     Description: How long Ollama keeps the model loaded in memory after a request.
+#                  Accepts a duration string ("5m", "1h") or seconds; "-1" keeps the
+#                  model resident indefinitely (pairs well with GPU pinning / systemd
+#                  keep-alive). Leave empty to use Ollama's own default.
+#     Example:     PBC.OllamaKeepAlive = -1
+#     Default:     (empty)
+PBC.OllamaKeepAlive =
+
+# PBC.OllamaNumCtx
+#     Description: Pins the model's context window (options.num_ctx) for the request.
+#                  Making the context window a hard boundary keeps the local model's
+#                  memory use predictable. 0 = omit (use the model/Modelfile default).
+#                  Note: this is the model's request context window and is separate
+#                  from PBC.MaxHistoryCtx, which governs in-prompt history condensation.
+#     Example:     PBC.OllamaNumCtx = 8192
+#     Default:     0
+PBC.OllamaNumCtx = 0
+
+# PBC.OllamaExtraOptions
+#     Description: Raw JSON fragment merged into the Ollama "options" object — the
+#                  correct place for sampling/runtime knobs (top_p, top_k,
+#                  repeat_penalty, seed, stop, mirostat, ...). Use single quotes
+#                  instead of double quotes; they are replaced automatically at runtime.
+#                  (Output length is controlled by PBC.MaxResponseLength via num_predict,
+#                  and temperature/num_ctx have dedicated settings — no need to set them here.)
+#     Example:     'top_p':0.9,'repeat_penalty':1.1
+#     Default:     (empty)
+PBC.OllamaExtraOptions =
 
 
 # --------------------------------------------
@@ -153,6 +214,13 @@ PBC.AltModel =
 PBC.AltModelMaxResponseLength = 0
 PBC.AltModelTemperature = 1.0
 PBC.AltModelModelExtraParameters =
+
+# Ollama options for the alternative model (used only when PBC.AltModelAPIType = ollama).
+# Same meaning as the OLLAMA OPTIONS section above, applied to the alt model.
+PBC.AltModelOllamaThink = 0
+PBC.AltModelOllamaKeepAlive =
+PBC.AltModelOllamaNumCtx = 0
+PBC.AltModelOllamaExtraOptions =
 
 
 # --------------------------------------------

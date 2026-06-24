@@ -79,10 +79,11 @@ Copy `env/dist/etc/modules/playerbots_characters.conf.dist` as `env/dist/etc/mod
 
 ### Model Connection Setup
 
-The module supports two API formats, controlled by `PBC.APIType`:
+The module supports three API formats, controlled by `PBC.APIType`:
 
 - **`openai`** (default) — OpenAI-compatible `/chat/completions` endpoint. The module appends `/chat/completions` to `PBC.BaseUrl` and sends the API key via `Authorization: Bearer` header.
 - **`anthropic`** — Anthropic Messages API `/messages` endpoint. The module appends `/messages` to `PBC.BaseUrl` and sends the API key via `x-api-key` header with the `anthropic-version: 2023-06-01` header.
+- **`ollama`** — Ollama native `/api/chat` endpoint. The module appends `/api/chat` to `PBC.BaseUrl` and exposes Ollama-specific controls (`think`, `keep_alive`, `num_ctx`, `num_predict`) that the OpenAI-compatible shim hides. Recommended for local Ollama instances — `think:false` suppresses the reasoning tokens that otherwise dominate latency. See [Ollama (local)](#ollama-local) below.
 
 You need to configure at least `PBC.BaseUrl`, `PBC.Model` and `PBC.ApiKey` before the module can generate responses. The relevant config options are in the **API CONNECTION** and **MODEL PARAMETERS** sections of the config file. After configuring, you can use `.chars api-test` to quickly verify that the connection is working (or `.chars alt-api-test` for the alternative model).
 
@@ -121,11 +122,40 @@ DeepSeek offers a reasonable cost/capabilities compromise and can be considered 
 
 GLM 5.1 handles the required tasks impressively well, though the cost adds up fairly quickly. Expect to spend around $2 per long game session with a full party.
 
+#### Ollama (local)
+
+For a local [Ollama](https://ollama.com/) instance, use the native `ollama` API type rather than the OpenAI-compatible shim — it lets you suppress reasoning tokens and pin the context window directly.
+
+| Setting | Value |
+|---|---|
+| `PBC.APIType` | `ollama` |
+| `PBC.BaseUrl` | `http://127.0.0.1:11434` |
+| `PBC.Model` | `gemma3n:e4b` |
+| `PBC.ApiKey` | (leave empty) |
+| `PBC.Temperature` | `1.0` |
+| `PBC.MaxResponseLength` | `120` |
+| `PBC.MaxHistoryCtx` | `32768` |
+| `PBC.OllamaThink` | `0` |
+| `PBC.OllamaKeepAlive` | `-1` |
+| `PBC.OllamaNumCtx` | `8192` |
+
+The Ollama-specific options live in the **OLLAMA OPTIONS** section of the config:
+
+- **`PBC.OllamaThink`** — `0` sends `think:false`, disabling the reasoning output that is the main latency source for local models. Set to `1` only for models that support thinking.
+- **`PBC.OllamaKeepAlive`** — how long the model stays resident after a request. `-1` keeps it loaded indefinitely (pairs well with GPU pinning); leave empty for Ollama's default.
+- **`PBC.OllamaNumCtx`** — pins the request context window (`options.num_ctx`) so local memory use stays bounded. This is the model's context window and is separate from `PBC.MaxHistoryCtx`, which governs in-prompt history condensation.
+- **`PBC.MaxResponseLength`** drives `options.num_predict` (output cap), exactly as it does for the other API types.
+
+> [!NOTE]
+> The general caveat about locally-run models still applies — as context grows, smaller local models produce lower-quality output than frontier cloud models. The `ollama` type makes local inference viable and predictable, not equivalent to a large cloud model.
+
+For sampling knobs, remember that Ollama only honors them inside the `options` object. Put them in `PBC.OllamaExtraOptions` (e.g. `'top_p':0.9,'repeat_penalty':1.1`), **not** `PBC.ModelExtraParameters` — the latter splices at the top level of the request body (correct for fields like `format` or `tools`, but ignored by Ollama for sampling parameters).
+
 #### Other Models
 
-Any OpenAI-compatible API should work with `PBC.APIType = openai` — just set `PBC.BaseUrl` to the endpoint (the module appends `/chat/completions` automatically), `PBC.Model` to the model identifier, and `PBC.ApiKey` to your bearer token. If the endpoint doesn't require authentication (e.g. a local Ollama or LM Studio instance), leave `PBC.ApiKey` empty.
+Any OpenAI-compatible API should work with `PBC.APIType = openai` — just set `PBC.BaseUrl` to the endpoint (the module appends `/chat/completions` automatically), `PBC.Model` to the model identifier, and `PBC.ApiKey` to your bearer token. If the endpoint doesn't require authentication (e.g. an LM Studio instance, or Ollama's OpenAI-compatible shim), leave `PBC.ApiKey` empty. For Ollama specifically, prefer the native [`ollama`](#ollama-local) API type over the OpenAI-compatible shim.
 
-Use `PBC.ModelExtraParameters` to inject provider-specific JSON into the request body — this works the same way for both `openai` and `anthropic` API types. Make sure to use parameter names that are valid for your chosen API type (e.g. `top_p` and `top_k` for Anthropic, `frequency_penalty` and `presence_penalty` for OpenAI-compatible providers). Single quotes are used instead of double quotes and are automatically replaced at runtime:
+Use `PBC.ModelExtraParameters` to inject provider-specific JSON into the request body — this works the same way for the `openai`, `anthropic`, and `ollama` API types (for `ollama` it splices at the top level; use `PBC.OllamaExtraOptions` for sampling knobs). Make sure to use parameter names that are valid for your chosen API type (e.g. `top_p` and `top_k` for Anthropic, `frequency_penalty` and `presence_penalty` for OpenAI-compatible providers). Single quotes are used instead of double quotes and are automatically replaced at runtime:
 
 ```
 PBC.ModelExtraParameters = 'frequency_penalty':0.5,'presence_penalty':0.2

@@ -38,6 +38,11 @@ double      g_PBC_Temperature      = 1.0;
 std::string g_PBC_ModelExtraParameters;
 int         g_PBC_RequestTimeoutSec = 30;
 
+bool        g_PBC_OllamaThink       = false;
+std::string g_PBC_OllamaKeepAlive;
+int         g_PBC_OllamaNumCtx      = 0;
+std::string g_PBC_OllamaExtraOptions;
+
 bool        g_PBC_UseAltModelForCondensation      = false;
 bool        g_PBC_UseAltModelForRelationshipUpdate = false;
 std::string g_PBC_AltModelAPIType                  = "openai";
@@ -48,6 +53,11 @@ int         g_PBC_AltModelMaxResponseTokens        = 0;
 double      g_PBC_AltModelTemperature              = 1.0;
 std::string g_PBC_AltModelModelExtraParameters;
 int         g_PBC_AltModelRequestTimeoutSec         = 30;
+
+bool        g_PBC_AltModelOllamaThink               = false;
+std::string g_PBC_AltModelOllamaKeepAlive;
+int         g_PBC_AltModelOllamaNumCtx              = 0;
+std::string g_PBC_AltModelOllamaExtraOptions;
 
 uint32_t    g_PBC_MaxHistoryCtx              = 0;
 uint32_t    g_PBC_MaxMemoriesCtx             = 8192;
@@ -167,6 +177,11 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_ModelExtraParameters = sConfigMgr->GetOption<std::string>("PBC.ModelExtraParameters", "");
     g_PBC_RequestTimeoutSec   = sConfigMgr->GetOption<int>("PBC.RequestTimeoutSec", 30);
 
+    g_PBC_OllamaThink         = sConfigMgr->GetOption<bool>("PBC.OllamaThink", false);
+    g_PBC_OllamaKeepAlive     = sConfigMgr->GetOption<std::string>("PBC.OllamaKeepAlive", "");
+    g_PBC_OllamaNumCtx        = sConfigMgr->GetOption<int>("PBC.OllamaNumCtx", 0);
+    g_PBC_OllamaExtraOptions  = sConfigMgr->GetOption<std::string>("PBC.OllamaExtraOptions", "");
+
     // Alt model configuration
     g_PBC_UseAltModelForCondensation      = sConfigMgr->GetOption<bool>("PBC.UseAltModelForCondensation", false);
     g_PBC_UseAltModelForRelationshipUpdate = sConfigMgr->GetOption<bool>("PBC.UseAltModelForRelationshipUpdate", false);
@@ -178,6 +193,11 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_AltModelTemperature             = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.AltModelTemperature", 1.0f)) * 100.0) / 100.0;
     g_PBC_AltModelModelExtraParameters    = sConfigMgr->GetOption<std::string>("PBC.AltModelModelExtraParameters", "");
     g_PBC_AltModelRequestTimeoutSec       = sConfigMgr->GetOption<int>("PBC.AltModelRequestTimeoutSec", 30);
+
+    g_PBC_AltModelOllamaThink             = sConfigMgr->GetOption<bool>("PBC.AltModelOllamaThink", false);
+    g_PBC_AltModelOllamaKeepAlive         = sConfigMgr->GetOption<std::string>("PBC.AltModelOllamaKeepAlive", "");
+    g_PBC_AltModelOllamaNumCtx            = sConfigMgr->GetOption<int>("PBC.AltModelOllamaNumCtx", 0);
+    g_PBC_AltModelOllamaExtraOptions      = sConfigMgr->GetOption<std::string>("PBC.AltModelOllamaExtraOptions", "");
 
     g_PBC_MaxHistoryCtx              = sConfigMgr->GetOption<uint32_t>("PBC.MaxHistoryCtx", 0);
     g_PBC_MaxMemoriesCtx             = sConfigMgr->GetOption<uint32_t>("PBC.MaxMemoriesCtx", 8192);
@@ -283,6 +303,11 @@ void PBC_LoadConfig(bool /*isStartup*/)
         "Alt Model: Condensation={} RelationshipUpdate={} APIType='{}' Model='{}' Url='{}' Timeout={}s",
         g_PBC_UseAltModelForCondensation, g_PBC_UseAltModelForRelationshipUpdate,
         g_PBC_AltModelAPIType, g_PBC_AltModel, g_PBC_AltModelBaseUrl, g_PBC_AltModelRequestTimeoutSec);
+
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT,
+        "Ollama Options: Think={} KeepAlive='{}' NumCtx={} (alt: Think={} KeepAlive='{}' NumCtx={})",
+        g_PBC_OllamaThink, g_PBC_OllamaKeepAlive, g_PBC_OllamaNumCtx,
+        g_PBC_AltModelOllamaThink, g_PBC_AltModelOllamaKeepAlive, g_PBC_AltModelOllamaNumCtx);
 }
 
 // Try to read a file into target. Returns true if the file exists and is non-empty.

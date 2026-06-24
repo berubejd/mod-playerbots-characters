@@ -65,12 +65,18 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
     PBC_CleanUnknownTokens(usrPrompt);
 
     const bool isAnthropic = IEquals(cfg.apiType, "anthropic");
+    const bool isOllama    = IEquals(cfg.apiType, "ollama");
 
     // --- Build URL --------------------------------------------------------
     std::string url = cfg.baseUrl;
     if (!url.empty() && url.back() == '/')
         url.pop_back();
-    url += isAnthropic ? "/messages" : "/chat/completions";
+    if (isAnthropic)
+        url += "/messages";
+    else if (isOllama)
+        url += "/api/chat";
+    else
+        url += "/chat/completions";
 
     // --- Build request body -----------------------------------------------
     json body;
@@ -103,6 +109,70 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
 
         if (cfg.temperature >= 0.0)
             body["temperature"] = cfg.temperature;
+    }
+    else if (isOllama)
+    {
+        // Ollama native /api/chat format.
+        // Messages mirror the OpenAI layout, but runtime/sampling parameters
+        // live in a nested "options" object — top-level copies are ignored by
+        // Ollama. think/keep_alive are genuine top-level fields.
+        json messages = json::array();
+        if (!sysPrompt.empty())
+            messages.push_back({ {"role", "system"}, {"content", sysPrompt} });
+        messages.push_back({ {"role", "user"}, {"content", usrPrompt} });
+        body["messages"] = messages;
+
+        // The single-shot client reads one JSON body; /api/chat defaults to a
+        // streamed NDJSON response, so streaming must be disabled.
+        body["stream"] = false;
+
+        // think:false suppresses reasoning tokens (the latency fix).  Sent in
+        // both states so a thinking model can be explicitly opted in.
+        body["think"] = cfg.ollamaThink;
+
+        // keep_alive keeps the model resident; omitted when unset so Ollama
+        // applies its own default.
+        if (!cfg.ollamaKeepAlive.empty())
+            body["keep_alive"] = cfg.ollamaKeepAlive;
+
+        json options = json::object();
+        if (cfg.temperature >= 0.0)
+            options["temperature"] = cfg.temperature;
+        if (cfg.ollamaNumCtx > 0)
+            options["num_ctx"] = cfg.ollamaNumCtx;
+
+        // num_predict mirrors the OpenAI max_tokens override semantics:
+        //   -1 → omit (let the model decide), 0 → config value, >0 → override.
+        if (maxTokensOverride == -1)
+        {
+            // intentionally omitted
+        }
+        else if (maxTokensOverride > 0)
+            options["num_predict"] = maxTokensOverride;
+        else if (cfg.maxResponseTokens > 0)
+            options["num_predict"] = cfg.maxResponseTokens;
+
+        // Merge user-supplied sampling options (top_p, top_k, repeat_penalty,
+        // seed, stop, ...).  Single quotes are accepted as in ModelExtraParameters.
+        if (!cfg.ollamaExtraOptions.empty())
+        {
+            std::string extra = cfg.ollamaExtraOptions;
+            std::replace(extra.begin(), extra.end(), '\'', '"');
+            try
+            {
+                json extraJson = json::parse("{" + extra + "}");
+                options.update(extraJson);
+            }
+            catch (const std::exception& ex)
+            {
+                PBC_Log(PBC_LogLevel::PBC_WARNING,
+                          "Ollama: failed to parse PBC.OllamaExtraOptions ('{}'): {} — ignoring.",
+                          PBC_SanitizeForFmt(cfg.ollamaExtraOptions), ex.what());
+            }
+        }
+
+        if (!options.empty())
+            body["options"] = options;
     }
     else
     {
@@ -201,6 +271,8 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
                 std::string errMsg;
                 if (resp["error"].is_object() && resp["error"].contains("message"))
                     errMsg = resp["error"]["message"].get<std::string>();
+                else if (resp["error"].is_string())
+                    errMsg = resp["error"].get<std::string>();   // Ollama returns a bare string
                 else
                     errMsg = responseBody;
                 PBC_Log(PBC_LogLevel::PBC_ERROR, "LLM API error (attempt {}/{}): {}",
@@ -228,6 +300,21 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
                     int outputTokens = resp["usage"].value("output_tokens", 0);
                     tokensUsed = inputTokens + outputTokens;
                 }
+            }
+            else if (isOllama)
+            {
+                // Ollama response: message.content
+                if (!resp.contains("message") || !resp["message"].contains("content"))
+                {
+                    PBC_Log(PBC_LogLevel::PBC_ERROR, "LLM: unexpected Ollama response format (attempt {}/{}).", attempt, MAX_ATTEMPTS);
+                    continue;
+                }
+                text = resp["message"]["content"].get<std::string>();
+
+                // Usage: prompt_eval_count (prompt) + eval_count (completion)
+                int promptTokens = resp.value("prompt_eval_count", 0);
+                int evalTokens   = resp.value("eval_count", 0);
+                tokensUsed = promptTokens + evalTokens;
             }
             else
             {
@@ -284,6 +371,10 @@ PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
     cfg.temperature          = g_PBC_Temperature;
     cfg.modelExtraParameters = g_PBC_ModelExtraParameters;
     cfg.requestTimeoutSec    = g_PBC_RequestTimeoutSec;
+    cfg.ollamaThink          = g_PBC_OllamaThink;
+    cfg.ollamaKeepAlive      = g_PBC_OllamaKeepAlive;
+    cfg.ollamaNumCtx         = g_PBC_OllamaNumCtx;
+    cfg.ollamaExtraOptions   = g_PBC_OllamaExtraOptions;
     return PBC_CallLLMWithConfig(cfg, systemPrompt, userPrompt, maxTokensOverride, preserveNewlines);
 }
 
@@ -301,5 +392,9 @@ PBC_LLMResult PBC_CallLLMAlt(const std::string& systemPrompt,
     cfg.temperature          = g_PBC_AltModelTemperature;
     cfg.modelExtraParameters = g_PBC_AltModelModelExtraParameters;
     cfg.requestTimeoutSec    = g_PBC_AltModelRequestTimeoutSec;
+    cfg.ollamaThink          = g_PBC_AltModelOllamaThink;
+    cfg.ollamaKeepAlive      = g_PBC_AltModelOllamaKeepAlive;
+    cfg.ollamaNumCtx         = g_PBC_AltModelOllamaNumCtx;
+    cfg.ollamaExtraOptions   = g_PBC_AltModelOllamaExtraOptions;
     return PBC_CallLLMWithConfig(cfg, systemPrompt, userPrompt, maxTokensOverride, preserveNewlines);
 }
