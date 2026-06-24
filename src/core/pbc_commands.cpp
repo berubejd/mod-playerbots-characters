@@ -12,6 +12,7 @@
 #include "Player.h"
 #include "ObjectAccessor.h"
 #include "ChatCommand.h"
+#include "CharacterCache.h"
 #include "Log.h"
 #include "WorldSession.h"
 #include "Group.h"
@@ -44,7 +45,23 @@ static bool HandleCharsReload(ChatHandler* handler, Optional<std::string_view>)
     PBC_LoadPrompts();
     PBC_LoadCharacterCards();
     PBC_LoadCardsFromDB();
-    PBC_ImportDiskCardsToDB();
+
+    if (g_PBC_Enable)
+    {
+        // Restart the card worker for a clean slate: drain any in-flight job,
+        // drop stale queued jobs, and clear transient tracking (in-flight set +
+        // the opportunistic-derive suppressor, so fixed prompts/model take
+        // effect and partial cards are re-attempted).
+        PBC_StopCardWorker();
+        PBC_ImportDiskCardsToDB();   // may enqueue fresh derivation jobs
+        PBC_StartCardWorker();
+    }
+    else
+    {
+        // Disabled via reload — stop the worker so no further card LLM calls run.
+        PBC_StopCardWorker();
+    }
+
     PBC_LoadMemoriesFromDB();
     PBC_LoadCharacterDataFromDB();
 
@@ -153,10 +170,150 @@ static bool HandleCharsInfo(ChatHandler* handler, Optional<std::string_view> nam
             rollMod = it->second;
     }
 
+    std::string provenance = "none (default)";
+    bool pinned = false;
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_CardsMutex);
+        auto cit = g_PBC_Cards.find(botGuid);
+        if (cit != g_PBC_Cards.end())
+        {
+            provenance = PBC_CardProvenanceToStr(cit->second.provenance);
+            pinned     = cit->second.pinned;
+        }
+    }
+
     handler->PSendSysMessage("[PBC] === {} ===", target->GetName());
     handler->PSendSysMessage("[PBC] Memories: {}  |  History lines: {}  |  Est. tokens: {}/{}  |  Roll modifier: {:+d}",
         memCount, histCount, estimatedTokens, g_PBC_MaxHistoryCtx, rollMod);
+    handler->PSendSysMessage("[PBC] Card provenance: {}  |  Pinned: {}", provenance, pinned ? "yes" : "no");
     handler->PSendSysMessage("[PBC] Card:\n{}", card);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Resolve a character name to a GUID (online or offline) via the characters
+// table, rejecting ambiguous (duplicate) names — mirrors the disk-import guard
+// so pin/unpin never act on the wrong character.
+// ---------------------------------------------------------------------------
+static uint64_t ResolveCharGuidByName(const std::string& name, bool& ambiguous)
+{
+    ambiguous = false;
+
+    std::string escaped = name;
+    CharacterDatabase.EscapeString(escaped);
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT guid FROM characters WHERE name = '{}'", escaped);
+    if (!result)
+        return 0;
+    if (result->GetRowCount() > 1)
+    {
+        ambiguous = true;
+        return 0;
+    }
+    return (*result)[0].Get<uint32_t>();
+}
+
+// ---------------------------------------------------------------------------
+// .chars pin <char_name>  /  .chars unpin <char_name>
+// Pinned cards are file/override-authoritative and read-only; unpinned cards
+// are DB-authoritative and editable.  Works for offline characters.
+// ---------------------------------------------------------------------------
+static bool HandleCharsSetPinned(ChatHandler* handler, std::string_view nameArg, bool pinned)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+    if (nameArg.empty())
+    {
+        handler->PSendSysMessage("[PBC] Usage: chars {} <char_name>", pinned ? "pin" : "unpin");
+        return false;
+    }
+
+    bool ambiguous = false;
+    uint64_t guid = ResolveCharGuidByName(std::string(nameArg), ambiguous);
+    if (ambiguous)
+    {
+        handler->PSendSysMessage("[PBC] Character name '{}' is ambiguous (multiple characters share it) — "
+            "cannot resolve by name.", nameArg);
+        return false;
+    }
+    if (guid == 0)
+    {
+        handler->PSendSysMessage("[PBC] Character '{}' not found.", nameArg);
+        return false;
+    }
+
+    if (!PBC_SetCardPinned(guid, pinned))
+    {
+        handler->PSendSysMessage("[PBC] No card found for '{}'.", nameArg);
+        return false;
+    }
+
+    if (pinned)
+        handler->PSendSysMessage("[PBC] Card for '{}' pinned — file/override authoritative, edits disabled.", nameArg);
+    else
+        handler->PSendSysMessage("[PBC] Card for '{}' unpinned — now DB-authoritative and editable.", nameArg);
+    return true;
+}
+
+static bool HandleCharsPin(ChatHandler* handler, std::string_view nameArg)
+{
+    return HandleCharsSetPinned(handler, nameArg, true);
+}
+
+static bool HandleCharsUnpin(ChatHandler* handler, std::string_view nameArg)
+{
+    return HandleCharsSetPinned(handler, nameArg, false);
+}
+
+// ---------------------------------------------------------------------------
+// .chars regen-card <char_name>
+// Forces a fresh autogeneration of the character's card. Rejected if the card
+// is pinned, autogen is disabled, or a generation is already in flight.
+// ---------------------------------------------------------------------------
+static bool HandleCharsRegenCard(ChatHandler* handler, std::string_view nameArg)
+{
+    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
+    if (nameArg.empty())
+    {
+        handler->PSendSysMessage("[PBC] Usage: chars regen-card <char_name>");
+        return false;
+    }
+
+    Player* target = ObjectAccessor::FindPlayerByName(std::string(nameArg));
+    if (!target)
+    {
+        handler->PSendSysMessage("[PBC] Character '{}' not found or not online.", nameArg);
+        return false;
+    }
+
+    WorldSession* targetSess = target->GetSession();
+    if (!targetSess)
+    {
+        handler->PSendSysMessage("[PBC] '{}' has no session.", target->GetName());
+        return false;
+    }
+
+    bool isBot = targetSess->IsBot();
+    bool isOwnCharacter = false;
+    if (!isBot && handler->GetSession())
+    {
+        Player* callingPlayer = handler->GetSession()->GetPlayer();
+        if (callingPlayer && callingPlayer->GetGUID() == target->GetGUID())
+            isOwnCharacter = true;
+    }
+    if (!isBot && !isOwnCharacter)
+    {
+        handler->PSendSysMessage("[PBC] '{}' is not a playerbot.", target->GetName());
+        return false;
+    }
+
+    if (!PBC_QueueCardRegen(target))
+    {
+        handler->PSendSysMessage("[PBC] Could not queue regeneration for '{}' "
+            "(card is pinned, autogen is disabled, or a generation is already in progress).", target->GetName());
+        return false;
+    }
+
+    handler->PSendSysMessage("[PBC] Card regeneration queued for '{}'.", target->GetName());
     return true;
 }
 
@@ -863,6 +1020,9 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
         { "narrate-party",            HandleCharsNarrateParty,            SEC_PLAYER,    Console::No  },
         { "trigger",                  HandleCharsTrigger,                 SEC_PLAYER,    Console::Yes },
         { "regen-last",               HandleCharsRegenLast,               SEC_PLAYER,    Console::No  },
+        { "pin",                      HandleCharsPin,                     SEC_GAMEMASTER, Console::Yes },
+        { "unpin",                    HandleCharsUnpin,                   SEC_GAMEMASTER, Console::Yes },
+        { "regen-card",               HandleCharsRegenCard,               SEC_GAMEMASTER, Console::Yes },
         { "migrate-card-additions",   HandleCharsMigrateCardAdditions,    SEC_GAMEMASTER, Console::Yes },
     };
 

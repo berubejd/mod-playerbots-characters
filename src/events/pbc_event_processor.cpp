@@ -1,6 +1,7 @@
 #include "pbc_event_processor.h"
 #include "pbc_config.h"
 #include "pbc_character.h"
+#include "pbc_cards.h"
 #include "pbc_database.h"
 #include "pbc_llm.h"
 #include "pbc_http.h"
@@ -1000,6 +1001,16 @@ void PBC_ProcessEventItem(PBC_EventItem ev)
     if (ev.type == PBC_EventType::CardAdditionsMigration)
     {
         ProcessCardAdditionsMigration(ev);
+        return;
+    }
+
+    // -----------------------------------------------------------------------
+    // CardGeneration: autogenerate / derive a character card off-thread.
+    // -----------------------------------------------------------------------
+    if (ev.type == PBC_EventType::CardGeneration)
+    {
+        PBC_ProcessCardGeneration(ev);
+        g_PBC_EventThreadDone.store(true);
         return;
     }
 

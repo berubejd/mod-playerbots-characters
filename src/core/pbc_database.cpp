@@ -496,6 +496,66 @@ void DB_UpsertCard(const PBC_CardEntry& card)
     );
 }
 
+void DB_SetCardPinned(uint64_t botGuid, bool pinned)
+{
+    CharacterDatabase.Execute(
+        "UPDATE mod_pbc_cards SET pinned = {} WHERE bot_guid = {}",
+        pinned ? 1 : 0,
+        botGuid);
+}
+
+// Column order shared by the card SELECTs below.
+static const char* kCardSelectCols =
+    "bot_guid, name, premise, personality, `values`, background, speech_style, quirks, "
+    "provenance, pinned, card_file_hash, gen_model, gen_version";
+
+// Parse the current row of a card SELECT (column order = kCardSelectCols).
+static void AssignCardRow(const QueryResult& result, PBC_CardEntry& c)
+{
+    c.botGuid      = (*result)[0].Get<uint64_t>();
+    c.name         = (*result)[1].Get<std::string>();
+    c.premise      = (*result)[2].Get<std::string>();
+    c.personality  = (*result)[3].Get<std::string>();
+    c.values       = (*result)[4].Get<std::string>();
+    c.background    = (*result)[5].Get<std::string>();
+    c.speechStyle  = (*result)[6].Get<std::string>();
+    c.quirks       = (*result)[7].Get<std::string>();
+    c.provenance   = PBC_CardProvenanceFromStr((*result)[8].Get<std::string>());
+    c.pinned       = (*result)[9].Get<uint8_t>() != 0;
+    c.cardFileHash = (*result)[10].Get<std::string>();
+    c.genModel     = (*result)[11].Get<std::string>();
+    c.genVersion   = (*result)[12].Get<uint32_t>();
+}
+
+bool DB_LoadCard(uint64_t botGuid, PBC_CardEntry& out)
+{
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT {} FROM mod_pbc_cards WHERE bot_guid = {}", kCardSelectCols, botGuid);
+    if (!result)
+        return false;
+    AssignCardRow(result, out);
+    return true;
+}
+
+std::vector<std::string> DB_GetRecentGeneratedSummaries(size_t limit)
+{
+    std::vector<std::string> out;
+    if (limit == 0)
+        return out;
+
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT premise FROM mod_pbc_cards "
+        "WHERE provenance = 'generated' AND premise IS NOT NULL AND premise <> '' "
+        "ORDER BY created_at DESC, bot_guid DESC LIMIT {}", limit);
+    if (!result)
+        return out;
+
+    do {
+        out.push_back((*result)[0].Get<std::string>());
+    } while (result->NextRow());
+    return out;
+}
+
 void PBC_LoadCardsFromDB()
 {
     // Schema-readiness guard: if mod_pbc_cards does not exist yet (migration
@@ -508,10 +568,7 @@ void PBC_LoadCardsFromDB()
         return;
     }
 
-    QueryResult result = CharacterDatabase.Query(
-        "SELECT bot_guid, name, premise, personality, `values`, background, speech_style, quirks, "
-        "provenance, pinned, card_file_hash, gen_model, gen_version FROM mod_pbc_cards"
-    );
+    QueryResult result = CharacterDatabase.Query("SELECT {} FROM mod_pbc_cards", kCardSelectCols);
 
     std::lock_guard<std::mutex> lock(g_PBC_CardsMutex);
     g_PBC_Cards.clear();
@@ -525,19 +582,7 @@ void PBC_LoadCardsFromDB()
     size_t count = 0;
     do {
         PBC_CardEntry c;
-        c.botGuid      = (*result)[0].Get<uint64_t>();
-        c.name         = (*result)[1].Get<std::string>();
-        c.premise      = (*result)[2].Get<std::string>();
-        c.personality  = (*result)[3].Get<std::string>();
-        c.values       = (*result)[4].Get<std::string>();
-        c.background    = (*result)[5].Get<std::string>();
-        c.speechStyle  = (*result)[6].Get<std::string>();
-        c.quirks       = (*result)[7].Get<std::string>();
-        c.provenance   = PBC_CardProvenanceFromStr((*result)[8].Get<std::string>());
-        c.pinned       = (*result)[9].Get<uint8_t>() != 0;
-        c.cardFileHash = (*result)[10].Get<std::string>();
-        c.genModel     = (*result)[11].Get<std::string>();
-        c.genVersion   = (*result)[12].Get<uint32_t>();
+        AssignCardRow(result, c);
         g_PBC_Cards[c.botGuid] = std::move(c);
         ++count;
     } while (result->NextRow());

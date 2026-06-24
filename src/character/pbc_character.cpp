@@ -1,5 +1,6 @@
 #include "pbc_character.h"
 #include "pbc_config.h"
+#include "pbc_cards.h"
 #include "pbc_database.h"
 #include "pbc_http.h"
 #include "pbc_llm.h"
@@ -123,11 +124,62 @@ std::string PBC_SubstituteVars(const std::string& tmpl, Player* bot, const std::
 
 std::string PBC_GetCharacterCard(Player* bot)
 {
-    const std::string& name = bot->GetName();
+    uint64_t guid = bot->GetGUID().GetCounter();
 
-    auto it = g_PBC_CharacterCards.find(name);
-    if (it != g_PBC_CharacterCards.end())
-        return PBC_SubstituteVars(it->second, bot, "", false);
+    // DB-canonical card (a single row per character; provenance only affects
+    // editability/pinning, not which row wins — there is only one).
+    PBC_CardEntry card;
+    bool found = false;
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_CardsMutex);
+        auto it = g_PBC_Cards.find(guid);
+        if (it != g_PBC_Cards.end())
+        {
+            card  = it->second;
+            found = true;
+        }
+    }
+
+    // Cache miss — consult the DB authoritatively (cards are DB-canonical; the
+    // cache is only a hot-path optimization that can drift, e.g. a direct SQL
+    // seed). Hydrate the cache if a row exists.
+    if (!found && DB_LoadCard(guid, card))
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_CardsMutex);
+        // Prefer an entry a concurrent writer may have just populated, to avoid
+        // caching a row that is already stale.
+        auto it = g_PBC_Cards.find(guid);
+        if (it != g_PBC_Cards.end())
+            card = it->second;
+        else
+            g_PBC_Cards[guid] = card;
+        found = true;
+    }
+
+    // A row with actual persona content is rendered deterministically (no model
+    // call). An all-empty row (e.g. a bare SQL row) is treated as no usable
+    // card and falls through to the default below.
+    if (found && PBC_CardHasContent(card))
+    {
+        PBC_MaybeQueueCardDerivation(bot);  // bounded, completes a partial card
+        return PBC_SubstituteVars(PBC_RenderCard(card), bot, "", false);
+    }
+
+    // No usable card → queue first-contact autogeneration (bot-gated, single-
+    // flight; no-ops if a row already exists). This may hydrate the cache from
+    // the DB, and the card worker can finish concurrently, so re-check before
+    // falling back to the default.
+    PBC_MaybeQueueCardGeneration(bot);
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_CardsMutex);
+        auto it = g_PBC_Cards.find(guid);
+        found = (it != g_PBC_Cards.end() && PBC_CardHasContent(it->second));
+        if (found)
+            card = it->second;
+    }
+    if (found)
+        return PBC_SubstituteVars(PBC_RenderCard(card), bot, "", false);
+
     return PBC_SubstituteVars(g_PBC_DefaultCharacterDescription, bot, "", false);
 }
 

@@ -39,6 +39,13 @@ extern std::mutex g_PBC_ConnectionsMutex;
 // The returned pointer is valid until the next config reload.
 const PBC_APIConfig* PBC_GetConnection(const std::string& name);
 
+// Character card generation / derivation
+extern bool        g_PBC_CardAutogenEnabled;       // first-contact autogeneration
+extern std::string g_PBC_CardGenerationFormat;     // "json" or "labeled" — structured output parsing
+extern bool        g_PBC_CardDeriveOnImport;       // fill null sibling fields from an imported background
+extern double      g_PBC_CardGenerationTemperature; // hotter for distinct first-contact cards
+extern double      g_PBC_CardDerivationTemperature; // cooler — constrained by authored fields
+
 // Context / condensation
 extern uint32_t    g_PBC_MaxHistoryCtx;
 extern uint32_t    g_PBC_MaxMemoriesCtx;
@@ -50,6 +57,16 @@ extern std::string g_PBC_CondensationSystemPrompt;
 extern std::string g_PBC_CondensationUserPrompt;
 extern std::string g_PBC_DefaultCharacterDescription;
 extern std::string g_PBC_CharacterContext;
+
+// Character card prompt templates
+extern std::string g_PBC_CardRenderTemplate;          // deterministic render template
+extern std::string g_PBC_CardGenerationSystemPrompt;
+extern std::string g_PBC_CardGenerationUserPrompt;
+extern std::string g_PBC_CardDerivationSystemPrompt;
+extern std::string g_PBC_CardDerivationUserPrompt;
+// Optional, localizable few-shot examples for generation. Delimited by lines
+// containing exactly [user] or [assistant]; empty = no few-shot.
+extern std::string g_PBC_CardGenerationFewShot;
 
 // Relationship update prompts
 extern std::string g_PBC_RelationshipUpdateSystemPrompt;
@@ -158,6 +175,19 @@ enum class PBC_EventType : uint8_t
     RelationshipUpdate,     // Update one character's relationship with a target
     CardAdditionsMigration, // Convert legacy card additions into memories
     Regen,                  // Regenerate the last event's responses
+    CardGeneration,         // Autogenerate or derive a character card (off-thread)
+};
+
+// CardGeneration sub-mode.
+//   Generate — no card row yet: synthesize all fields from identity, then
+//              derivation fills anything the model left out; persist 'generated'.
+//   Derive   — a card row exists with some fields: fill only the empty fields
+//              from the present ones (e.g. background→siblings); preserve
+//              provenance/pinned/hash.
+enum class PBC_CardGenMode : uint8_t
+{
+    Generate = 0,
+    Derive,
 };
 
 // ---------------------------------------------------------------------------
@@ -320,6 +350,20 @@ struct PBC_EventItem
     // -----------------------------------------------------------------------
     std::shared_ptr<PBC_LastEventRecord> regenRecord;
     uint64_t regenRequesterGuid = 0;
+
+    // -----------------------------------------------------------------------
+    // CardGeneration fields (identity seed captured on the main thread).
+    // For Derive mode the current persona fields are read live from g_PBC_Cards
+    // at process time, so only the GUID + identity seed are carried here.
+    // -----------------------------------------------------------------------
+    PBC_CardGenMode cardGenMode = PBC_CardGenMode::Generate;
+    bool        cardGenForce = false;   // regen: overwrite an existing (non-pinned) card
+    uint64_t    cardGenGuid = 0;
+    std::string cardGenName;
+    std::string cardGenRace;
+    std::string cardGenClass;
+    std::string cardGenGender;
+    std::string cardGenLevel;
 };
 
 // Chat-send action posted from event thread to main thread.

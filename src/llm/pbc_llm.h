@@ -3,6 +3,7 @@
 
 #include "pbc_json.h"
 #include <string>
+#include <vector>
 
 // Result of a single LLM completion call
 struct PBC_LLMResult
@@ -10,6 +11,14 @@ struct PBC_LLMResult
     bool        success;
     std::string text;       // the assistant reply (trimmed)
     int         tokensUsed; // approximate total tokens (prompt + completion), 0 if unknown
+};
+
+// One message in a multi-turn conversation (for few-shot prompting).
+// role is "user" or "assistant"; the system prompt is passed separately.
+struct PBC_ChatTurn
+{
+    std::string role;
+    std::string content;
 };
 
 // ---------------------------------------------------------------------------
@@ -25,6 +34,12 @@ struct PBC_APIConfig
     std::string     model;              // model identifier
     int             requestTimeoutSec;  // HTTP timeout
     pbc_json        requestParameters;  // extra params merged into every request body
+
+    // When true, constrain the provider to emit a valid JSON object
+    // (Ollama format:"json", OpenAI response_format json_object; Anthropic has
+    // no native mode and relies on the prompt).  Used by structured card calls.
+    // Not read from connection files — callers set it on a local copy.
+    bool            jsonMode = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -43,6 +58,13 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
                                      const std::string& systemPrompt,
                                      const std::string& userPrompt,
                                      bool preserveNewlines = false);
+
+// Multi-turn variant — `turns` is the full user/assistant sequence (few-shot
+// example pairs followed by the live user message).  Honors cfg.jsonMode.
+PBC_LLMResult PBC_CallLLMConversation(const PBC_APIConfig& cfg,
+                                       const std::string& systemPrompt,
+                                       const std::vector<PBC_ChatTurn>& turns,
+                                       bool preserveNewlines = false);
 
 // Convenience wrapper — uses the "default" connection from the registry.
 PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,

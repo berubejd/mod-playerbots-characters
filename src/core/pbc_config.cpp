@@ -18,6 +18,7 @@
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <unordered_set>
 
@@ -35,6 +36,12 @@ bool     g_PBC_CardAdditionsMigrationNeeded = false;
 std::unordered_map<std::string, PBC_APIConfig> g_PBC_Connections;
 std::mutex g_PBC_ConnectionsMutex;
 
+bool        g_PBC_CardAutogenEnabled               = true;
+std::string g_PBC_CardGenerationFormat             = "json";
+bool        g_PBC_CardDeriveOnImport               = true;
+double      g_PBC_CardGenerationTemperature        = 0.95;
+double      g_PBC_CardDerivationTemperature        = 0.65;
+
 uint32_t    g_PBC_MaxHistoryCtx              = 0;
 uint32_t    g_PBC_MaxMemoriesCtx             = 8192;
 
@@ -44,6 +51,13 @@ std::string g_PBC_CondensationSystemPrompt;
 std::string g_PBC_CondensationUserPrompt;
 std::string g_PBC_DefaultCharacterDescription;
 std::string g_PBC_CharacterContext;
+
+std::string g_PBC_CardRenderTemplate;
+std::string g_PBC_CardGenerationSystemPrompt;
+std::string g_PBC_CardGenerationUserPrompt;
+std::string g_PBC_CardDerivationSystemPrompt;
+std::string g_PBC_CardDerivationUserPrompt;
+std::string g_PBC_CardGenerationFewShot;
 
 std::string g_PBC_RelationshipUpdateSystemPrompt;
 std::string g_PBC_RelationshipUpdateUserPrompt;
@@ -371,6 +385,7 @@ static bool PBC_LoadConnections()
     std::string utilityPath     = sConfigMgr->GetOption<std::string>("PBC.UtilityConnection", "");
     std::string condensationPath = sConfigMgr->GetOption<std::string>("PBC.CondensationConnection", "");
     std::string relationshipPath = sConfigMgr->GetOption<std::string>("PBC.RelationshipUpdateConnection", "");
+    std::string cardsPath        = sConfigMgr->GetOption<std::string>("PBC.CardGenerationConnection", "");
 
     // If DefaultConnection is empty, try the legacy fallback.
     if (defaultPath.empty())
@@ -426,6 +441,9 @@ static bool PBC_LoadConnections()
     if (!loadSlot("relationship", relationshipPath))
         g_PBC_Connections["relationship"] = g_PBC_Connections["default"];
 
+    if (!loadSlot("cards", cardsPath))
+        g_PBC_Connections["cards"] = g_PBC_Connections["default"];
+
     return true;
 }
 
@@ -451,6 +469,22 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_DebugEnabled        = sConfigMgr->GetOption<bool>("PBC.DebugEnabled", false);
     g_PBC_DebugShowFullRequest = sConfigMgr->GetOption<bool>("PBC.DebugShowFullRequest", false);
     g_PBC_DisplayNarratorEvents = sConfigMgr->GetOption<bool>("PBC.DisplayNarratorEvents", true);
+
+    // Character card generation / derivation
+    g_PBC_CardAutogenEnabled              = sConfigMgr->GetOption<bool>("PBC.CardAutogenEnabled", true);
+    g_PBC_CardGenerationFormat            = sConfigMgr->GetOption<std::string>("PBC.CardGenerationFormat", "json");
+    g_PBC_CardDeriveOnImport              = sConfigMgr->GetOption<bool>("PBC.CardDeriveOnImport", true);
+    g_PBC_CardGenerationTemperature       = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.CardGenerationTemperature", 0.95f)) * 100.0) / 100.0;
+    g_PBC_CardDerivationTemperature       = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.CardDerivationTemperature", 0.65f)) * 100.0) / 100.0;
+    // Normalize the format selector (only "json" or "labeled" are valid).
+    std::transform(g_PBC_CardGenerationFormat.begin(), g_PBC_CardGenerationFormat.end(),
+                   g_PBC_CardGenerationFormat.begin(), ::tolower);
+    if (g_PBC_CardGenerationFormat != "json" && g_PBC_CardGenerationFormat != "labeled")
+    {
+        PBC_Log(PBC_LogLevel::PBC_WARNING,
+            "PBC.CardGenerationFormat='{}' is invalid — falling back to 'json'.", g_PBC_CardGenerationFormat);
+        g_PBC_CardGenerationFormat = "json";
+    }
 
     g_PBC_MaxHistoryCtx              = sConfigMgr->GetOption<uint32_t>("PBC.MaxHistoryCtx", 0);
     g_PBC_MaxMemoriesCtx             = sConfigMgr->GetOption<uint32_t>("PBC.MaxMemoriesCtx", 8192);
@@ -548,6 +582,7 @@ void PBC_LoadConfig(bool /*isStartup*/)
         logConn("utility");
         logConn("condensation");
         logConn("relationship");
+        logConn("cards");
     }
 
     PBC_Log(PBC_LogLevel::PBC_DEFAULT,
@@ -565,6 +600,11 @@ void PBC_LoadConfig(bool /*isStartup*/)
         "HTTP Server: Port={} Bind='{}' Timeout={}s BaseUrl='{}' PrivateKey={} FrontendPath='{}'",
         g_PBC_HttpServerPort, g_PBC_HttpServerBind, g_PBC_HttpServerTimeout, g_PBC_HttpServerBaseUrl,
         g_PBC_HttpServerPrivateKey.empty() ? "(not set)" : "(set)", g_PBC_HttpServerFrontendPath);
+
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT,
+        "Cards: Autogen={} Format='{}' DeriveOnImport={} GenTemp={} DeriveTemp={}",
+        g_PBC_CardAutogenEnabled, g_PBC_CardGenerationFormat, g_PBC_CardDeriveOnImport,
+        g_PBC_CardGenerationTemperature, g_PBC_CardDerivationTemperature);
 }
 
 // Try to read a file into target. Returns true if the file exists and is non-empty.
@@ -597,7 +637,8 @@ static bool TryReadFile(const std::string& path, std::string& target)
 // Returns true on success, false if no prompt file could be loaded.
 static bool PBC_GetPrompt(const std::string& promptName,
                           std::string& promptText,
-                          bool& isCustom)
+                          bool& isCustom,
+                          bool required = true)
 {
     namespace fs = std::filesystem;
     isCustom = false;
@@ -639,8 +680,11 @@ static bool PBC_GetPrompt(const std::string& promptName,
         }
     }
 
-    PBC_Log(PBC_LogLevel::PBC_ERROR, "Prompt '{}' not found in '{}' or 'enUS' — module disabled.",
-             promptName, localeName);
+    if (required)
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Prompt '{}' not found in '{}' or 'enUS' — module disabled.",
+                 promptName, localeName);
+    else
+        PBC_Log(PBC_LogLevel::PBC_DEBUG, "Optional prompt '{}' not found — skipping.", promptName);
     return false;
 }
 
@@ -666,6 +710,11 @@ bool PBC_LoadPrompts()
         { "Condensation.user",                g_PBC_CondensationUserPrompt         },
         { "DefaultCharacterDescription",      g_PBC_DefaultCharacterDescription    },
         { "CharacterContext",                  g_PBC_CharacterContext               },
+        { "CardRender",                       g_PBC_CardRenderTemplate             },
+        { "CardGeneration.system",            g_PBC_CardGenerationSystemPrompt     },
+        { "CardGeneration.user",              g_PBC_CardGenerationUserPrompt       },
+        { "CardDerivation.system",            g_PBC_CardDerivationSystemPrompt     },
+        { "CardDerivation.user",              g_PBC_CardDerivationUserPrompt       },
         { "QuestCompleted.system",            g_PBC_QuestCompletedSystemPrompt     },
         { "QuestCompleted.user",              g_PBC_QuestCompletedUserPrompt       },
         { "QuestTaken.system",                g_PBC_QuestTakenSystemPrompt         },
@@ -694,6 +743,14 @@ bool PBC_LoadPrompts()
 
     if (!allOk)
         return false;
+
+    // Optional few-shot examples for card generation — not required; an absent
+    // file simply means no few-shot. Localizable/customizable like any prompt.
+    {
+        bool fewShotCustom = false;
+        if (!PBC_GetPrompt("CardGeneration.fewshot", g_PBC_CardGenerationFewShot, fewShotCustom, /*required=*/false))
+            g_PBC_CardGenerationFewShot.clear();
+    }
 
     PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Loaded {} prompt(s) ({} custom)",
              static_cast<int>(sizeof(prompts) / sizeof(prompts[0])), customCount);

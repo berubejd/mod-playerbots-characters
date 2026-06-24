@@ -44,24 +44,26 @@ static bool IEquals(const std::string& a, const std::string& b)
 }
 
 // ---------------------------------------------------------------------------
-// PBC_CallLLMWithConfig  – universal synchronous LLM call
+// PBC_CallLLMConversation  – universal synchronous LLM call (multi-turn)
 //   openai:     POST {baseUrl}/chat/completions  (OpenAI-compatible)
 //   anthropic:  POST {baseUrl}/messages          (Anthropic Messages API)
 //   ollama:     POST {baseUrl}/api/chat          (Ollama native)
 // Safe to call from any thread; does not touch game objects.
 // ---------------------------------------------------------------------------
-PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
-                                     const std::string& systemPrompt,
-                                     const std::string& userPrompt,
-                                     bool preserveNewlines)
+PBC_LLMResult PBC_CallLLMConversation(const PBC_APIConfig& cfg,
+                                       const std::string& systemPrompt,
+                                       const std::vector<PBC_ChatTurn>& turns,
+                                       bool preserveNewlines)
 {
     PBC_LLMResult result{ false, "", 0 };
 
     // Clean any unknown {token} placeholders and log warnings.
-    std::string sysPrompt  = systemPrompt;
-    std::string usrPrompt  = userPrompt;
+    std::string sysPrompt = systemPrompt;
     PBC_CleanUnknownTokens(sysPrompt);
-    PBC_CleanUnknownTokens(usrPrompt);
+
+    std::vector<PBC_ChatTurn> msgs = turns;
+    for (auto& t : msgs)
+        PBC_CleanUnknownTokens(t.content);
 
     const bool isAnthropic = IEquals(cfg.apiType, "anthropic");
     const bool isOllama     = IEquals(cfg.apiType, "ollama");
@@ -90,7 +92,8 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
             body["system"] = sysPrompt;
 
         json messages = json::array();
-        messages.push_back({ {"role", "user"}, {"content", usrPrompt} });
+        for (const auto& t : msgs)
+            messages.push_back({ {"role", t.role}, {"content", t.content} });
         body["messages"] = messages;
 
         // max_tokens is required for Anthropic — unlike OpenAI, it cannot be omitted.
@@ -98,6 +101,8 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
         // to a generous limit so the model isn't truncated mid-output.
         if (!cfg.requestParameters.contains("max_tokens"))
             body["max_tokens"] = 4096;
+
+        // Anthropic has no native JSON mode; jsonMode relies on the prompt.
     }
     else if (isOllama)
     {
@@ -105,8 +110,13 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
         json messages = json::array();
         if (!sysPrompt.empty())
             messages.push_back({ {"role", "system"}, {"content", sysPrompt} });
-        messages.push_back({ {"role", "user"}, {"content", usrPrompt} });
+        for (const auto& t : msgs)
+            messages.push_back({ {"role", t.role}, {"content", t.content} });
         body["messages"] = messages;
+
+        // Constrain decoding to a valid JSON object when requested (card calls).
+        if (cfg.jsonMode)
+            body["format"] = "json";
     }
     else
     {
@@ -114,8 +124,13 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
         json messages = json::array();
         if (!sysPrompt.empty())
             messages.push_back({ {"role", "system"}, {"content", sysPrompt} });
-        messages.push_back({ {"role", "user"}, {"content", usrPrompt} });
+        for (const auto& t : msgs)
+            messages.push_back({ {"role", t.role}, {"content", t.content} });
         body["messages"] = messages;
+
+        // Constrain decoding to a valid JSON object when requested (card calls).
+        if (cfg.jsonMode)
+            body["response_format"] = { {"type", "json_object"} };
     }
 
     // Many endpoints stream by default. The module does not support streaming,
@@ -271,6 +286,19 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
     }
 
     return result;
+}
+
+// ---------------------------------------------------------------------------
+// Single-turn wrapper — the common case for chat / condensation callers.
+// ---------------------------------------------------------------------------
+PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
+                                     const std::string& systemPrompt,
+                                     const std::string& userPrompt,
+                                     bool preserveNewlines)
+{
+    return PBC_CallLLMConversation(cfg, systemPrompt,
+                                   { { "user", userPrompt } },
+                                   preserveNewlines);
 }
 
 // ---------------------------------------------------------------------------

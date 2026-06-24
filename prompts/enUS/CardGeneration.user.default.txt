@@ -1,0 +1,10 @@
+Fill all fields for this character.
+Name: {char_name}
+Gender: {char_gender}
+Race: {char_race}
+Class: {char_class} (level {char_level})
+
+Already used — do NOT reuse these origins or hooks:
+{recent_summaries}
+
+{format_instructions}

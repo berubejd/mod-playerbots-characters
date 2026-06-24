@@ -50,6 +50,9 @@ void PBC_WorldScript::OnStartup()
 
     g_PBC_EventThreadDone.store(true);
 
+    // Start the dedicated card-generation worker (off the chat-event queue).
+    PBC_StartCardWorker();
+
     // Start the HTTP/WS server if configured
     if (g_PBC_HttpServerPort > 0)
     {
@@ -78,6 +81,9 @@ void PBC_WorldScript::OnStartup()
 
 void PBC_WorldScript::OnShutdown()
 {
+    // Stop the card worker first (joins; bounded by the in-flight LLM timeout).
+    PBC_StopCardWorker();
+
     if (PBC_HttpServerIsRunning())
     {
         PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Stopping HTTP server...");
@@ -482,6 +488,10 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 case PBC_EventType::Regen:
                     PBC_Log(PBC_LogLevel::PBC_DEBUG, "OnUpdate: spawning event thread for type=Regen requester={}",
                              nextEvent.regenRequesterGuid);
+                    break;
+                case PBC_EventType::CardGeneration:
+                    PBC_Log(PBC_LogLevel::PBC_DEBUG, "OnUpdate: spawning event thread for type=CardGeneration mode={} character=\"{}\"",
+                             static_cast<int>(nextEvent.cardGenMode), nextEvent.cardGenName);
                     break;
             }
 

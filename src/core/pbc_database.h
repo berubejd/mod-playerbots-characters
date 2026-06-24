@@ -85,6 +85,18 @@ void DB_DeleteRelationship(uint64_t botGuid, const std::string& targetName);
 // Writes every persona field plus provenance/pinned/hash/gen metadata.
 void DB_UpsertCard(const PBC_CardEntry& card);
 
+// Set/clear the pinned flag for a single card row.
+void DB_SetCardPinned(uint64_t botGuid, bool pinned);
+
+// Load a single card row by GUID into `out`. Returns false if no row exists.
+// Authoritative read straight from mod_pbc_cards (does not consult the cache).
+bool DB_LoadCard(uint64_t botGuid, PBC_CardEntry& out);
+
+// Return up to `limit` recent generated-card premise lines (most recent first),
+// used as the anti-collision block fed to generation so a batch of new cards
+// doesn't converge on the same origins/hooks.
+std::vector<std::string> DB_GetRecentGeneratedSummaries(size_t limit);
+
 // ---------------------------------------------------------------------------
 // Migration helpers
 // ---------------------------------------------------------------------------

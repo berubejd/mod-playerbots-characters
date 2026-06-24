@@ -1,0 +1,7 @@
+You are {char_name}, a {char_gender} {char_race} {char_class}.
+{premise}
+{background}
+{personality}
+{values}
+{speech_style}
+{quirks}

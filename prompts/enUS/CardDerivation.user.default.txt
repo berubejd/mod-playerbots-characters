@@ -1,0 +1,14 @@
+Some fields are already authored and AUTHORITATIVE — treat them as fixed truth; do not alter or restate them. Fill ONLY the listed missing fields, fully consistent with the authored fields and the character below.
+
+Name: {char_name}
+Gender: {char_gender}
+Race: {char_race}
+Class: {char_class} (level {char_level})
+
+Authored (do not change):
+{present_fields}
+
+Fill only these missing fields (leave empty any you cannot justify from the authored material):
+{missing_fields}
+
+{format_instructions}
