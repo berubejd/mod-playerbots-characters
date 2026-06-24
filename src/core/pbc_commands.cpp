@@ -1,6 +1,7 @@
 #include "pbc_commands.h"
 #include "pbc_config.h"
 #include "pbc_character.h"
+#include "pbc_cards.h"
 #include "pbc_database.h"
 #include "pbc_llm.h"
 #include "pbc_http.h"
@@ -42,6 +43,8 @@ static bool HandleCharsReload(ChatHandler* handler, Optional<std::string_view>)
     PBC_LoadConfig();
     PBC_LoadPrompts();
     PBC_LoadCharacterCards();
+    PBC_LoadCardsFromDB();
+    PBC_ImportDiskCardsToDB();
     PBC_LoadMemoriesFromDB();
     PBC_LoadCharacterDataFromDB();
 

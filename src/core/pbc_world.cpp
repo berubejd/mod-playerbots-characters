@@ -1,6 +1,7 @@
 #include "pbc_world.h"
 #include "pbc_config.h"
 #include "pbc_character.h"
+#include "pbc_cards.h"
 #include "pbc_event_dispatch.h"
 #include "pbc_poll.h"
 #include "pbc_event_processor.h"
@@ -33,6 +34,8 @@ void PBC_WorldScript::OnStartup()
 
     PBC_LoadWMOAreaNames();
     PBC_LoadCharacterCards();
+    PBC_LoadCardsFromDB();
+    PBC_ImportDiskCardsToDB();
     PBC_LoadMemoriesFromDB();
     PBC_LoadHistoryFromDB();
     PBC_LoadRelationshipsFromDB();

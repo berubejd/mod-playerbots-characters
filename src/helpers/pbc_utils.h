@@ -124,6 +124,15 @@ std::string PBC_GenderStr(uint8_t gender);
 
 
 // ---------------------------------------------------------------------------
+// Hashing
+// ---------------------------------------------------------------------------
+
+// Compute the SHA-256 of the input and return it as a 64-char lowercase hex
+// string.  Self-contained (no OpenSSL dependency) so it works regardless of
+// build configuration.  Used as a content change-signal for disk card imports.
+std::string PBC_Sha256Hex(const std::string& data);
+
+// ---------------------------------------------------------------------------
 // RNG
 // ---------------------------------------------------------------------------
 

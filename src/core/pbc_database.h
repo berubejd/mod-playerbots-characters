@@ -5,6 +5,8 @@
 #include <vector>
 #include <cstdint>
 
+struct PBC_CardEntry;
+
 // ---------------------------------------------------------------------------
 // Chat history — normalized schema (mod_pbc_history + mod_pbc_history_owners)
 // ---------------------------------------------------------------------------
@@ -76,8 +78,21 @@ void DB_UpdateRelationshipText(uint64_t botGuid, const std::string& targetName,
 void DB_DeleteRelationship(uint64_t botGuid, const std::string& targetName);
 
 // ---------------------------------------------------------------------------
+// Character cards (mod_pbc_cards)
+// ---------------------------------------------------------------------------
+
+// Idempotent upsert of a card row (INSERT ... ON DUPLICATE KEY UPDATE).
+// Writes every persona field plus provenance/pinned/hash/gen metadata.
+void DB_UpsertCard(const PBC_CardEntry& card);
+
+// ---------------------------------------------------------------------------
 // Migration helpers
 // ---------------------------------------------------------------------------
+
+// Returns true if `column` exists on `table` in the current database.
+// Used by loaders/importers to detect a not-yet-applied schema migration so
+// they can fail loudly instead of silently wiping in-memory state.
+bool DB_TableHasColumn(const std::string& table, const std::string& column);
 
 // Check whether the memories table has any rows.
 // Must be called after the DB is available (i.e. on or after OnStartup).
@@ -101,5 +116,8 @@ void PBC_LoadCharacterDataFromDB();
 
 // Load all relationships from DB into g_PBC_Relationships.
 void PBC_LoadRelationshipsFromDB();
+
+// Load all character cards from DB into g_PBC_Cards.
+void PBC_LoadCardsFromDB();
 
 #endif // MOD_PBC_DATABASE_H

@@ -1,5 +1,6 @@
 #include "pbc_database.h"
 #include "pbc_config.h"
+#include "pbc_cards.h"
 #include "pbc_log.h"
 #include "pbc_utils.h"
 
@@ -233,6 +234,15 @@ void DB_DeleteRelationship(uint64_t botGuid, const std::string& targetName)
 // Migration helpers
 // ---------------------------------------------------------------------------
 
+bool DB_TableHasColumn(const std::string& table, const std::string& column)
+{
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = DATABASE() AND table_name = '{}' AND column_name = '{}' LIMIT 1",
+        table, column);
+    return !!result;
+}
+
 bool DB_MemoriesTableEmpty()
 {
     QueryResult result = CharacterDatabase.Query("SELECT 1 FROM mod_pbc_memories LIMIT 1");
@@ -258,25 +268,47 @@ bool DB_CardAdditionsTableNotEmpty()
 
 void PBC_LoadHistoryFromDB()
 {
+    // Graceful degradation: if the attribution migration has not been applied,
+    // load the legacy column set so bots keep full history context (just
+    // without the new enrichment) instead of starting empty.  Warn so the
+    // operator knows to apply the migration.
+    const bool enriched = DB_TableHasColumn("mod_pbc_history", "subject_guid");
+    if (!enriched)
+        PBC_Log(PBC_LogLevel::PBC_WARNING,
+            "mod_pbc_history is missing attribution columns — migration-20260624.sql has not been "
+            "applied. Loading legacy history without attribution enrichment; apply the DB update and "
+            "run .chars reload to enable it.");
+
     std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
     g_PBC_History.clear();
     g_PBC_HistoryOwners.clear();
     g_PBC_LastHistoryTime.clear();
 
     // 1. Load all messages from mod_pbc_history
-    QueryResult msgResult = CharacterDatabase.Query(
-        "SELECT id, UNIX_TIMESTAMP(timestamp), author_guid, type, message "
-        "FROM mod_pbc_history ORDER BY id ASC");
+    QueryResult msgResult = enriched
+        ? CharacterDatabase.Query(
+            "SELECT id, UNIX_TIMESTAMP(timestamp), author_guid, type, message, "
+            "subject_guid, event_type, mood "
+            "FROM mod_pbc_history ORDER BY id ASC")
+        : CharacterDatabase.Query(
+            "SELECT id, UNIX_TIMESTAMP(timestamp), author_guid, type, message "
+            "FROM mod_pbc_history ORDER BY id ASC");
 
     if (msgResult)
     {
         do {
             PBC_HistoryEntry entry;
-            entry.id         = (*msgResult)[0].Get<uint64_t>();
-            entry.timestamp  = static_cast<time_t>((*msgResult)[1].Get<uint64_t>());
-            entry.authorGuid = (*msgResult)[2].Get<uint64_t>();
-            entry.type       = static_cast<uint8_t>((*msgResult)[3].Get<uint32_t>());
-            entry.message    = (*msgResult)[4].Get<std::string>();
+            entry.id          = (*msgResult)[0].Get<uint64_t>();
+            entry.timestamp   = static_cast<time_t>((*msgResult)[1].Get<uint64_t>());
+            entry.authorGuid  = (*msgResult)[2].Get<uint64_t>();
+            entry.type        = static_cast<uint8_t>((*msgResult)[3].Get<uint32_t>());
+            entry.message     = (*msgResult)[4].Get<std::string>();
+            if (enriched)
+            {
+                entry.subjectGuid = (*msgResult)[5].Get<uint64_t>();
+                entry.eventType   = (*msgResult)[6].Get<std::string>();
+                entry.mood        = (*msgResult)[7].Get<std::string>();
+            }
             g_PBC_History[entry.id] = std::move(entry);
         } while (msgResult->NextRow());
     }
@@ -305,9 +337,24 @@ void PBC_LoadHistoryFromDB()
 
 void PBC_LoadMemoriesFromDB()
 {
-    QueryResult result = CharacterDatabase.Query(
-        "SELECT id, bot_guid, memory_text, importance, UNIX_TIMESTAMP(created_at) FROM mod_pbc_memories ORDER BY bot_guid ASC, id ASC"
-    );
+    // Graceful degradation (see PBC_LoadHistoryFromDB): load the legacy column
+    // set when the enrichment migration has not been applied, so memories are
+    // never lost — only their enrichment defaults are used.
+    const bool enriched = DB_TableHasColumn("mod_pbc_memories", "subject_guid");
+    if (!enriched)
+        PBC_Log(PBC_LogLevel::PBC_WARNING,
+            "mod_pbc_memories is missing enrichment columns — migration-20260624.sql has not been "
+            "applied. Loading legacy memories without enrichment; apply the DB update and run "
+            ".chars reload to enable it.");
+
+    QueryResult result = enriched
+        ? CharacterDatabase.Query(
+            "SELECT id, bot_guid, memory_text, importance, UNIX_TIMESTAMP(created_at), "
+            "subject_guid, type, mood, active, used, UNIX_TIMESTAMP(last_used_at) "
+            "FROM mod_pbc_memories ORDER BY bot_guid ASC, id ASC")
+        : CharacterDatabase.Query(
+            "SELECT id, bot_guid, memory_text, importance, UNIX_TIMESTAMP(created_at) "
+            "FROM mod_pbc_memories ORDER BY bot_guid ASC, id ASC");
 
     std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
     g_PBC_Memories.clear();
@@ -323,10 +370,21 @@ void PBC_LoadMemoriesFromDB()
         time_t      createdAt  = static_cast<time_t>((*result)[4].Get<uint64_t>());
 
         PBC_MemoryEntry entry;
-        entry.dbId       = dbId;
-        entry.text       = std::move(memText);
-        entry.importance = importance;
-        entry.createdAt  = PBC_FormatDate(createdAt);
+        entry.dbId        = dbId;
+        entry.text        = std::move(memText);
+        entry.importance  = importance;
+        entry.createdAt   = PBC_FormatDate(createdAt);
+        if (enriched)
+        {
+            entry.subjectGuid = (*result)[5].Get<uint64_t>();
+            entry.type        = (*result)[6].Get<std::string>();
+            entry.mood        = (*result)[7].Get<std::string>();
+            entry.active      = (*result)[8].Get<uint8_t>() != 0;
+            entry.used        = (*result)[9].Get<uint8_t>() != 0;
+            entry.lastUsedAt  = static_cast<time_t>((*result)[10].Get<uint64_t>());
+            if (entry.type.empty())
+                entry.type = "general";
+        }
         g_PBC_Memories[botGuid].push_back(std::move(entry));
         ++count;
     } while (result->NextRow());
@@ -392,4 +450,97 @@ void PBC_LoadRelationshipsFromDB()
     } while (result->NextRow());
 
     PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Relationships loaded from DB ({} entries).", count);
+}
+
+// ---------------------------------------------------------------------------
+// Character cards (mod_pbc_cards)
+// ---------------------------------------------------------------------------
+
+void DB_UpsertCard(const PBC_CardEntry& card)
+{
+    // Render a nullable TEXT field: empty string -> SQL NULL (means "unset").
+    auto nullable = [](std::string v) -> std::string
+    {
+        if (v.empty())
+            return "NULL";
+        CharacterDatabase.EscapeString(v);
+        return "'" + v + "'";
+    };
+
+    std::string name = card.name;
+    CharacterDatabase.EscapeString(name);
+
+    CharacterDatabase.Execute(
+        "INSERT INTO mod_pbc_cards "
+        "(bot_guid, name, premise, personality, `values`, background, speech_style, quirks, "
+        " provenance, pinned, card_file_hash, gen_model, gen_version) "
+        "VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, '{}', {}, {}, {}, {}) "
+        "ON DUPLICATE KEY UPDATE "
+        "  name=VALUES(name), premise=VALUES(premise), personality=VALUES(personality), "
+        "  `values`=VALUES(`values`), background=VALUES(background), speech_style=VALUES(speech_style), "
+        "  quirks=VALUES(quirks), provenance=VALUES(provenance), pinned=VALUES(pinned), "
+        "  card_file_hash=VALUES(card_file_hash), gen_model=VALUES(gen_model), gen_version=VALUES(gen_version)",
+        card.botGuid,
+        name,
+        nullable(card.premise),
+        nullable(card.personality),
+        nullable(card.values),
+        nullable(card.background),
+        nullable(card.speechStyle),
+        nullable(card.quirks),
+        PBC_CardProvenanceToStr(card.provenance),
+        card.pinned ? 1 : 0,
+        nullable(card.cardFileHash),
+        nullable(card.genModel),
+        card.genVersion
+    );
+}
+
+void PBC_LoadCardsFromDB()
+{
+    // Schema-readiness guard: if mod_pbc_cards does not exist yet (migration
+    // not applied), skip without clearing the in-memory cache.
+    if (!DB_TableHasColumn("mod_pbc_cards", "bot_guid"))
+    {
+        PBC_Log(PBC_LogLevel::PBC_ERROR,
+            "mod_pbc_cards does not exist — migration-20260624.sql has not been applied. "
+            "Skipping card load. Apply the DB update and run .chars reload.");
+        return;
+    }
+
+    QueryResult result = CharacterDatabase.Query(
+        "SELECT bot_guid, name, premise, personality, `values`, background, speech_style, quirks, "
+        "provenance, pinned, card_file_hash, gen_model, gen_version FROM mod_pbc_cards"
+    );
+
+    std::lock_guard<std::mutex> lock(g_PBC_CardsMutex);
+    g_PBC_Cards.clear();
+
+    if (!result)
+    {
+        PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Character cards loaded from DB (0 entries).");
+        return;
+    }
+
+    size_t count = 0;
+    do {
+        PBC_CardEntry c;
+        c.botGuid      = (*result)[0].Get<uint64_t>();
+        c.name         = (*result)[1].Get<std::string>();
+        c.premise      = (*result)[2].Get<std::string>();
+        c.personality  = (*result)[3].Get<std::string>();
+        c.values       = (*result)[4].Get<std::string>();
+        c.background    = (*result)[5].Get<std::string>();
+        c.speechStyle  = (*result)[6].Get<std::string>();
+        c.quirks       = (*result)[7].Get<std::string>();
+        c.provenance   = PBC_CardProvenanceFromStr((*result)[8].Get<std::string>());
+        c.pinned       = (*result)[9].Get<uint8_t>() != 0;
+        c.cardFileHash = (*result)[10].Get<std::string>();
+        c.genModel     = (*result)[11].Get<std::string>();
+        c.genVersion   = (*result)[12].Get<uint32_t>();
+        g_PBC_Cards[c.botGuid] = std::move(c);
+        ++count;
+    } while (result->NextRow());
+
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Character cards loaded from DB ({} entries).", count);
 }

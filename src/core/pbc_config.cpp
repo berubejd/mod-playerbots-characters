@@ -116,6 +116,9 @@ std::mutex g_PBC_MemoriesMutex;
 
 std::unordered_map<std::string, std::string> g_PBC_CharacterCards;
 
+std::unordered_map<uint64_t, PBC_CardEntry> g_PBC_Cards;
+std::mutex g_PBC_CardsMutex;
+
 std::unordered_map<uint64_t, std::unordered_map<std::string, PBC_RelationshipEntry>> g_PBC_Relationships;
 std::mutex g_PBC_RelationshipsMutex;
 
