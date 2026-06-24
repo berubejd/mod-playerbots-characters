@@ -620,6 +620,24 @@ bool DB_LoadCard(uint64_t botGuid, PBC_CardEntry& out)
     return true;
 }
 
+std::vector<PBC_CardEntry> DB_LoadAllCards()
+{
+    std::vector<PBC_CardEntry> out;
+    if (!DB_TableHasColumn("mod_pbc_cards", "bot_guid"))
+        return out;
+
+    QueryResult result = CharacterDatabase.Query("SELECT {} FROM mod_pbc_cards", kCardSelectCols);
+    if (!result)
+        return out;
+
+    do {
+        PBC_CardEntry c;
+        AssignCardRow(result, c);
+        out.push_back(std::move(c));
+    } while (result->NextRow());
+    return out;
+}
+
 std::vector<std::string> DB_GetRecentGeneratedSummaries(size_t limit)
 {
     std::vector<std::string> out;

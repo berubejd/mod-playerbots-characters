@@ -107,6 +107,10 @@ void DB_SetCardPinned(uint64_t botGuid, bool pinned);
 // Authoritative read straight from mod_pbc_cards (does not consult the cache).
 bool DB_LoadCard(uint64_t botGuid, PBC_CardEntry& out);
 
+// Authoritative read of every card row (does not consult the cache). Used by
+// the viewer browse list so direct-SQL rows not yet hydrated still appear.
+std::vector<PBC_CardEntry> DB_LoadAllCards();
+
 // Return up to `limit` recent generated-card premise lines (most recent first),
 // used as the anti-collision block fed to generation so a batch of new cards
 // doesn't converge on the same origins/hooks.

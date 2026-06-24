@@ -63,9 +63,29 @@ void HandleGetParty(const pbc_httplib::Request& req, pbc_httplib::Response& res,
 void HandleGetConfig(const pbc_httplib::Request& req, pbc_httplib::Response& res,
                      const PBC_AuthInfo& authInfo);
 
-// GET /api/char/:guid/card — character card JSON
+// GET /api/cards — list all characters that have a card row (browse)
+void HandleListCards(const pbc_httplib::Request& req, pbc_httplib::Response& res,
+                     const PBC_AuthInfo& authInfo);
+
+// GET /api/char/:guid/card — character card JSON (structured + rendered)
 void HandleGetCharCard(const pbc_httplib::Request& req, pbc_httplib::Response& res,
                        const PBC_AuthInfo& authInfo);
+
+// POST /api/char/:guid/card — edit card fields (owned + unpinned)
+void HandlePostCharCard(const pbc_httplib::Request& req, pbc_httplib::Response& res,
+                        const PBC_AuthInfo& authInfo);
+
+// POST /api/char/:guid/card/pin — pin a card (owned)
+void HandlePostCharCardPin(const pbc_httplib::Request& req, pbc_httplib::Response& res,
+                           const PBC_AuthInfo& authInfo);
+
+// POST /api/char/:guid/card/unpin — unpin a card (owned)
+void HandlePostCharCardUnpin(const pbc_httplib::Request& req, pbc_httplib::Response& res,
+                             const PBC_AuthInfo& authInfo);
+
+// POST /api/char/:guid/card/regenerate — queue card regeneration (owned + online)
+void HandlePostCharCardRegenerate(const pbc_httplib::Request& req, pbc_httplib::Response& res,
+                                  const PBC_AuthInfo& authInfo);
 
 // GET /api/char/:guid/context — context with annotations
 void HandleGetCharContext(const pbc_httplib::Request& req, pbc_httplib::Response& res,

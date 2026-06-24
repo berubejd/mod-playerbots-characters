@@ -12,6 +12,7 @@
 #include "pbc_llm.h"
 #include "pbc_utils.h"
 #include "pbc_character.h"
+#include "pbc_cards.h"
 #include "pbc_event_dispatch.h"
 
 #define httplib pbc_httplib
@@ -493,8 +494,178 @@ void HandleGetConfig(const httplib::Request& /*req*/, httplib::Response& res,
     res.set_content(response.dump(), "application/json");
 }
 
+// ===========================================================================
+// Card helpers (DB-canonical structured cards, Phase 3 viewer)
+// ===========================================================================
+
+// Substitute the identity tokens ({char_name}, {char_race}, …) in a raw card /
+// default template for a given GUID, using the live Player* when online or the
+// CharacterCache when offline.  Persona tokens are already resolved by
+// PBC_RenderCard; this only fills identity.  No model call.
+static std::string RenderTextForGuid(uint64_t guid, std::string text)
+{
+    if (Player* bot = FindOnlineCharacter(guid))
+        return PBC_SubstituteVars(text, bot, "", false, false);
+
+    PBC_VarMap vars;
+    CharacterCacheEntry const* ce = sCharacterCache->GetCharacterCacheByGuid(ObjectGuid(guid));
+    if (ce)
+    {
+        vars["char_name"]   = ce->Name;
+        vars["char_gender"] = PBC_GenderStr(ce->Sex);
+        vars["char_race"]   = PBC_RaceStr(ce->Race);
+        vars["char_class"]  = PBC_ClassStr(ce->Class);
+        vars["char_level"]  = std::to_string(ce->Level);
+    }
+    else
+    {
+        // Offline and not cached — fall back to the characters table so the
+        // rendered card still resolves identity tokens.
+        QueryResult r = CharacterDatabase.Query(
+            "SELECT name, gender, race, class, level FROM characters WHERE guid = {}", guid);
+        if (r)
+        {
+            vars["char_name"]   = (*r)[0].Get<std::string>();
+            vars["char_gender"] = PBC_GenderStr((*r)[1].Get<uint8_t>());
+            vars["char_race"]   = PBC_RaceStr((*r)[2].Get<uint8_t>());
+            vars["char_class"]  = PBC_ClassStr((*r)[3].Get<uint8_t>());
+            vars["char_level"]  = std::to_string((*r)[4].Get<uint8_t>());
+        }
+    }
+
+    if (!vars.empty())
+    {
+        PBC_SubstituteFromMap(text, vars, false);
+        PBC_CleanUnknownTokens(text);
+    }
+    return text;
+}
+
+// Resolve a character's display attributes (CharacterCache → DB). Returns false
+// when the GUID is unknown to both.
+static bool LookupCharDisplay(uint64_t guid, std::string& name, std::string& gender,
+                              std::string& race, std::string& cls, uint8_t& level)
+{
+    CharacterCacheEntry const* ce = sCharacterCache->GetCharacterCacheByGuid(ObjectGuid(guid));
+    if (ce)
+    {
+        name   = ce->Name;
+        gender = HttpGenderStr(ce->Sex);
+        race   = HttpRaceStr(ce->Race);
+        cls    = HttpClassStr(ce->Class);
+        level  = ce->Level;
+        return true;
+    }
+    QueryResult r = CharacterDatabase.Query(
+        "SELECT name, gender, race, class, level FROM characters WHERE guid = {}", guid);
+    if (!r)
+        return false;
+    name   = (*r)[0].Get<std::string>();
+    gender = HttpGenderStr((*r)[1].Get<uint8_t>());
+    race   = HttpRaceStr((*r)[2].Get<uint8_t>());
+    cls    = HttpClassStr((*r)[3].Get<uint8_t>());
+    level  = (*r)[4].Get<uint8_t>();
+    return true;
+}
+
+// Build the card JSON payload (structured fields + rendered + provenance flags).
+// rowExists: a mod_pbc_cards row was loaded for this GUID (even if all persona
+// fields are empty). has_card reflects whether there is renderable content.
+static json BuildCardJson(uint64_t guid, const PBC_CardEntry& card, bool rowExists, bool owned)
+{
+    bool hasContent = PBC_CardHasContent(card);
+
+    json j;
+    j["has_card"] = hasContent;
+    j["owned"]    = owned;
+    // pinned/editable reflect the actual row even when it has no content yet (a
+    // bare pinned SQL row is read-only despite rendering nothing).
+    j["pinned"]   = card.pinned;
+    j["editable"] = owned && !card.pinned;
+
+    if (rowExists)
+    {
+        j["fields"] = {
+            {"premise",      card.premise},
+            {"personality",  card.personality},
+            {"values",       card.values},
+            {"background",   card.background},
+            {"speech_style", card.speechStyle},
+            {"quirks",       card.quirks},
+        };
+        j["provenance"] = PBC_CardProvenanceToStr(card.provenance);
+    }
+    else
+    {
+        j["fields"]     = json::object();
+        j["provenance"] = nullptr;
+    }
+
+    j["card"] = hasContent
+        ? RenderTextForGuid(guid, PBC_RenderCard(card))
+        : RenderTextForGuid(guid, g_PBC_DefaultCharacterDescription);
+    return j;
+}
+
 // ---------------------------------------------------------------------------
-// GET /api/char/:guid/card
+// GET /api/cards — list every character that has a (content-bearing) card row.
+// Read-only browse of all encountered characters; each entry carries an `owned`
+// flag so the frontend can gate edit/regenerate.
+// ---------------------------------------------------------------------------
+void HandleListCards(const httplib::Request& /*req*/, httplib::Response& res,
+                     const PBC_AuthInfo& authInfo)
+{
+    // Authoritative read from the DB so direct-SQL rows not yet hydrated into
+    // the cache still appear in the browse list.
+    std::vector<PBC_CardEntry> allCards = DB_LoadAllCards();
+    std::vector<PBC_CardEntry> cards;
+    cards.reserve(allCards.size());
+    for (auto& c : allCards)
+        if (PBC_CardHasContent(c))
+            cards.push_back(std::move(c));
+
+    struct Row { std::string name; json entry; };
+    std::vector<Row> rows;
+    rows.reserve(cards.size());
+
+    for (const auto& c : cards)
+    {
+        std::string name, gender, race, cls;
+        uint8_t level = 0;
+        if (!LookupCharDisplay(c.botGuid, name, gender, race, cls, level))
+            name = c.name;   // fall back to the name stored on the card row
+
+        uint32_t acct = sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(c.botGuid));
+
+        json e;
+        e["guid"]       = c.botGuid;
+        e["name"]       = name;
+        e["gender"]     = gender;
+        e["race"]       = race;
+        e["class"]      = cls;
+        e["level"]      = level;
+        e["provenance"] = PBC_CardProvenanceToStr(c.provenance);
+        e["pinned"]     = c.pinned;
+        e["owned"]      = (acct != 0 && acct == authInfo.accountId);
+        rows.push_back({ name, std::move(e) });
+    }
+
+    std::sort(rows.begin(), rows.end(),
+        [](const Row& a, const Row& b) { return a.name < b.name; });
+
+    json arr = json::array();
+    for (auto& r : rows)
+        arr.push_back(std::move(r.entry));
+
+    json response;
+    response["cards"] = std::move(arr);
+    res.set_content(response.dump(), "application/json");
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/char/:guid/card — DB-canonical card (structured + rendered).
+// Readable for any character with a card row (browse); owned characters may
+// also view the default render when they have no row yet.
 // ---------------------------------------------------------------------------
 void HandleGetCharCard(const httplib::Request& req, httplib::Response& res,
                        const PBC_AuthInfo& authInfo)
@@ -502,78 +673,231 @@ void HandleGetCharCard(const httplib::Request& req, httplib::Response& res,
     uint64_t charGuid = ParseGuidParam(req, res);
     if (charGuid == 0) return;
 
-    // Verify ownership
+    uint32_t charAccount = sCharacterCache->GetCharacterAccountIdByGuid(ObjectGuid(charGuid));
+    bool owned = (charAccount != 0 && charAccount == authInfo.accountId);
+
+    // Authoritative read from the DB (the cache can drift via direct SQL / reload).
+    PBC_CardEntry card;
+    bool rowExists = DB_LoadCard(charGuid, card);
+    bool hasContent = rowExists && PBC_CardHasContent(card);
+
+    // Browse rule: a character without renderable content is only viewable by
+    // its owner (who may still see the default render and author one). Non-owners
+    // need a content-bearing row to browse.
+    if (!hasContent && !owned)
+    {
+        res.status = 404;
+        res.set_content("{\"error\":\"No card for this character\"}", "application/json");
+        return;
+    }
+
+    std::string name, gender, race, cls;
+    uint8_t level = 0;
+    LookupCharDisplay(charGuid, name, gender, race, cls, level);  // best effort
+
+    json response = BuildCardJson(charGuid, card, rowExists, owned);
+    response["guid"] = charGuid;
+    response["name"] = name.empty() ? card.name : name;
+    res.set_content(response.dump(), "application/json");
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/char/:guid/card — edit card fields (owned + unpinned).
+// Applies provided persona fields and flips provenance to 'edited'.
+// ---------------------------------------------------------------------------
+void HandlePostCharCard(const httplib::Request& req, httplib::Response& res,
+                        const PBC_AuthInfo& authInfo)
+{
+    uint64_t charGuid = ParseGuidParam(req, res);
+    if (charGuid == 0) return;
+
     if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
         return;
 
-    // Try CharacterCache first — it holds name, race, class, sex, level
-    CharacterCacheEntry const* cacheEntry = sCharacterCache->GetCharacterCacheByGuid(ObjectGuid(charGuid));
-
-    std::string charName;
-    Player* bot = nullptr;
-
-    if (cacheEntry)
+    json body;
+    try { body = json::parse(req.body); }
+    catch (...)
     {
-        charName = cacheEntry->Name;
-        // Also try to get the live Player for full substitution
-        bot = FindOnlineCharacter(charGuid);
-    }
-    else
-    {
-        // Not in cache — try the online player, then DB
-        bot = FindOnlineCharacter(charGuid);
-        if (bot)
-        {
-            charName = bot->GetName();
-        }
-        else
-        {
-            QueryResult result = CharacterDatabase.Query(
-                "SELECT name FROM characters WHERE guid = {}", charGuid);
-            if (result)
-                charName = (*result)[0].Get<std::string>();
-        }
-    }
-
-    if (charName.empty())
-    {
-        res.status = 404;
-        res.set_content("{\"error\":\"Character not found\"}", "application/json");
+        res.status = 400;
+        res.set_content("{\"error\":\"Invalid JSON body\"}", "application/json");
         return;
     }
 
-    // Get the raw card text
-    std::string cardText;
-    auto cardIt = g_PBC_CharacterCards.find(charName);
-    if (cardIt != g_PBC_CharacterCards.end())
-        cardText = cardIt->second;
-    else
-        cardText = g_PBC_DefaultCharacterDescription;
-
-    // Substitute template variables
-    if (bot)
+    // Require at least one recognized persona field so an empty body can't flip
+    // provenance or create a content-less row.
+    static const char* kCardKeys[] = {
+        "premise", "personality", "values", "background", "speech_style", "quirks"
+    };
+    bool anyField = false;
+    for (const char* k : kCardKeys)
+        if (body.contains(k) && body[k].is_string()) { anyField = true; break; }
+    if (!anyField)
     {
-        // Online — full substitution via live Player*
-        cardText = PBC_SubstituteVars(cardText, bot, "", false, false);
+        res.status = 400;
+        res.set_content("{\"error\":\"No card fields provided (string values required)\"}",
+                        "application/json");
+        return;
     }
-    else if (cacheEntry)
-    {
-        // Offline but cached — substitute static vars from CharacterCache
-        PBC_VarMap vars;
-        vars["char_name"]   = cacheEntry->Name;
-        vars["char_gender"] = PBC_GenderStr(cacheEntry->Sex);
-        vars["char_race"]   = PBC_RaceStr(cacheEntry->Race);
-        vars["char_class"]  = PBC_ClassStr(cacheEntry->Class);
-        vars["char_level"]  = std::to_string(cacheEntry->Level);
 
-        PBC_SubstituteFromMap(cardText, vars, false);
-        PBC_CleanUnknownTokens(cardText);
+    // Resolve the display name up front (may hit the characters table) so we
+    // don't query while holding the cards mutex.
+    std::string dispName, dGender, dRace, dCls;
+    uint8_t dLevel = 0;
+    LookupCharDisplay(charGuid, dispName, dGender, dRace, dCls, dLevel);
+
+    auto setIf = [&](const char* key, std::string& field)
+    {
+        if (body.contains(key) && body[key].is_string())
+            field = body[key].get<std::string>();
+    };
+
+    PBC_CardEntry card;
+    bool pinnedBlocked = false;
+    bool emptyResult   = false;
+
+    // Read authoritatively from the DB under the lock (the cache can drift via a
+    // direct SQL pin / reload), check the pinned guard, then write — all atomic.
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_CardsMutex);
+
+        // Merge base: DB is canonical, but fall back to the cache if the DB read
+        // misses so a partial edit can't truncate a populated (cache-only) card.
+        PBC_CardEntry current;
+        if (DB_LoadCard(charGuid, current))
+            card = current;
+        else
+        {
+            auto it = g_PBC_Cards.find(charGuid);
+            if (it != g_PBC_Cards.end())
+                card = it->second;
+        }
+
+        if (card.pinned)
+        {
+            pinnedBlocked = true;
+        }
+        else
+        {
+            setIf("premise",      card.premise);
+            setIf("personality",  card.personality);
+            setIf("values",       card.values);
+            setIf("background",   card.background);
+            setIf("speech_style", card.speechStyle);
+            setIf("quirks",       card.quirks);
+
+            if (!PBC_CardHasContent(card))
+            {
+                // Refuse to persist a content-less row (which would render the
+                // default and re-trigger autogeneration).
+                emptyResult = true;
+            }
+            else
+            {
+                card.botGuid = charGuid;
+                if (card.name.empty())
+                    card.name = dispName;
+                card.provenance = PBC_CardProvenance::Edited;
+
+                DB_UpsertCard(card);
+                g_PBC_Cards[charGuid] = card;
+            }
+        }
     }
-    // else: offline and not in cache (extremely rare) — return raw text,
-    //       which still shows placeholders.  Better than nothing.
+
+    if (pinnedBlocked)
+    {
+        res.status = 403;
+        res.set_content("{\"error\":\"Card is pinned (read-only); unpin to edit\"}", "application/json");
+        return;
+    }
+    if (emptyResult)
+    {
+        res.status = 400;
+        res.set_content("{\"error\":\"Card would have no content\"}", "application/json");
+        return;
+    }
+
+    PBC_WsNotify(charGuid, "card");
+
+    json response = BuildCardJson(charGuid, card, /*rowExists=*/true, /*owned=*/true);
+    response["guid"] = charGuid;
+    response["name"] = card.name;
+    res.set_content(response.dump(), "application/json");
+}
+
+// Shared pin/unpin implementation.
+static void HandleCardPinImpl(const httplib::Request& req, httplib::Response& res,
+                              const PBC_AuthInfo& authInfo, bool pinned)
+{
+    uint64_t charGuid = ParseGuidParam(req, res);
+    if (charGuid == 0) return;
+
+    if (!VerifyCharOwnership(charGuid, authInfo.accountId, res))
+        return;
+
+    if (!PBC_SetCardPinned(charGuid, pinned))
+    {
+        res.status = 404;
+        res.set_content("{\"error\":\"No card for this character\"}", "application/json");
+        return;
+    }
+
+    PBC_WsNotify(charGuid, "card");
 
     json response;
-    response["card"] = cardText;
+    response["ok"]     = true;
+    response["pinned"] = pinned;
+    res.set_content(response.dump(), "application/json");
+}
+
+// POST /api/char/:guid/card/pin
+void HandlePostCharCardPin(const httplib::Request& req, httplib::Response& res,
+                           const PBC_AuthInfo& authInfo)
+{
+    HandleCardPinImpl(req, res, authInfo, true);
+}
+
+// POST /api/char/:guid/card/unpin
+void HandlePostCharCardUnpin(const httplib::Request& req, httplib::Response& res,
+                             const PBC_AuthInfo& authInfo)
+{
+    HandleCardPinImpl(req, res, authInfo, false);
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/char/:guid/card/regenerate — queue a card regeneration.
+// Owned + online + unpinned; the heavy LLM work runs on the card worker.
+// ---------------------------------------------------------------------------
+void HandlePostCharCardRegenerate(const httplib::Request& req, httplib::Response& res,
+                                  const PBC_AuthInfo& authInfo)
+{
+    uint64_t charGuid = ParseGuidParam(req, res);
+    if (charGuid == 0) return;
+
+    Player* bot = ResolveOnlineBot(charGuid, authInfo, res);
+    if (!bot) return;
+
+    // Authoritative pinned check (the cache can drift). PBC_QueueCardRegen also
+    // re-checks pinned, but this yields a clearer 403 vs the generic 409.
+    PBC_CardEntry card;
+    if (DB_LoadCard(charGuid, card) && card.pinned)
+    {
+        res.status = 403;
+        res.set_content("{\"error\":\"Card is pinned (read-only); unpin to regenerate\"}", "application/json");
+        return;
+    }
+
+    if (!PBC_QueueCardRegen(bot))
+    {
+        res.status = 409;
+        res.set_content("{\"error\":\"Regeneration unavailable (autogen disabled, card pinned, "
+                        "or already in progress)\"}", "application/json");
+        return;
+    }
+
+    json response;
+    response["ok"]     = true;
+    response["queued"] = true;
     res.set_content(response.dump(), "application/json");
 }
 

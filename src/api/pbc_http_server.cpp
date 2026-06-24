@@ -463,12 +463,52 @@ bool PBC_HttpServerStart(const std::string& bindAddr, int port, int timeoutSec)
             HandleGetConfig(req, res, authInfo);
         });
 
+        // GET /api/cards — list all characters with a card row
+        svr->Get("/api/cards", [](const httplib::Request& req, httplib::Response& res) {
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandleListCards(req, res, authInfo);
+        });
+
         // GET /api/char/:guid/card
         svr->Get("/api/char/:guid/card", [](const httplib::Request& req, httplib::Response& res) {
             PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
             PBC_AuthInfo authInfo;
             if (!AuthenticateRequest(req, res, authInfo)) return;
             HandleGetCharCard(req, res, authInfo);
+        });
+
+        // POST /api/char/:guid/card — edit card fields
+        svr->Post("/api/char/:guid/card", [](const httplib::Request& req, httplib::Response& res) {
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostCharCard(req, res, authInfo);
+        });
+
+        // POST /api/char/:guid/card/pin
+        svr->Post("/api/char/:guid/card/pin", [](const httplib::Request& req, httplib::Response& res) {
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostCharCardPin(req, res, authInfo);
+        });
+
+        // POST /api/char/:guid/card/unpin
+        svr->Post("/api/char/:guid/card/unpin", [](const httplib::Request& req, httplib::Response& res) {
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostCharCardUnpin(req, res, authInfo);
+        });
+
+        // POST /api/char/:guid/card/regenerate
+        svr->Post("/api/char/:guid/card/regenerate", [](const httplib::Request& req, httplib::Response& res) {
+            PBC_Log(PBC_LogLevel::PBC_DEBUG, "HTTP: {} {} from {}", req.method, req.path, req.remote_addr);
+            PBC_AuthInfo authInfo;
+            if (!AuthenticateRequest(req, res, authInfo)) return;
+            HandlePostCharCardRegenerate(req, res, authInfo);
         });
 
         // GET /api/char/:guid/context

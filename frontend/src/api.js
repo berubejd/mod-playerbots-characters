@@ -36,11 +36,51 @@ export async function fetchAccount(token) {
   return res.json();
 }
 
+export async function fetchCards(token) {
+  const res = await fetch('/api/cards', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  throwForStatus(res, AUTH_STATUS);
+  return res.json();
+}
+
 export async function fetchCard(token, guid) {
   const res = await fetch(`/api/char/${encodeURIComponent(guid)}/card`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   throwForStatus(res, CHAR_STATUS);
+  return res.json();
+}
+
+export async function updateCard(token, guid, fields) {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/card`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(fields),
+  });
+  throwForStatus(res, { ...MUTATE_STATUS, 403: 'forbidden' });
+  return res.json();
+}
+
+export async function setCardPinned(token, guid, pinned) {
+  const action = pinned ? 'pin' : 'unpin';
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/card/${action}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  throwForStatus(res, CHAR_STATUS);
+  return res.json();
+}
+
+export async function regenerateCard(token, guid) {
+  const res = await fetch(`/api/char/${encodeURIComponent(guid)}/card/regenerate`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  throwForStatus(res, { ...CHAR_ONLINE_STATUS, 409: 'unavailable' });
   return res.json();
 }
 
@@ -293,6 +333,7 @@ export function formatApiError(err) {
     case 'bad_request': return 'Invalid request';
     case 'not_found': return 'Not found';
     case 'desync': return 'State out of sync — please reload';
+    case 'unavailable': return 'Action unavailable right now';
     default: return 'Connection error';
   }
 }
