@@ -131,9 +131,33 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
         body["think"] = cfg.ollamaThink;
 
         // keep_alive keeps the model resident; omitted when unset so Ollama
-        // applies its own default.
+        // applies its own default.  Ollama accepts either a JSON number
+        // (seconds; negative = keep loaded indefinitely, 0 = unload now) or a
+        // duration string ("5m", "1h").  A purely numeric value MUST be sent as
+        // a number — as a string ("-1", "300") it has no duration unit and
+        // Ollama rejects it, so it would never keep/unload as intended.
         if (!cfg.ollamaKeepAlive.empty())
-            body["keep_alive"] = cfg.ollamaKeepAlive;
+        {
+            const std::string& ka = cfg.ollamaKeepAlive;
+            const size_t digitsStart = (ka[0] == '-' || ka[0] == '+') ? 1 : 0;
+            const bool isNumeric = digitsStart < ka.size() &&
+                ka.find_first_not_of("0123456789", digitsStart) == std::string::npos;
+            if (isNumeric)
+            {
+                try
+                {
+                    body["keep_alive"] = std::stoll(ka);
+                }
+                catch (const std::exception&)
+                {
+                    body["keep_alive"] = ka; // out-of-range; fall back to string
+                }
+            }
+            else
+            {
+                body["keep_alive"] = ka;
+            }
+        }
 
         json options = json::object();
         if (cfg.temperature >= 0.0)
