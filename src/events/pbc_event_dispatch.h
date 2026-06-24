@@ -38,7 +38,9 @@ void PBC_NotifyRealPlayersInGroup(Player* anchor, const std::string& eventLine);
 // ---------------------------------------------------------------------------
 void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
                              const std::string& narratorText, uint32_t chance,
-                             bool notifyRealPlayers = true);
+                             bool notifyRealPlayers = true,
+                             const std::string& category = "",
+                             uint64_t subjectGuid = 0);
 
 // ---------------------------------------------------------------------------
 // Roll bots with decaying penalty.  Does NOT shuffle — caller should shuffle

@@ -1,6 +1,7 @@
 #include "pbc_quest_scripts.h"
 #include "pbc_config.h"
 #include "pbc_character.h"
+#include "pbc_memory.h"
 #include "pbc_database.h"
 #include "pbc_utils.h"
 #include "pbc_locales.h"
@@ -61,6 +62,8 @@ static void HandleQuestTaken(Player* player, Quest const* quest,
     ev.questSystemPrompt  = g_PBC_QuestTakenSystemPrompt;
     ev.questUserPrompt    = userPrompt;
     ev.anchorObjGuid      = player->GetGUID();
+    ev.eventCategory      = PBC_Cat::QuestTaken;
+    ev.eventSubjectGuid   = player->GetGUID().GetCounter();
 
     if (!PBC_RollGroupBotsIntoEvent(ev, player, g_PBC_ReplyChanceQuestTaken, "quest-taken"))
         return;

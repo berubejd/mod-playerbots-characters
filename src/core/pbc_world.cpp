@@ -200,7 +200,8 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                     {
                         std::vector<uint64_t> owners = {bot->GetGUID().GetCounter()};
                         PBC_AppendHistoryMessage(entry.authorGuid, entry.type,
-                                                 entry.message, owners);
+                                                 entry.message, owners,
+                                                 entry.subjectGuid, entry.eventType, entry.mood);
                     }
                 }
 
@@ -492,6 +493,10 @@ void PBC_WorldScript::OnUpdate(uint32_t diff)
                 case PBC_EventType::CardGeneration:
                     PBC_Log(PBC_LogLevel::PBC_DEBUG, "OnUpdate: spawning event thread for type=CardGeneration mode={} character=\"{}\"",
                              static_cast<int>(nextEvent.cardGenMode), nextEvent.cardGenName);
+                    break;
+                case PBC_EventType::MoodRefine:
+                    // MoodRefine runs on the dedicated background worker, never on
+                    // this queue; listed only for switch completeness.
                     break;
             }
 

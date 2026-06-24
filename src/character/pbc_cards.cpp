@@ -1,6 +1,7 @@
 #include "pbc_cards.h"
 #include "pbc_config.h"
 #include "pbc_character.h"
+#include "pbc_memory.h"
 #include "pbc_database.h"
 #include "pbc_llm.h"
 #include "pbc_http.h"
@@ -432,7 +433,10 @@ void CardWorkerLoop()
             job = std::move(s_cardJobs.front());
             s_cardJobs.pop();
         }
-        PBC_ProcessCardGeneration(job);
+        if (job.type == PBC_EventType::MoodRefine)
+            PBC_ProcessMoodRefine(job);
+        else
+            PBC_ProcessCardGeneration(job);
     }
 }
 
@@ -1184,6 +1188,18 @@ void PBC_ProcessCardGeneration(PBC_EventItem& ev)
         "CardGeneration: {} card for '{}' (guid={}).",
         ev.cardGenMode == PBC_CardGenMode::Generate ? "generated" : "derived",
         card.name.empty() ? ev.cardGenName : card.name, guid);
+}
+
+// Enqueue an optional AI mood-refine job onto the background worker.
+void PBC_EnqueueMoodRefine(uint64_t historyId, const std::string& eventText)
+{
+    if (historyId == 0)
+        return;
+    PBC_EventItem ev;
+    ev.type          = PBC_EventType::MoodRefine;
+    ev.moodHistoryId = historyId;
+    ev.moodEventText = eventText;
+    EnqueueCardJob(std::move(ev));
 }
 
 // ---------------------------------------------------------------------------

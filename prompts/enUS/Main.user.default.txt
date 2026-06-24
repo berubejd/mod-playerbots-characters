@@ -12,6 +12,7 @@
 
 [CURRENT CONTEXT]
 {context}
+{mood}
 
 [CURRENT EVENT]
 {event}

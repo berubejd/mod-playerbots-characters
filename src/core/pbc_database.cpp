@@ -11,13 +11,24 @@
 #include <cstdint>
 #include <ctime>
 
+// Whether the attribution columns exist (set by the loaders from the schema).
+// Inserts degrade to the legacy column set when false, mirroring the loaders,
+// so a not-yet-applied migration never produces failed writes / stale IDs.
+namespace {
+    bool s_historyAttributionReady  = false;
+    bool s_memoriesAttributionReady = false;
+}
+
 // ---------------------------------------------------------------------------
 // Chat history — normalized schema (mod_pbc_history + mod_pbc_history_owners)
 // ---------------------------------------------------------------------------
 
 uint64_t DB_InsertHistoryMessage(uint64_t authorGuid, uint8_t type,
                                  const std::string& message,
-                                 const std::vector<uint64_t>& ownerGuids)
+                                 const std::vector<uint64_t>& ownerGuids,
+                                 uint64_t subjectGuid,
+                                 const std::string& eventType,
+                                 const std::string& mood)
 {
     if (ownerGuids.empty())
         return 0;
@@ -25,12 +36,33 @@ uint64_t DB_InsertHistoryMessage(uint64_t authorGuid, uint8_t type,
     std::string escaped = message;
     CharacterDatabase.EscapeString(escaped);
 
-    // Insert the message row (synchronous, single-connection)
-    CharacterDatabase.DirectExecute(
-        "INSERT INTO mod_pbc_history (author_guid, type, message) VALUES ({}, {}, '{}')",
-        authorGuid,
-        static_cast<uint32_t>(type),
-        escaped);
+    auto nullableText = [](std::string v) -> std::string
+    {
+        if (v.empty())
+            return "NULL";
+        CharacterDatabase.EscapeString(v);
+        return "'" + v + "'";
+    };
+    std::string subjectSql = subjectGuid ? std::to_string(subjectGuid) : "NULL";
+
+    // Insert the message row (synchronous, single-connection).  Use the legacy
+    // column set when the attribution migration has not been applied.
+    if (s_historyAttributionReady)
+        CharacterDatabase.DirectExecute(
+            "INSERT INTO mod_pbc_history (author_guid, subject_guid, type, event_type, mood, message) "
+            "VALUES ({}, {}, {}, {}, {}, '{}')",
+            authorGuid,
+            subjectSql,
+            static_cast<uint32_t>(type),
+            nullableText(eventType),
+            nullableText(mood),
+            escaped);
+    else
+        CharacterDatabase.DirectExecute(
+            "INSERT INTO mod_pbc_history (author_guid, type, message) VALUES ({}, {}, '{}')",
+            authorGuid,
+            static_cast<uint32_t>(type),
+            escaped);
 
     // Get the auto-increment ID (connection-safe: DirectExecute+Query on same pool)
     QueryResult idResult = CharacterDatabase.Query("SELECT LAST_INSERT_ID()");
@@ -57,6 +89,19 @@ void DB_UpdateHistoryMessage(uint64_t historyId, const std::string& newMessage)
     CharacterDatabase.EscapeString(escaped);
     CharacterDatabase.Execute(
         "UPDATE mod_pbc_history SET message = '{}' WHERE id = {}",
+        escaped,
+        historyId
+    );
+}
+
+void DB_UpdateHistoryMood(uint64_t historyId, const std::string& mood)
+{
+    if (!s_historyAttributionReady)
+        return;  // mood column absent (migration not applied) — skip
+    std::string escaped = mood;
+    CharacterDatabase.EscapeString(escaped);
+    CharacterDatabase.Execute(
+        "UPDATE mod_pbc_history SET mood = '{}' WHERE id = {}",
         escaped,
         historyId
     );
@@ -105,16 +150,42 @@ void DB_RemoveAllHistoryOwnership(uint64_t guid)
 // Character memories
 // ---------------------------------------------------------------------------
 
-void DB_InsertMemory(uint64_t botGuid, const std::string& memoryText, uint8_t importance)
+void DB_InsertMemory(uint64_t botGuid, const std::string& memoryText, uint8_t importance,
+                     uint64_t subjectGuid, const std::string& type, const std::string& mood)
 {
     std::string escaped = memoryText;
     CharacterDatabase.EscapeString(escaped);
-    CharacterDatabase.DirectExecute(
-        "INSERT INTO mod_pbc_memories (bot_guid, memory_text, importance) VALUES ({}, '{}', {})",
-        botGuid,
-        escaped,
-        importance
-    );
+
+    std::string escapedType = type.empty() ? "general" : type;
+    CharacterDatabase.EscapeString(escapedType);
+
+    auto nullableText = [](std::string v) -> std::string
+    {
+        if (v.empty())
+            return "NULL";
+        CharacterDatabase.EscapeString(v);
+        return "'" + v + "'";
+    };
+    std::string subjectSql = subjectGuid ? std::to_string(subjectGuid) : "NULL";
+
+    if (s_memoriesAttributionReady)
+        CharacterDatabase.DirectExecute(
+            "INSERT INTO mod_pbc_memories (bot_guid, subject_guid, type, mood, memory_text, importance) "
+            "VALUES ({}, {}, '{}', {}, '{}', {})",
+            botGuid,
+            subjectSql,
+            escapedType,
+            nullableText(mood),
+            escaped,
+            importance
+        );
+    else
+        CharacterDatabase.DirectExecute(
+            "INSERT INTO mod_pbc_memories (bot_guid, memory_text, importance) VALUES ({}, '{}', {})",
+            botGuid,
+            escaped,
+            importance
+        );
 }
 
 void DB_DeleteMemoriesForCharacter(uint64_t botGuid)
@@ -146,6 +217,16 @@ void DB_DeleteMemoryById(uint64_t memoryId)
 {
     CharacterDatabase.Execute(
         "DELETE FROM mod_pbc_memories WHERE id = {}",
+        memoryId
+    );
+}
+
+void DB_MarkMemoryUsed(uint64_t memoryId)
+{
+    if (!s_memoriesAttributionReady)
+        return;  // columns absent (migration not applied) — skip to avoid failed SQL
+    CharacterDatabase.Execute(
+        "UPDATE mod_pbc_memories SET used = 1, last_used_at = NOW() WHERE id = {}",
         memoryId
     );
 }
@@ -273,6 +354,7 @@ void PBC_LoadHistoryFromDB()
     // without the new enrichment) instead of starting empty.  Warn so the
     // operator knows to apply the migration.
     const bool enriched = DB_TableHasColumn("mod_pbc_history", "subject_guid");
+    s_historyAttributionReady = enriched;  // gates enriched inserts
     if (!enriched)
         PBC_Log(PBC_LogLevel::PBC_WARNING,
             "mod_pbc_history is missing attribution columns — migration-20260624.sql has not been "
@@ -341,6 +423,7 @@ void PBC_LoadMemoriesFromDB()
     // set when the enrichment migration has not been applied, so memories are
     // never lost — only their enrichment defaults are used.
     const bool enriched = DB_TableHasColumn("mod_pbc_memories", "subject_guid");
+    s_memoriesAttributionReady = enriched;  // gates enriched inserts
     if (!enriched)
         PBC_Log(PBC_LogLevel::PBC_WARNING,
             "mod_pbc_memories is missing enrichment columns — migration-20260624.sql has not been "

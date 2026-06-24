@@ -42,6 +42,9 @@ bool        g_PBC_CardDeriveOnImport               = true;
 double      g_PBC_CardGenerationTemperature        = 0.95;
 double      g_PBC_CardDerivationTemperature        = 0.65;
 
+bool        g_PBC_MoodEnabled                      = false;
+std::string g_PBC_MoodRefineScope                  = "significant";
+
 uint32_t    g_PBC_MaxHistoryCtx              = 0;
 uint32_t    g_PBC_MaxMemoriesCtx             = 8192;
 
@@ -58,6 +61,8 @@ std::string g_PBC_CardGenerationUserPrompt;
 std::string g_PBC_CardDerivationSystemPrompt;
 std::string g_PBC_CardDerivationUserPrompt;
 std::string g_PBC_CardGenerationFewShot;
+std::string g_PBC_MoodSystemPrompt;
+std::string g_PBC_MoodUserPrompt;
 
 std::string g_PBC_RelationshipUpdateSystemPrompt;
 std::string g_PBC_RelationshipUpdateUserPrompt;
@@ -476,6 +481,17 @@ void PBC_LoadConfig(bool /*isStartup*/)
     g_PBC_CardDeriveOnImport              = sConfigMgr->GetOption<bool>("PBC.CardDeriveOnImport", true);
     g_PBC_CardGenerationTemperature       = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.CardGenerationTemperature", 0.95f)) * 100.0) / 100.0;
     g_PBC_CardDerivationTemperature       = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.CardDerivationTemperature", 0.65f)) * 100.0) / 100.0;
+
+    g_PBC_MoodEnabled                     = sConfigMgr->GetOption<bool>("PBC.MoodEnabled", false);
+    g_PBC_MoodRefineScope                 = sConfigMgr->GetOption<std::string>("PBC.MoodRefineScope", "significant");
+    std::transform(g_PBC_MoodRefineScope.begin(), g_PBC_MoodRefineScope.end(),
+                   g_PBC_MoodRefineScope.begin(), ::tolower);
+    if (g_PBC_MoodRefineScope != "significant" && g_PBC_MoodRefineScope != "all" && g_PBC_MoodRefineScope != "responded")
+    {
+        PBC_Log(PBC_LogLevel::PBC_WARNING,
+            "PBC.MoodRefineScope='{}' is invalid — falling back to 'significant'.", g_PBC_MoodRefineScope);
+        g_PBC_MoodRefineScope = "significant";
+    }
     // Normalize the format selector (only "json" or "labeled" are valid).
     std::transform(g_PBC_CardGenerationFormat.begin(), g_PBC_CardGenerationFormat.end(),
                    g_PBC_CardGenerationFormat.begin(), ::tolower);
@@ -605,6 +621,9 @@ void PBC_LoadConfig(bool /*isStartup*/)
         "Cards: Autogen={} Format='{}' DeriveOnImport={} GenTemp={} DeriveTemp={}",
         g_PBC_CardAutogenEnabled, g_PBC_CardGenerationFormat, g_PBC_CardDeriveOnImport,
         g_PBC_CardGenerationTemperature, g_PBC_CardDerivationTemperature);
+
+    PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Mood: Enabled={} RefineScope='{}'",
+        g_PBC_MoodEnabled, g_PBC_MoodRefineScope);
 }
 
 // Try to read a file into target. Returns true if the file exists and is non-empty.
@@ -750,6 +769,16 @@ bool PBC_LoadPrompts()
         bool fewShotCustom = false;
         if (!PBC_GetPrompt("CardGeneration.fewshot", g_PBC_CardGenerationFewShot, fewShotCustom, /*required=*/false))
             g_PBC_CardGenerationFewShot.clear();
+    }
+
+    // Optional mood-refine prompts — only consulted when PBC.MoodEnabled. Absent
+    // files leave the model-free category->mood lookup in effect.
+    {
+        bool moodCustom = false;
+        if (!PBC_GetPrompt("Mood.system", g_PBC_MoodSystemPrompt, moodCustom, /*required=*/false))
+            g_PBC_MoodSystemPrompt.clear();
+        if (!PBC_GetPrompt("Mood.user", g_PBC_MoodUserPrompt, moodCustom, /*required=*/false))
+            g_PBC_MoodUserPrompt.clear();
     }
 
     PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Loaded {} prompt(s) ({} custom)",

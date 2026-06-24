@@ -46,6 +46,10 @@ extern bool        g_PBC_CardDeriveOnImport;       // fill null sibling fields f
 extern double      g_PBC_CardGenerationTemperature; // hotter for distinct first-contact cards
 extern double      g_PBC_CardDerivationTemperature; // cooler — constrained by authored fields
 
+// Memory mood
+extern bool        g_PBC_MoodEnabled;       // enable the optional AI mood refine pass
+extern std::string g_PBC_MoodRefineScope;   // "significant" | "all" | "responded"
+
 // Context / condensation
 extern uint32_t    g_PBC_MaxHistoryCtx;
 extern uint32_t    g_PBC_MaxMemoriesCtx;
@@ -67,6 +71,11 @@ extern std::string g_PBC_CardDerivationUserPrompt;
 // Optional, localizable few-shot examples for generation. Delimited by lines
 // containing exactly [user] or [assistant]; empty = no few-shot.
 extern std::string g_PBC_CardGenerationFewShot;
+
+// Optional mood-refine prompts (used only when PBC.MoodEnabled). Empty when the
+// files are absent — the refine then no-ops and the model-free mood stands.
+extern std::string g_PBC_MoodSystemPrompt;
+extern std::string g_PBC_MoodUserPrompt;
 
 // Relationship update prompts
 extern std::string g_PBC_RelationshipUpdateSystemPrompt;
@@ -147,6 +156,15 @@ struct PBC_CharacterSnapshot
     std::string charLos;
     std::string combatStatus;
     std::string equipment;
+    std::string mood;          // current mood (most recent moodful event), for {mood}
+
+    // Frozen memories block for {memories}. When hasMemoriesBlock is true the
+    // prompt uses memoriesBlock verbatim instead of re-selecting live, so a
+    // regen reproduces the exact memories the original reply saw. memoryIds are
+    // the exact rows surfaced, marked used after a reply (rotation bookkeeping).
+    std::string           memoriesBlock;
+    std::vector<uint64_t> memoryIds;
+    bool                  hasMemoriesBlock = false;
 
     // The character's history at the moment of snapshotting.
     // The event thread appends replies locally so subsequent characters
@@ -176,6 +194,7 @@ enum class PBC_EventType : uint8_t
     CardAdditionsMigration, // Convert legacy card additions into memories
     Regen,                  // Regenerate the last event's responses
     CardGeneration,         // Autogenerate or derive a character card (off-thread)
+    MoodRefine,             // Optional AI mood second-pass for a history row (off-thread)
 };
 
 // CardGeneration sub-mode.
@@ -293,6 +312,12 @@ struct PBC_EventItem
     std::string eventLine;          // Present-tense for [CURRENT EVENT]
     PBC_EventSource source;        // Raw event data — single source of truth
     uint32_t    chatType = 0;       // Chat channel for bot replies
+
+    // Attribution stamped onto history rows at ingestion (Phase 2b).
+    // eventCategory is a PBC_Cat::* value; empty defaults to chat/general.
+    // eventSubjectGuid is who the event is about (0 = none).
+    std::string eventCategory;
+    uint64_t    eventSubjectGuid = 0;
     std::vector<PBC_CharacterSnapshot> respondingChars;  // Rolled to respond
     std::vector<uint64_t> silentCharGuids;               // Receive source-derived histLine only
     std::vector<uint64_t> playerCharGuids;               // Real players receiving history
@@ -356,6 +381,10 @@ struct PBC_EventItem
     // For Derive mode the current persona fields are read live from g_PBC_Cards
     // at process time, so only the GUID + identity seed are carried here.
     // -----------------------------------------------------------------------
+    // MoodRefine fields (optional AI mood second-pass; background worker).
+    uint64_t    moodHistoryId = 0;   // the history row whose mood to refine
+    std::string moodEventText;       // a short description of the event
+
     PBC_CardGenMode cardGenMode = PBC_CardGenMode::Generate;
     bool        cardGenForce = false;   // regen: overwrite an existing (non-pinned) card
     uint64_t    cardGenGuid = 0;

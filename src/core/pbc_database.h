@@ -12,10 +12,17 @@ struct PBC_CardEntry;
 // ---------------------------------------------------------------------------
 
 // Insert one message into mod_pbc_history and link it to one or more owners.
-// Returns the new history_id (auto-increment).
+// Returns the new history_id (auto-increment).  The trailing attribution
+// arguments are optional (stamped at event ingestion); 0/"" store SQL NULL.
 uint64_t DB_InsertHistoryMessage(uint64_t authorGuid, uint8_t type,
                                  const std::string& message,
-                                 const std::vector<uint64_t>& ownerGuids);
+                                 const std::vector<uint64_t>& ownerGuids,
+                                 uint64_t subjectGuid = 0,
+                                 const std::string& eventType = "",
+                                 const std::string& mood = "");
+
+// Update the attribution columns of an existing history row (mood refine).
+void DB_UpdateHistoryMood(uint64_t historyId, const std::string& mood);
 
 // Update the raw message text in mod_pbc_history (affects all owners).
 void DB_UpdateHistoryMessage(uint64_t historyId, const std::string& newMessage);
@@ -33,8 +40,12 @@ void DB_RemoveAllHistoryOwnership(uint64_t guid);
 // Character memories
 // ---------------------------------------------------------------------------
 
-// Insert a single memory for a character.
-void DB_InsertMemory(uint64_t botGuid, const std::string& memoryText, uint8_t importance);
+// Insert a single memory for a character.  The trailing attribution arguments
+// are propagated from the source history window at condensation time.
+void DB_InsertMemory(uint64_t botGuid, const std::string& memoryText, uint8_t importance,
+                     uint64_t subjectGuid = 0,
+                     const std::string& type = "general",
+                     const std::string& mood = "");
 
 // Delete all memories for a character (used by .chars reset).
 void DB_DeleteMemoriesForCharacter(uint64_t botGuid);
@@ -44,6 +55,10 @@ void DB_DeleteAllMemories();
 
 // Update a single memory by DB row id.
 void DB_UpdateMemoryById(uint64_t memoryId, const std::string& newText, uint8_t importance);
+
+// Mark a memory as surfaced: used = 1, last_used_at = NOW(). Lifecycle
+// bookkeeping so recently-surfaced memories rotate out of selection.
+void DB_MarkMemoryUsed(uint64_t memoryId);
 
 // Delete a single memory by DB row id.
 void DB_DeleteMemoryById(uint64_t memoryId);

@@ -1,5 +1,6 @@
 #include "pbc_poll.h"
 #include "pbc_config.h"
+#include "pbc_memory.h"
 #include "pbc_utils.h"
 #include "pbc_locales.h"
 #include "pbc_event_dispatch.h"
@@ -233,7 +234,7 @@ void PBC_PollPartyState()
                          grpGuid, dest, gi.bots.size(), g_PBC_ReplyChanceLocationChanged);
 
                 PBC_DispatchGroupEvent(gi.anchor, eventLine, narratorText,
-                                       g_PBC_ReplyChanceLocationChanged);
+                                       g_PBC_ReplyChanceLocationChanged, true, PBC_Cat::Location);
             }
         }
         state.inFlight = gi.allInFlight;
@@ -307,7 +308,7 @@ void PBC_PollPartyState()
                         state.locationStableCycles = 0;
 
                         PBC_DispatchGroupEvent(gi.anchor, eventLine, narratorText,
-                                               g_PBC_ReplyChanceLocationChanged);
+                                               g_PBC_ReplyChanceLocationChanged, true, PBC_Cat::Location);
                     }
                 }
                 else
@@ -475,6 +476,8 @@ void PBC_PollPartyState()
                 ev.combatSystemPrompt = g_PBC_CombatEndedSystemPrompt;
                 ev.combatUserPrompt   = userPrompt;
                 ev.anchorObjGuid      = gi.anchor->GetGUID();
+                ev.eventCategory      = PBC_Cat::Combat;
+                ev.eventSubjectGuid   = gi.anchor->GetGUID().GetCounter();
 
                 if (!PBC_RollGroupBotsIntoEvent(ev, gi.anchor, g_PBC_ReplyChanceHardCombat, "hard-combat"))
                 {

@@ -51,6 +51,10 @@ bool PBC_SetCardPinned(uint64_t guid, bool pinned);
 // Process a CardGeneration event (runs on the dedicated card worker thread).
 void PBC_ProcessCardGeneration(PBC_EventItem& ev);
 
+// Enqueue an optional AI mood-refine job (history row id + event description)
+// onto the background worker.  No-op when historyId is 0.
+void PBC_EnqueueMoodRefine(uint64_t historyId, const std::string& eventText);
+
 // Start/stop the dedicated card-generation worker thread.  Card LLM work runs
 // here, off the shared chat-event queue, so it never delays bot replies.
 // Stop also drains queued jobs and clears transient tracking (in-flight set and

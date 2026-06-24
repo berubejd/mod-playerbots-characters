@@ -2,6 +2,7 @@
 #include "pbc_config.h"
 #include "pbc_character.h"
 #include "pbc_cards.h"
+#include "pbc_memory.h"
 #include "pbc_database.h"
 #include "pbc_llm.h"
 #include "pbc_http.h"
@@ -31,6 +32,18 @@
 // ===========================================================================
 // Narrator segment parsing helpers
 // ===========================================================================
+
+// Whether an event qualifies for the optional AI mood-refine pass.
+static bool MoodRefineInScope(const PBC_EventItem& ev)
+{
+    if (g_PBC_MoodRefineScope == "all")
+        return true;
+    if (g_PBC_MoodRefineScope == "responded")
+        return !ev.respondingChars.empty();
+    // "significant": responded-to, or any non-chat category event.
+    return !ev.respondingChars.empty()
+        || (!ev.eventCategory.empty() && ev.eventCategory != PBC_Cat::Chat);
+}
 
 std::vector<NarratorSegment> ParseNarratorSpans(const std::string& text)
 {
@@ -431,20 +444,38 @@ void ProcessNormal(PBC_EventItem& ev,
     {
         if (ev.source.IsChat())
         {
+            const std::string category = ev.eventCategory.empty() ? std::string(PBC_Cat::Chat) : ev.eventCategory;
             PBC_HistoryEntry srcEntry;
-            srcEntry.authorGuid = ev.source.senderGuid;
-            srcEntry.type       = static_cast<uint8_t>(ev.chatType);
-            srcEntry.message    = ev.source.message;
+            srcEntry.authorGuid  = ev.source.senderGuid;
+            srcEntry.type        = static_cast<uint8_t>(ev.chatType);
+            srcEntry.message     = ev.source.message;
+            srcEntry.subjectGuid = ev.eventSubjectGuid ? ev.eventSubjectGuid : ev.source.senderGuid;
+            srcEntry.eventType   = category;
+            srcEntry.mood        = PBC_MoodFromCategory(category);
             ev.eventHistory.push_back(std::move(srcEntry));
         }
         else if (ev.source.IsNarrator())
         {
+            const std::string category = ev.eventCategory.empty() ? std::string(PBC_Cat::General) : ev.eventCategory;
             PBC_HistoryEntry srcEntry;
-            srcEntry.authorGuid = 0;
-            srcEntry.type       = 0;
-            srcEntry.message    = ev.source.narratorText;
+            srcEntry.authorGuid  = 0;
+            srcEntry.type        = 0;
+            srcEntry.message     = ev.source.narratorText;
+            srcEntry.subjectGuid = ev.eventSubjectGuid;
+            srcEntry.eventType   = category;
+            srcEntry.mood        = PBC_MoodFromCategory(category);
             ev.eventHistory.push_back(std::move(srcEntry));
         }
+    }
+
+    // Responders are reacting to THIS event, so their mood for the prompt is the
+    // event's (model-free) category mood when it has one — the snapshot's mood
+    // was captured at dispatch, before this event's history line was stamped.
+    {
+        std::string eventMood = PBC_MoodFromCategory(ev.eventCategory);
+        if (!eventMood.empty())
+            for (PBC_CharacterSnapshot& snap : ev.respondingChars)
+                snap.mood = eventMood;
     }
 
     // -------------------------------------------------------------------
@@ -510,6 +541,17 @@ void ProcessNormal(PBC_EventItem& ev,
             snap.history.push_back(rendered);
         }
 
+        // Freeze the memories block (and the exact rows chosen) so a later regen
+        // reproduces the same {memories} and we can rotate precisely those rows.
+        // In regen, snap already carries the frozen block.
+        if (!snap.hasMemoriesBlock)
+        {
+            PBC_MemorySelection sel = PBC_SelectMemoriesForPrompt(snap.charGuidRaw);
+            snap.memoriesBlock    = std::move(sel.block);
+            snap.memoryIds        = std::move(sel.ids);
+            snap.hasMemoriesBlock = true;
+        }
+
         // Build user prompt from snapshot
         std::string userPrompt = PBC_BuildUserPromptFromSnapshot(snap, currentEvent);
 
@@ -523,6 +565,12 @@ void ProcessNormal(PBC_EventItem& ev,
             PBC_Log(PBC_LogLevel::PBC_WARNING, "ProcessEvent: LLM failed/empty for character={}", snap.charName);
             continue;
         }
+
+        // Reply produced — rotate exactly the memories that were surfaced in
+        // this character's prompt so they deprioritize in future selections.
+        // Not in regen: regen reproduces an existing reply and must not re-rotate.
+        if (!isRegen)
+            PBC_MarkMemoriesUsed(snap.charGuidRaw, snap.memoryIds);
 
         // Collect structured reply data (no pre-rendering)
         PendingReply reply;
@@ -538,9 +586,13 @@ void ProcessNormal(PBC_EventItem& ev,
         // responders see it in their chain context.
         {
             PBC_HistoryEntry replyEntry;
-            replyEntry.authorGuid = snap.charGuidRaw;
-            replyEntry.type       = static_cast<uint8_t>(ev.chatType);
-            replyEntry.message    = res.text;
+            replyEntry.authorGuid  = snap.charGuidRaw;
+            replyEntry.type        = static_cast<uint8_t>(ev.chatType);
+            replyEntry.message     = res.text;
+            // A reply is the character's own speech; attribute it to the same
+            // subject as the event so the exchange is coherently tagged.
+            replyEntry.subjectGuid = ev.eventSubjectGuid;
+            replyEntry.eventType   = PBC_Cat::Chat;
             ev.eventHistory.push_back(std::move(replyEntry));
         }
 
@@ -642,13 +694,27 @@ void ProcessNormal(PBC_EventItem& ev,
         // Write every entry from the event-local buffer in order.
         // For public chat all participants see everything; for whispers
         // allOwners already correctly contains only {bot, sender}.
-        for (const auto& entry : ev.eventHistory)
+        uint64_t sourceHistoryId = 0;
+        for (size_t i = 0; i < ev.eventHistory.size(); ++i)
         {
+            const auto& entry = ev.eventHistory[i];
             uint64_t newId = PBC_AppendHistoryMessage(entry.authorGuid, entry.type,
-                                                      entry.message, allOwners);
+                                                      entry.message, allOwners,
+                                                      entry.subjectGuid, entry.eventType, entry.mood);
+            if (i == 0 && ev.source.HasSource())
+                sourceHistoryId = newId;
             if (outCreatedIds)
                 outCreatedIds->push_back(newId);
         }
+
+        // Optional AI mood refine for the source event — runs off the reply hot
+        // path on the background worker, and only when in the configured scope.
+        // Requires a category, which only freshly-dispatched primary events set:
+        // secondary chain events re-seed the (already-refined) primary source and
+        // their eventLine is a follow-up turn, so refining them would mis-stamp.
+        if (g_PBC_MoodEnabled && sourceHistoryId != 0 && !ev.eventCategory.empty()
+            && MoodRefineInScope(ev))
+            PBC_EnqueueMoodRefine(sourceHistoryId, ev.eventLine);
     }
     else
     {
@@ -685,6 +751,15 @@ void ProcessNormal(PBC_EventItem& ev,
     // -----------------------------------------------------------------------
     if (!isRegen && outCreatedIds && !replies.empty())
     {
+        // Carry each responder's frozen memories block into the pre-mutation
+        // snapshots so a future regen renders the same {memories}. The vectors
+        // align (preMutationSnapshots is a copy of ev.respondingChars).
+        for (size_t i = 0; i < preMutationSnapshots.size() && i < ev.respondingChars.size(); ++i)
+        {
+            preMutationSnapshots[i].memoriesBlock    = ev.respondingChars[i].memoriesBlock;
+            preMutationSnapshots[i].hasMemoriesBlock = ev.respondingChars[i].hasMemoriesBlock;
+        }
+
         auto record = std::make_shared<PBC_LastEventRecord>();
         record->eventLine          = ev.eventLine;
         record->source              = ev.source;

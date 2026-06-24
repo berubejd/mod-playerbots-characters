@@ -61,9 +61,13 @@ std::deque<std::string> PBC_GetChatHistoryPreRendered(uint64_t botGuid);
 
 // Append a structured message to the history of all ownerGuids.
 // Deduplicates against each owner's last message. Returns the new history_id (0 if deduped).
+// The trailing attribution arguments are optional (stamped at event ingestion).
 uint64_t PBC_AppendHistoryMessage(uint64_t authorGuid, uint8_t type,
                                   const std::string& message,
-                                  const std::vector<uint64_t>& ownerGuids);
+                                  const std::vector<uint64_t>& ownerGuids,
+                                  uint64_t subjectGuid = 0,
+                                  const std::string& eventType = "",
+                                  const std::string& mood = "");
 
 int PBC_EstimateHistoryTokens(uint64_t botGuid);
 
@@ -118,6 +122,10 @@ std::string PBC_RenderHistoryLine(const PBC_HistoryEntry& entry, uint64_t forGui
 // Thread-safe character name lookup. Uses CharacterCache first, falls back to DB.
 std::string PBC_GetCharacterName(uint64_t guid);
 
+// Thread-safe current-mood lookup: the mood of the most recent history event
+// that carried one (empty if none).  Mood persists until a new moodful event.
+std::string PBC_GetCurrentMood(uint64_t botGuid);
+
 // ---------------------------------------------------------------------------
 // Build the memories block for a character's prompt (thread-safe).
 // Returns a multi-line string (one memory per line) to be substituted
@@ -128,7 +136,24 @@ std::string PBC_GetCharacterName(uint64_t guid);
 // naturally — a lower-importance early event appears before a later
 // high-importance one.
 // ---------------------------------------------------------------------------
+// Read-only: build the memories block for a character's prompt (debug /
+// condensation context).
 std::string PBC_GetMemoriesBlock(uint64_t botGuid);
+
+// A frozen memory selection: the rendered block plus the exact dbIds chosen.
+struct PBC_MemorySelection
+{
+    std::vector<uint64_t> ids;
+    std::string           block;
+};
+
+// Select the memories for a response prompt, returning both the rendered block
+// and the exact dbIds so the caller can mark precisely those as used later.
+PBC_MemorySelection PBC_SelectMemoriesForPrompt(uint64_t botGuid);
+
+// Mark exactly these memory dbIds as used/last_used_at (rotation bookkeeping).
+// Call only after a reply is produced, so a failed LLM call does not rotate.
+void PBC_MarkMemoriesUsed(uint64_t botGuid, const std::vector<uint64_t>& ids);
 
 // ---------------------------------------------------------------------------
 // Relationship mutation (thread-safe, also updates the database)

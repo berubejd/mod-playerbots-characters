@@ -36,6 +36,15 @@ void PBC_SubstituteFromMap(std::string& tmpl, const PBC_VarMap& vars, bool annot
     }
 }
 
+// Render a current mood into a self-contained sentence for the {mood} token,
+// or "" when neutral (so the template line renders to nothing).
+static std::string PBC_MoodPhrase(const std::string& mood)
+{
+    if (mood.empty())
+        return "";
+    return PBC_Localize("You are currently feeling {0}.", mood);
+}
+
 PBC_VarMap PBC_BuildVarMap(Player* bot, const std::string& event)
 {
     PBC_VarMap vars;
@@ -54,6 +63,7 @@ PBC_VarMap PBC_BuildVarMap(Player* bot, const std::string& event)
     vars["equipment"]    = PBC_BuildEquipmentStr(bot);
     vars["char_group"]   = PBC_BuildGroupStatusStr(bot);
     vars["char_los"]     = PBC_BuildLosStr(bot);
+    vars["mood"]         = PBC_MoodPhrase(PBC_GetCurrentMood(bot->GetGUID().GetCounter()));
 
     if (!event.empty())
         vars["event"] = event;
@@ -77,6 +87,7 @@ PBC_VarMap PBC_BuildVarMapFromSnapshot(const PBC_CharacterSnapshot& snap, const 
     vars["equipment"]    = snap.equipment;
     vars["char_group"]   = snap.charGroup;
     vars["char_los"]     = snap.charLos;
+    vars["mood"]         = PBC_MoodPhrase(snap.mood);
 
     if (!event.empty())
         vars["event"] = event;
@@ -185,12 +196,16 @@ std::string PBC_GetCharacterCard(Player* bot)
 
 // Builds the [MEMORIES] block for a character's prompt.
 // Selection: most important memories within token budget, output chronologically.
-std::string PBC_GetMemoriesBlock(uint64_t botGuid)
+namespace {
+
+struct PBC_SelectedMemory { uint64_t dbId; std::string text; };
+
+// Shared, read-only memory selection: active memories chosen by importance
+// (unused preferred at equal importance) within the token budget, returned in
+// chronological order.  Used by both the prompt builder and the lifecycle
+// marker so they always agree on the surfaced set.
+std::vector<PBC_SelectedMemory> PBC_SelectMemories(uint64_t botGuid)
 {
-    // We need both the entries and their original positions for chronological
-    // ordering. The vector in g_PBC_Memories is always maintained in
-    // chronological order (loaded by id ASC from DB, new entries appended at
-    // end during condensation), so the vector index is a reliable proxy.
     struct IndexedEntry
     {
         size_t           origIndex;
@@ -202,27 +217,32 @@ std::string PBC_GetMemoriesBlock(uint64_t botGuid)
         std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
         auto it = g_PBC_Memories.find(botGuid);
         if (it == g_PBC_Memories.end() || it->second.empty())
-            return "";
+            return {};
         entries.reserve(it->second.size());
         for (size_t i = 0; i < it->second.size(); ++i)
-            entries.push_back({i, it->second[i]});
+            if (it->second[i].active)   // retired memories are excluded
+                entries.push_back({i, it->second[i]});
     }
 
-    // Sort by importance DESC (most important first) for selection
+    if (entries.empty())
+        return {};
+
+    // Selection order: importance DESC, then unused before used (lifecycle
+    // rotation so recently-surfaced memories deprioritize), then chronological.
     std::sort(entries.begin(), entries.end(),
         [](const IndexedEntry& a, const IndexedEntry& b)
         {
             if (a.entry.importance != b.entry.importance)
                 return a.entry.importance > b.entry.importance;
-            return a.origIndex < b.origIndex; // tie-break: earlier first
+            if (a.entry.used != b.entry.used)
+                return a.entry.used < b.entry.used;   // unused (false) first
+            return a.origIndex < b.origIndex;          // tie-break: earlier first
         });
 
-    // Select memories that fit within the token budget
-    // Token estimation: ~4 chars per token
+    // Select memories that fit within the token budget (~4 chars per token).
     const uint32_t budget = g_PBC_MaxMemoriesCtx;
     uint32_t usedTokens = 0;
     std::vector<IndexedEntry> selected;
-
     for (const auto& ie : entries)
     {
         uint32_t entryTokens = static_cast<uint32_t>(PBC_EstimateTokens(ie.entry.text));
@@ -232,25 +252,68 @@ std::string PBC_GetMemoriesBlock(uint64_t botGuid)
         selected.push_back(ie);
     }
 
+    // Output chronologically (by original index ASC).
+    std::sort(selected.begin(), selected.end(),
+        [](const IndexedEntry& a, const IndexedEntry& b) { return a.origIndex < b.origIndex; });
+
+    std::vector<PBC_SelectedMemory> out;
+    out.reserve(selected.size());
+    for (const auto& ie : selected)
+        out.push_back({ ie.entry.dbId, ie.entry.text });
+    return out;
+}
+
+std::string BuildMemoryBlock(const std::vector<PBC_SelectedMemory>& selected)
+{
     if (selected.empty())
         return "";
-
-    // Re-sort selected chronologically (by original index ASC) for output
-    std::sort(selected.begin(), selected.end(),
-        [](const IndexedEntry& a, const IndexedEntry& b)
-        {
-            return a.origIndex < b.origIndex;
-        });
-
     std::ostringstream oss;
-    for (const auto& ie : selected)
-        oss << ie.entry.text << "\n";
-
+    for (const auto& m : selected)
+        oss << m.text << "\n";
     std::string result = oss.str();
-    // Trim trailing newline
     if (!result.empty() && result.back() == '\n')
         result.pop_back();
     return result;
+}
+
+} // namespace
+
+std::string PBC_GetMemoriesBlock(uint64_t botGuid)
+{
+    return BuildMemoryBlock(PBC_SelectMemories(botGuid));
+}
+
+PBC_MemorySelection PBC_SelectMemoriesForPrompt(uint64_t botGuid)
+{
+    std::vector<PBC_SelectedMemory> selected = PBC_SelectMemories(botGuid);
+    PBC_MemorySelection out;
+    out.block = BuildMemoryBlock(selected);
+    out.ids.reserve(selected.size());
+    for (const auto& m : selected)
+        if (m.dbId != 0)
+            out.ids.push_back(m.dbId);
+    return out;
+}
+
+void PBC_MarkMemoriesUsed(uint64_t botGuid, const std::vector<uint64_t>& ids)
+{
+    if (ids.empty())
+        return;
+
+    time_t now = std::time(nullptr);
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
+        auto it = g_PBC_Memories.find(botGuid);
+        if (it != g_PBC_Memories.end())
+            for (auto& mem : it->second)
+                if (std::find(ids.begin(), ids.end(), mem.dbId) != ids.end())
+                {
+                    mem.used       = true;
+                    mem.lastUsedAt = now;
+                }
+    }
+    for (uint64_t id : ids)
+        DB_MarkMemoryUsed(id);
 }
 
 
@@ -279,6 +342,25 @@ std::string PBC_GetCharacterName(uint64_t guid)
         return (*result)[0].Get<std::string>();
 
     return "Unknown";
+}
+
+// ---------------------------------------------------------------------------
+// Current mood: most recent history event (for this character) that carried a
+// non-empty mood.  Thread-safe.
+// ---------------------------------------------------------------------------
+std::string PBC_GetCurrentMood(uint64_t botGuid)
+{
+    std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+    auto ownersIt = g_PBC_HistoryOwners.find(botGuid);
+    if (ownersIt == g_PBC_HistoryOwners.end())
+        return "";
+    for (auto rit = ownersIt->second.rbegin(); rit != ownersIt->second.rend(); ++rit)
+    {
+        auto entryIt = g_PBC_History.find(*rit);
+        if (entryIt != g_PBC_History.end() && !entryIt->second.mood.empty())
+            return entryIt->second.mood;
+    }
+    return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -499,7 +581,10 @@ std::unordered_set<uint64_t> PBC_MaybeInsertSharedTimeGap(
 // ---------------------------------------------------------------------------
 uint64_t PBC_AppendHistoryMessage(uint64_t authorGuid, uint8_t type,
                                   const std::string& message,
-                                  const std::vector<uint64_t>& ownerGuids)
+                                  const std::vector<uint64_t>& ownerGuids,
+                                  uint64_t subjectGuid,
+                                  const std::string& eventType,
+                                  const std::string& mood)
 {
     if (ownerGuids.empty())
         return 0;
@@ -532,17 +617,21 @@ uint64_t PBC_AppendHistoryMessage(uint64_t authorGuid, uint8_t type,
     }
 
     // DB write
-    uint64_t newId = DB_InsertHistoryMessage(authorGuid, type, message, ownerGuids);
+    uint64_t newId = DB_InsertHistoryMessage(authorGuid, type, message, ownerGuids,
+                                             subjectGuid, eventType, mood);
     if (newId == 0)
         return 0;
 
     // In-memory update
     PBC_HistoryEntry entry;
-    entry.id         = newId;
-    entry.timestamp  = time(nullptr);
-    entry.authorGuid = authorGuid;
-    entry.type       = type;
-    entry.message    = message;
+    entry.id          = newId;
+    entry.timestamp   = time(nullptr);
+    entry.authorGuid  = authorGuid;
+    entry.type        = type;
+    entry.message     = message;
+    entry.subjectGuid = subjectGuid;
+    entry.eventType   = eventType;
+    entry.mood        = mood;
 
     std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
     g_PBC_History[newId] = entry;
@@ -780,8 +869,11 @@ static void ReplaceSnapshotVars(std::string& out, const PBC_CharacterSnapshot& s
     // Chat history from the snapshot's local (thread-local) copy
     { std::ostringstream histOss; for (const auto& line : snap.history) histOss << line << "\n"; PBC_ReplaceToken(out, "chat_history", histOss.str()); }
 
-    // Memories from DB (thread-safe)
-    PBC_ReplaceToken(out, "memories", PBC_GetMemoriesBlock(snap.charGuidRaw));
+    // Memories: a frozen block (for regen reproducibility) when present,
+    // otherwise a live read-only selection. Lifecycle marking happens
+    // separately via PBC_MarkMemoriesSurfaced after a reply is produced.
+    PBC_ReplaceToken(out, "memories",
+        snap.hasMemoriesBlock ? snap.memoriesBlock : PBC_GetMemoriesBlock(snap.charGuidRaw));
 }
 
 
@@ -822,6 +914,9 @@ PBC_CharacterSnapshot PBC_SnapshotCharacter(Player* bot)
 
     // Line-of-sight
     snap.charLos = PBC_BuildLosStr(bot);
+
+    // Current mood (most recent moodful event)
+    snap.mood = PBC_GetCurrentMood(snap.charGuidRaw);
 
     // Capture the current global history into the snapshot's local copy
     // using pre-rendered strings so the event thread never needs name lookups.
@@ -941,7 +1036,7 @@ std::string PBC_BuildUserPromptFromSnapshot(const PBC_CharacterSnapshot& snap,
     std::string out = g_PBC_UserPrompt;
     PBC_ExpandNewlineEscapes(out);
 
-    // Substitute all snapshot vars (composites, basic vars, event)
+    // Substitute all snapshot vars (composites, basic vars, event).
     ReplaceSnapshotVars(out, snap, eventLine);
 
     // Relationships block (only in the main user prompt, not condensation)
@@ -958,7 +1053,7 @@ std::string PBC_BuildCondensationPromptFromSnapshot(const PBC_CharacterSnapshot&
     std::string out = tmpl;
     PBC_ExpandNewlineEscapes(out);
 
-    // Substitute all snapshot vars with empty event
+    // Substitute all snapshot vars with empty event (read-only memory access).
     ReplaceSnapshotVars(out, snap, "");
 
     PBC_CleanUnknownTokens(out);

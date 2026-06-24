@@ -159,6 +159,34 @@ PBC.CardDerivationTemperature = 0.65
 
 
 # --------------------------------------------
+# MEMORY MOOD
+# --------------------------------------------
+#
+# Each event a character experiences is stamped at ingestion with a mood. By
+# default this is a cheap, model-free lookup from the event category (e.g. a
+# duel feels competitive, a level-up proud). The character's current mood is
+# exposed to prompts as the {mood} template variable.
+
+# PBC.MoodEnabled
+#     Description: When enabled (1), a non-blocking second-pass LLM call refines
+#                  the model-free mood for ingested events (off the reply hot
+#                  path, on the background worker). When disabled (0), the
+#                  model-free category->mood lookup is used as-is.
+#     Default:     0
+PBC.MoodEnabled = 0
+
+# PBC.MoodRefineScope
+#     Description: Which events get the refined (LLM) mood pass when MoodEnabled.
+#                  significant — only notable events (responded-to or non-chat
+#                                category events); cheap lookup for the rest.
+#                  responded   — only events the character actually responds to.
+#                  all         — every ingested event (free on a local Ollama
+#                                model; can be costly on a paid API).
+#     Default:     significant
+PBC.MoodRefineScope = significant
+
+
+# --------------------------------------------
 # CHARACTER SETTINGS
 # --------------------------------------------
 

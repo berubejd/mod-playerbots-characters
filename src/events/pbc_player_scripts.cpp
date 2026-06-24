@@ -1,6 +1,7 @@
 #include "pbc_player_scripts.h"
 #include "pbc_config.h"
 #include "pbc_character.h"
+#include "pbc_memory.h"
 #include "pbc_database.h"
 #include "pbc_utils.h"
 #include "pbc_locales.h"
@@ -144,7 +145,7 @@ void PBC_PlayerEvents::OnPlayerLootItem(Player* player, Item* item, uint32 /*cou
     PBC_DispatchGroupEvent(player,
         PBC_MakeEventLine(PBC_Localize("The party has found {0} named {1}", phrase, itemName)),
         PBC_Localize("The party acquired {0} named {1}", phrase, itemName),
-        g_PBC_ReplyChanceItem);
+        g_PBC_ReplyChanceItem, true, PBC_Cat::Item);
 }
 
 void PBC_PlayerEvents::OnPlayerQuestRewardItem(Player* player, Item* item, uint32 /*count*/)
@@ -164,7 +165,7 @@ void PBC_PlayerEvents::OnPlayerQuestRewardItem(Player* player, Item* item, uint3
     PBC_DispatchGroupEvent(player,
         PBC_MakeEventLine(PBC_Localize("The party has been rewarded with {0} named {1}", phrase, itemName)),
         PBC_Localize("The party was rewarded with {0} named {1}", phrase, itemName),
-        g_PBC_ReplyChanceItem);
+        g_PBC_ReplyChanceItem, true, PBC_Cat::Item);
 }
 
 void PBC_PlayerEvents::OnPlayerGroupRollRewardItem(Player* player, Item* item, uint32 /*count*/, RollVote /*voteType*/, Roll* /*roll*/)
@@ -185,7 +186,7 @@ void PBC_PlayerEvents::OnPlayerGroupRollRewardItem(Player* player, Item* item, u
     PBC_DispatchGroupEvent(player,
         PBC_MakeEventLine(PBC_Localize("The party has found {0} named {1}", phrase, itemName)),
         PBC_Localize("The party acquired {0} named {1}", phrase, itemName),
-        g_PBC_ReplyChanceItem);
+        g_PBC_ReplyChanceItem, true, PBC_Cat::Item);
 }
 
 void PBC_PlayerEvents::OnPlayerDuelEnd(Player* winner, Player* loser, DuelCompleteType type)
@@ -196,7 +197,7 @@ void PBC_PlayerEvents::OnPlayerDuelEnd(Player* winner, Player* loser, DuelComple
     PBC_DispatchGroupEvent(winner,
         PBC_MakeEventLine(PBC_Localize("{0} just won the duel against {1}", winner->GetName(), loser->GetName(), winnerGender)),
         PBC_Localize("{0} won the duel against {1}", winner->GetName(), loser->GetName(), winnerGender),
-        g_PBC_ReplyChanceDuel);
+        g_PBC_ReplyChanceDuel, true, PBC_Cat::Duel);
 }
 
 void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
@@ -229,7 +230,7 @@ void PBC_PlayerEvents::OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/)
     std::string eventLine = PBC_MakeEventLine(name + PBC_Localize(levelUpEventPhrases[idx], gender));
     std::string narratorText = name + PBC_Localize(levelUpHistPhrases[idx], gender);
 
-    PBC_DispatchGroupEvent(player, eventLine, narratorText, g_PBC_ReplyChanceLevelUp);
+    PBC_DispatchGroupEvent(player, eventLine, narratorText, g_PBC_ReplyChanceLevelUp, true, PBC_Cat::LevelUp);
 }
 
 void PBC_PlayerEvents::OnPlayerCreatureKill(Player* killer, Creature* killed)
@@ -307,6 +308,8 @@ void PBC_PlayerEvents::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     ev.questSystemPrompt  = g_PBC_QuestCompletedSystemPrompt;
     ev.questUserPrompt    = userPrompt;
     ev.anchorObjGuid      = player->GetGUID();
+    ev.eventCategory      = PBC_Cat::QuestCompleted;
+    ev.eventSubjectGuid   = player->GetGUID().GetCounter();
 
     if (!PBC_RollGroupBotsIntoEvent(ev, player, g_PBC_ReplyChanceQuestCompleted, "quest-completed"))
         return;

@@ -1,6 +1,7 @@
 #include "pbc_condense.h"
 #include "pbc_config.h"
 #include "pbc_character.h"
+#include "pbc_memory.h"
 #include "pbc_database.h"
 #include "pbc_llm.h"
 #include "pbc_http.h"
@@ -10,14 +11,19 @@
 #include <regex>
 #include <sstream>
 #include <mutex>
+#include <string>
+#include <unordered_map>
 
 // ---------------------------------------------------------------------------
 // PBC_ParseMemoryLines
 //
 // Parse LLM output lines matching [N] text and insert as memories.
 // ---------------------------------------------------------------------------
-int PBC_ParseMemoryLines(const std::string& text, uint64_t botGuid)
+int PBC_ParseMemoryLines(const std::string& text, uint64_t botGuid,
+                         uint64_t subjectGuid, const std::string& type, const std::string& mood)
 {
+    const std::string memType = type.empty() ? std::string("general") : type;
+
     static const std::regex kMemLine(R"(\[(\d+)\]\s*(.+))");
     std::istringstream iss(text);
     std::string line;
@@ -35,13 +41,16 @@ int PBC_ParseMemoryLines(const std::string& text, uint64_t botGuid)
         if (memText.empty())
             continue;
 
-        DB_InsertMemory(botGuid, memText, importance);
+        DB_InsertMemory(botGuid, memText, importance, subjectGuid, memType, mood);
 
         PBC_MemoryEntry entry;
-        entry.dbId       = 0;
-        entry.text       = std::move(memText);
-        entry.importance = importance;
-        entry.createdAt  = PBC_FormatDate(std::time(nullptr));
+        entry.dbId        = 0;
+        entry.text        = std::move(memText);
+        entry.importance  = importance;
+        entry.createdAt   = PBC_FormatDate(std::time(nullptr));
+        entry.subjectGuid = subjectGuid;
+        entry.type        = memType;
+        entry.mood        = mood;
 
         {
             std::lock_guard<std::mutex> lock(g_PBC_MemoriesMutex);
@@ -50,6 +59,53 @@ int PBC_ParseMemoryLines(const std::string& text, uint64_t botGuid)
         ++memCount;
     }
     return memCount;
+}
+
+// Aggregate the character's short-term history attribution into a single
+// representative (subject / type / mood) to stamp on the memories produced by
+// this condensation.  Dominant non-chat category (else "general"), dominant
+// subject, and the most recent mood.  Must be called before history is cleared.
+static void ComputeCondensationAttribution(uint64_t botGuid,
+                                           uint64_t& subjectOut,
+                                           std::string& typeOut,
+                                           std::string& moodOut)
+{
+    subjectOut = 0;
+    typeOut    = PBC_Cat::General;
+    moodOut    = "";
+
+    std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
+    auto ownersIt = g_PBC_HistoryOwners.find(botGuid);
+    if (ownersIt == g_PBC_HistoryOwners.end())
+        return;
+
+    std::unordered_map<uint64_t, int>    subjectCounts;
+    std::unordered_map<std::string, int> typeCounts;   // excludes "chat"
+    std::string latestMood;
+
+    for (uint64_t id : ownersIt->second)  // chronological order
+    {
+        auto entryIt = g_PBC_History.find(id);
+        if (entryIt == g_PBC_History.end())
+            continue;
+        const PBC_HistoryEntry& h = entryIt->second;
+        if (h.subjectGuid != 0)
+            ++subjectCounts[h.subjectGuid];
+        if (!h.eventType.empty() && h.eventType != PBC_Cat::Chat)
+            ++typeCounts[h.eventType];
+        if (!h.mood.empty())
+            latestMood = h.mood;  // most recent non-empty wins (chronological)
+    }
+
+    int bestSubject = 0;
+    for (const auto& [g, c] : subjectCounts)
+        if (c > bestSubject) { bestSubject = c; subjectOut = g; }
+
+    int bestType = 0;
+    for (const auto& [t, c] : typeCounts)
+        if (c > bestType) { bestType = c; typeOut = t; }
+
+    moodOut = latestMood;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +135,14 @@ bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
         return false;
     }
 
-    int memCount = PBC_ParseMemoryLines(res.text, snap.charGuidRaw);
+    // Propagate aggregate attribution from the (about-to-be-cleared) short-term
+    // history window onto the new long-term memories.
+    uint64_t    aggSubject = 0;
+    std::string aggType;
+    std::string aggMood;
+    ComputeCondensationAttribution(snap.charGuidRaw, aggSubject, aggType, aggMood);
+
+    int memCount = PBC_ParseMemoryLines(res.text, snap.charGuidRaw, aggSubject, aggType, aggMood);
     PBC_WsNotify(snap.charGuidRaw, "memory");
 
     {

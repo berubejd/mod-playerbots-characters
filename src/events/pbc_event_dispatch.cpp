@@ -1,6 +1,7 @@
 #include "pbc_event_dispatch.h"
 #include "pbc_config.h"
 #include "pbc_character.h"
+#include "pbc_memory.h"
 #include "pbc_utils.h"
 #include "pbc_locales.h"
 #include "pbc_group_helpers.h"
@@ -104,7 +105,9 @@ void AddTrackedPlayersToEvent(PBC_EventItem& ev, Player* anchor, bool subGroupOn
 // ---------------------------------------------------------------------------
 void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
                              const std::string& narratorText, uint32_t chance,
-                             bool notifyRealPlayers)
+                             bool notifyRealPlayers,
+                             const std::string& category,
+                             uint64_t subjectGuid)
 {
     if (!PBC_PTR_VALID(anchor)) return;
 
@@ -137,6 +140,10 @@ void PBC_DispatchGroupEvent(Player* anchor, const std::string& eventLine,
     // other sub-groups can see the responses; party chat otherwise.
     ev.chatType        = PBC_GetGroupChatType(anchor);
     ev.canCreateEvents = true;
+    ev.eventCategory   = category;
+    // The actor (the anchor) is the subject by default — the bot who picked up
+    // the item, won the duel, levelled, etc.
+    ev.eventSubjectGuid = subjectGuid ? subjectGuid : anchor->GetGUID().GetCounter();
 
     // Record the real player who triggered this event (for regen logging).
     if (anchorIsReal)
@@ -288,6 +295,8 @@ void PBC_DispatchWhisperEvent(Player* sender, Player* target, const std::string&
     ev.source.senderName  = senderName;
     ev.source.message     = msg;
     ev.chatType           = CHAT_MSG_WHISPER;
+    ev.eventCategory      = PBC_Cat::Chat;
+    ev.eventSubjectGuid   = sender->GetGUID().GetCounter();  // the exchange is about the speaker
 
     ev.whisperSenderName = senderName;
     ev.whisperTargetName = targetName;
@@ -527,6 +536,8 @@ void PBC_DispatchPartyMessageEvent(Player* sender, const std::string& msg,
     ev.source.message     = msg;
     ev.chatType           = chatType ? chatType : CHAT_MSG_PARTY;
     ev.canCreateEvents    = canCreateEvents;
+    ev.eventCategory      = PBC_Cat::Chat;
+    ev.eventSubjectGuid   = sender->GetGUID().GetCounter();  // the exchange is about the speaker
 
     // Record the real player who triggered this event (for regen logging).
     {

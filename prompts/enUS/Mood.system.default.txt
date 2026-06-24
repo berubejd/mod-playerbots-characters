@@ -1,0 +1,1 @@
+You assign a single-word mood to how a character in Azeroth (Wrath of the Lich King) feels about an event. Respond with ONE lowercase mood word (for example: proud, tense, amused, wary, grieved, elated, uneasy, content, furious, hopeful) and nothing else — no punctuation, no explanation, no quotes.

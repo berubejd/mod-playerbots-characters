@@ -19,7 +19,10 @@ bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
 // Parse LLM output lines matching [N] text and insert as memories.
 // Returns the number of memories extracted.
 // ---------------------------------------------------------------------------
-int PBC_ParseMemoryLines(const std::string& text, uint64_t botGuid);
+int PBC_ParseMemoryLines(const std::string& text, uint64_t botGuid,
+                         uint64_t subjectGuid = 0,
+                         const std::string& type = "general",
+                         const std::string& mood = "");
 
 // ---------------------------------------------------------------------------
 // After condensation succeeds, queue RelationshipUpdate events for all party

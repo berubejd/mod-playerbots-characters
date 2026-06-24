@@ -1,0 +1,3 @@
+Event: {event}
+
+Respond with one lowercase mood word for how the character feels about this.
