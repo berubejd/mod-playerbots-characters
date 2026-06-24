@@ -175,9 +175,18 @@ PBC.OllamaKeepAlive =
 #     Description: Pins the model's context window (options.num_ctx) for the request.
 #                  Making the context window a hard boundary keeps the local model's
 #                  memory use predictable. 0 = omit (use the model/Modelfile default).
-#                  Note: this is the model's request context window and is separate
-#                  from PBC.MaxHistoryCtx, which governs in-prompt history condensation.
-#     Example:     PBC.OllamaNumCtx = 8192
+#                  This is the model's FULL context window — the hard upper bound on the
+#                  entire prompt (system prompt + character card + memories + history +
+#                  current event), not just the history portion.
+#                  IMPORTANT: set this together with PBC.MaxHistoryCtx. MaxHistoryCtx is
+#                  only the in-prompt history budget before condensation triggers, and it
+#                  shares this window with the system prompt, character card, and memories
+#                  (PBC.MaxMemoriesCtx). Keep PBC.MaxHistoryCtx at roughly 25% of
+#                  PBC.OllamaNumCtx so the assembled prompt stays under the window —
+#                  otherwise history can grow past num_ctx and requests fail before
+#                  condensation ever runs.
+#                  Example: OllamaNumCtx = 32768, MaxHistoryCtx = 8192, MaxMemoriesCtx = 8192.
+#     Example:     PBC.OllamaNumCtx = 32768
 #     Default:     0
 PBC.OllamaNumCtx = 0
 

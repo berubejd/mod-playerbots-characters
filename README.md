@@ -134,17 +134,21 @@ For a local [Ollama](https://ollama.com/) instance, use the native `ollama` API 
 | `PBC.ApiKey` | (leave empty) |
 | `PBC.Temperature` | `1.0` |
 | `PBC.MaxResponseLength` | `120` |
-| `PBC.MaxHistoryCtx` | `32768` |
+| `PBC.OllamaNumCtx` | `32768` |
+| `PBC.MaxHistoryCtx` | `8192` |
+| `PBC.MaxMemoriesCtx` | `8192` |
 | `PBC.OllamaThink` | `0` |
 | `PBC.OllamaKeepAlive` | `-1` |
-| `PBC.OllamaNumCtx` | `8192` |
 
 The Ollama-specific options live in the **OLLAMA OPTIONS** section of the config:
 
 - **`PBC.OllamaThink`** — `0` sends `think:false`, disabling the reasoning output that is the main latency source for local models. Set to `1` only for models that support thinking.
 - **`PBC.OllamaKeepAlive`** — how long the model stays resident after a request. `-1` keeps it loaded indefinitely (pairs well with GPU pinning); leave empty for Ollama's default.
-- **`PBC.OllamaNumCtx`** — pins the request context window (`options.num_ctx`) so local memory use stays bounded. This is the model's context window and is separate from `PBC.MaxHistoryCtx`, which governs in-prompt history condensation.
+- **`PBC.OllamaNumCtx`** — pins the request context window (`options.num_ctx`) so local memory use stays bounded. This is the model's full context window — the hard upper bound on the entire prompt (system prompt + character card + memories + history + the current event).
 - **`PBC.MaxResponseLength`** drives `options.num_predict` (output cap), exactly as it does for the other API types.
+
+> [!IMPORTANT]
+> `PBC.OllamaNumCtx` and `PBC.MaxHistoryCtx` must be set together. `OllamaNumCtx` is the model's whole context window; `MaxHistoryCtx` is only the in-prompt **history** budget before condensation triggers, and it shares the window with the system prompt, character card, and memories (`PBC.MaxMemoriesCtx`). Keep `MaxHistoryCtx` at roughly **25%** of `OllamaNumCtx` so the assembled prompt stays comfortably under the window — otherwise history can grow past `num_ctx` and requests fail before condensation ever runs. The example above (`OllamaNumCtx = 32768`, `MaxHistoryCtx = 8192`, `MaxMemoriesCtx = 8192`) follows this rule.
 
 > [!NOTE]
 > The general caveat about locally-run models still applies — as context grows, smaller local models produce lower-quality output than frontier cloud models. The `ollama` type makes local inference viable and predictable, not equivalent to a large cloud model.
