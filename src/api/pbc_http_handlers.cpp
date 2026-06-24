@@ -647,6 +647,7 @@ void HandleListCards(const httplib::Request& /*req*/, httplib::Response& res,
         e["provenance"] = PBC_CardProvenanceToStr(c.provenance);
         e["pinned"]     = c.pinned;
         e["owned"]      = (acct != 0 && acct == authInfo.accountId);
+        e["is_online"]  = (FindOnlineCharacter(c.botGuid) != nullptr);
         rows.push_back({ name, std::move(e) });
     }
 

@@ -62,6 +62,14 @@ Your custom file will not be overwritten by module updates. To revert to the def
 | `RelationshipUpdate.user` | User prompt for the relationship update. Supports relationship-related template variables. |
 | `CombatEnded.system` | System prompt for the combat ended summary LLM call. Produces a one-line narrative summary of the fight. |
 | `CombatEnded.user` | User prompt for the combat ended summary. Supports combat-related template variables. |
+| `CardRender` | Deterministic template that assembles the stored persona fields (premise, personality, etc.) plus identity into the final `{character_card}`. **No model call** — this only substitutes; empty persona fields drop their line. |
+| `CardGeneration.system` | System prompt for first-contact card **generation**. Lore/tone/distinctness guidance for inventing a new character. |
+| `CardGeneration.user` | User prompt for card generation. Provides identity and an anti-collision list of recent cards. |
+| `CardGeneration.fewshot` | *Optional.* Localizable few-shot examples that steer generation output/voice. Delimited by lines containing exactly `[user]` or `[assistant]`. Absent file = no few-shot. |
+| `CardDerivation.system` | System prompt for card **derivation** — conservatively filling missing persona fields from the ones already present. |
+| `CardDerivation.user` | User prompt for derivation. Lists the present and missing fields. |
+| `Mood.system` | *Optional.* System prompt for the AI mood refine pass (used only when `PBC.MoodEnabled`). Asks for a single mood word. |
+| `Mood.user` | *Optional.* User prompt for the mood refine pass. Absent Mood files leave the model-free `category→mood` lookup in effect. |
 
 
 ## Template Variables
@@ -100,6 +108,29 @@ These variables can only be used in the `Main.system` and `Main.user` prompts.
 - `{relationships}` — the character's current relationship descriptions with other party members. When the character is not in a group with a real player (e.g. a whisper interaction), falls back to "You don't know much about <player_name>.". When in a group, lists one entry per member, e.g. "You know John is brave and kind." or "You don't know much about John." for members with no data yet. Updated automatically on condensation (manual or automatic) and via the `.chars relationship-update` command.
 - `{context}` — current context for the character, defined in `CharacterContext`
 - `{event}` — recently happened event, see [Events](EVENTS.md) for details
+- `{mood}` — the character's current mood as a short sentence (e.g. "You are currently feeling proud."), derived from the most recent moodful event. Renders to nothing when the mood is neutral. See [Memory Mood](#card-and-mood-prompt-variables) below.
+
+### Card and Mood Prompt Variables
+
+The persona-field variables are used by `CardRender` to assemble `{character_card}`. They are filled from the stored `mod_pbc_cards` row; an empty field drops its line from the render. These are **not** available in other prompts.
+
+- `{premise}` — one-line hook for who the character is
+- `{personality}` — personality traits
+- `{values}` — what the character cares about
+- `{background}` — backstory (the minimal viable field; the others can be derived from it)
+- `{speech_style}` — how the character talks
+- `{quirks}` — distinctive habits/tics
+
+The generation and derivation user prompts additionally support:
+
+- `{recent_summaries}` — (generation) a list of recently-generated card premises, used as an anti-collision hint so a batch of new characters stay distinct
+- `{present_fields}` — (derivation) the persona fields already authored
+- `{missing_fields}` — (derivation) the persona fields still to be filled
+- `{format_instructions}` — output-format guidance injected from `PBC.CardGenerationFormat` (`json` or `labeled`)
+
+The mood refine prompt (`Mood.user`) supports:
+
+- `{event}` — a short description of the event whose mood is being assessed
 
 ### Quest Prompt Variables
 

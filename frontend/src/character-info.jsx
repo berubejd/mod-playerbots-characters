@@ -1,10 +1,16 @@
-import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { fetchCard, fetchRelationships, fetchContext,
-         editRelationship, deleteRelationship, formatApiError } from './api.js';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import ActionMenu from './action-menu.jsx';
+import {
+    deleteRelationship,
+    editRelationship,
+    fetchContext,
+    fetchRelationships,
+    formatApiError
+} from './api.js';
+import CardSection from './card-section.jsx';
+import { DeleteModal } from './chat-toolbar.jsx';
 import { formatMessageParts } from './chat-utils.js';
 import { useToast } from './toast-provider.jsx';
-import ActionMenu from './action-menu.jsx';
-import { DeleteModal } from './chat-toolbar.jsx';
 
 function FormattedText({ text }) {
   const parts = formatMessageParts(text);
@@ -83,9 +89,8 @@ function EditModal({ show, text, onSave, onCancel }) {
   );
 }
 
-export default function CharacterInfo({ token, selectedGuid, nameColorMap, charName, reloadKey = 0, onDesync, isOnline = false }) {
+export default function CharacterInfo({ token, selectedGuid, nameColorMap, charName, isOnline = false, reloadKey = 0, onDesync }) {
   const [openSection, setOpenSection] = useState('context');
-  const [cardData, setCardData] = useState(null);
   const [relationshipsData, setRelationshipsData] = useState(null);
   const [contextData, setContextData] = useState(null);
   const [loading, setLoading] = useState({});
@@ -114,10 +119,6 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
     const names = [];
 
     switch (section) {
-      case 'card':
-        fetches.push(fetchCard(token, guid));
-        names.push('card');
-        break;
       case 'relationships':
         fetches.push(fetchRelationships(token, guid));
         names.push('relationships');
@@ -145,7 +146,6 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
         results.forEach((result, i) => {
           if (result.status === 'fulfilled') {
             switch (names[i]) {
-              case 'card': setCardData(result.value); break;
               case 'relationships': setRelationshipsData(result.value); break;
               case 'context': setContextData(result.value); break;
             }
@@ -162,7 +162,6 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
   // previously the load effect ran with a stale openSection value, so the card
   // of an offline character was never fetched on first selection.
   useEffect(() => {
-    setCardData(null);
     setRelationshipsData(null);
     setContextData(null);
     setErrors({});
@@ -316,20 +315,14 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
       key: 'card',
       title: 'Character Card',
       content: (
-        <>
-          {loading.card ? renderLoading('card') : (
-            <>
-              {renderError('card')}
-              {cardData && cardData.card ? (
-                <div class="small text-body-secondary" style="white-space: pre-wrap; word-break: break-word;">
-                  <FormattedText text={cardData.card} />
-                </div>
-              ) : (
-                !errors.card && <span class="text-body-secondary">No data</span>
-              )}
-            </>
-          )}
-        </>
+        <CardSection
+          token={token}
+          guid={selectedGuid}
+          open={openSection === 'card'}
+          reloadKey={reloadKey}
+          canRegen={isOnline}
+          onDesync={onDesync}
+        />
       ),
     },
     {

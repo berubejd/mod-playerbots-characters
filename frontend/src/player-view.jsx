@@ -3,6 +3,7 @@ import CharacterCard from './character-card.jsx';
 import CharacterActions from './character-actions.jsx';
 import ChatView from './chat-view.jsx';
 import CharacterInfo from './character-info.jsx';
+import BrowseModal from './browse-modal.jsx';
 import { getClassColor, getFaction } from './wow-colors.js';
 import { useMediaQuery } from './use-media-query.js';
 import { useToast } from './toast-provider.jsx';
@@ -54,6 +55,7 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
     return match ? initialSelectedGuid : null;
   });
   const [activeTab, setActiveTab] = useState(TAB.CHARACTERS);
+  const [browseOpen, setBrowseOpen] = useState(false);
   const isMobile = useMediaQuery('(max-width: 767px)');
   const toast = useToast();
   useVisualViewport();
@@ -160,6 +162,11 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
           toast(`The memory of ${memCharName} was updated`, 'success');
         }
         break;
+      case 'card':
+        if (isForSelected) {
+          setInfoReloadKey((k) => k + 1);
+        }
+        break;
     }
   }, [wsEvent, toast, selectedGuid, selectedCharName]);
 
@@ -214,6 +221,14 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
           title="Account Manager"
         >{account.account}</span>
         <span class="badge bg-secondary">{allCharacters.length} character{allCharacters.length !== 1 ? 's' : ''}</span>
+        <button
+          class="btn btn-sm btn-outline-secondary py-0 px-2 d-flex align-items-center gap-1"
+          onClick={() => setBrowseOpen(true)}
+          title="Browse all encountered characters"
+        >
+          <i class="bi bi-collection"></i>
+          <span class="d-none d-sm-inline">Browse cards</span>
+        </button>
       </div>
       {factionIcon ? (
         <img
@@ -320,11 +335,23 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
     </div>
   );
 
+  const browseModal = (
+    <BrowseModal
+      token={token}
+      show={browseOpen}
+      wsEvent={wsEvent}
+      accountChars={allCharacters}
+      onClose={() => setBrowseOpen(false)}
+      onDesync={onDesync}
+    />
+  );
+
   // --- Mobile layout: tabs ---
 
   if (isMobile) {
     return (
       <div class="d-flex flex-column dvh-100">
+        {browseModal}
         {topBar}
         <ul class="nav nav-tabs nav-justified flex-shrink-0" role="tablist">
           <li class="nav-item" role="presentation">
@@ -369,6 +396,7 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
 
   return (
     <div class="d-flex flex-column dvh-100">
+      {browseModal}
       {topBar}
       <div class="d-flex flex-grow-1" style="min-height: 0">
         {charactersList}

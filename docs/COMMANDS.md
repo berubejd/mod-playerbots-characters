@@ -6,7 +6,10 @@ List of commands that can be used by the player or in the server console.
 |---|---|
 | `.chars reload` | Reloads module config, prompts, character cards, and data. Also reloads history and relationships from the database after all pending events are processed. |
 | `.chars condense <name>` | Condenses a character's history into discrete narrator-style memories and clears all history. Also triggers relationship updates for party members. |
-| `.chars info <name>` | Prints the character's card, memory count, history length, estimated tokens, and roll modifier. |
+| `.chars info <name>` | Prints the character's card (with provenance and pinned status), memory count, history length, estimated tokens, and roll modifier. |
+| `.chars pin <name>` | Pins a character's card, making it read-only and disk/SQL-authoritative. The card stops auto-regenerating and rejects edits until unpinned. |
+| `.chars unpin <name>` | Unpins a character's card, making the database copy authoritative and editable again. |
+| `.chars regen-card <name>` | Queues a fresh autogeneration of a character's card (runs off-thread on the card worker). Fails if autogeneration is disabled, the card is pinned, or a generation is already in progress. |
 | `.chars reset <name>` | Removes all memories, history, and relationship data for a character. |
 | `.chars reset @ALL` | Removes all memories, history, and relationship data for every character. |
 | `.chars history <name> [num=5]` | Shows the last `num` entries from a character's chat history (max 20). |
