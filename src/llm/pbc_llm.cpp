@@ -160,6 +160,30 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
         }
 
         json options = json::object();
+
+        // Merge user-supplied sampling options FIRST (top_p, top_k,
+        // repeat_penalty, seed, stop, ...).  Single quotes are accepted as in
+        // ModelExtraParameters.  These are applied before the dedicated settings
+        // below so that temperature/num_ctx/num_predict — which have their own
+        // config keys and carry the bounding guarantee — always take precedence
+        // and cannot be silently overridden from the extra fragment.
+        if (!cfg.ollamaExtraOptions.empty())
+        {
+            std::string extra = cfg.ollamaExtraOptions;
+            std::replace(extra.begin(), extra.end(), '\'', '"');
+            try
+            {
+                json extraJson = json::parse("{" + extra + "}");
+                options.update(extraJson);
+            }
+            catch (const std::exception& ex)
+            {
+                PBC_Log(PBC_LogLevel::PBC_WARNING,
+                          "Ollama: failed to parse PBC.OllamaExtraOptions ('{}'): {} — ignoring.",
+                          PBC_SanitizeForFmt(cfg.ollamaExtraOptions), ex.what());
+            }
+        }
+
         if (cfg.temperature >= 0.0)
             options["temperature"] = cfg.temperature;
         if (cfg.ollamaNumCtx > 0)
@@ -181,25 +205,6 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
             options["num_predict"] = cfg.maxResponseTokens;
         else
             options["num_predict"] = 4096;
-
-        // Merge user-supplied sampling options (top_p, top_k, repeat_penalty,
-        // seed, stop, ...).  Single quotes are accepted as in ModelExtraParameters.
-        if (!cfg.ollamaExtraOptions.empty())
-        {
-            std::string extra = cfg.ollamaExtraOptions;
-            std::replace(extra.begin(), extra.end(), '\'', '"');
-            try
-            {
-                json extraJson = json::parse("{" + extra + "}");
-                options.update(extraJson);
-            }
-            catch (const std::exception& ex)
-            {
-                PBC_Log(PBC_LogLevel::PBC_WARNING,
-                          "Ollama: failed to parse PBC.OllamaExtraOptions ('{}'): {} — ignoring.",
-                          PBC_SanitizeForFmt(cfg.ollamaExtraOptions), ex.what());
-            }
-        }
 
         if (!options.empty())
             body["options"] = options;
