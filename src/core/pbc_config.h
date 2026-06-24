@@ -33,6 +33,12 @@ extern double      g_PBC_Temperature;
 extern std::string g_PBC_ModelExtraParameters;
 extern int         g_PBC_RequestTimeoutSec;
 
+// Ollama-only options (used when PBC.APIType = ollama)
+extern bool        g_PBC_OllamaThink;
+extern std::string g_PBC_OllamaKeepAlive;
+extern int         g_PBC_OllamaNumCtx;
+extern std::string g_PBC_OllamaExtraOptions;
+
 // Alternative API (for condensation / relationship updates)
 extern bool        g_PBC_UseAltModelForCondensation;
 extern bool        g_PBC_UseAltModelForRelationshipUpdate;
@@ -44,6 +50,12 @@ extern int         g_PBC_AltModelMaxResponseTokens;
 extern double      g_PBC_AltModelTemperature;
 extern std::string g_PBC_AltModelModelExtraParameters;
 extern int         g_PBC_AltModelRequestTimeoutSec;
+
+// Ollama-only options for the alternative model (used when PBC.AltModelAPIType = ollama)
+extern bool        g_PBC_AltModelOllamaThink;
+extern std::string g_PBC_AltModelOllamaKeepAlive;
+extern int         g_PBC_AltModelOllamaNumCtx;
+extern std::string g_PBC_AltModelOllamaExtraOptions;
 
 // Context / condensation
 extern uint32_t    g_PBC_MaxHistoryCtx;

@@ -18,14 +18,20 @@ struct PBC_LLMResult
 // ---------------------------------------------------------------------------
 struct PBC_APIConfig
 {
-    std::string apiType;            // "openai" or "anthropic"
+    std::string apiType;            // "openai", "anthropic" or "ollama"
     std::string baseUrl;            // e.g. https://api.deepseek.com/v1
     std::string apiKey;             // Bearer token / x-api-key (empty = no auth header)
     std::string model;              // model identifier
     int         maxResponseTokens;  // 0 = unlimited / omit
     double      temperature;        // sampling temperature
-    std::string modelExtraParameters; // raw JSON merged into request body
+    std::string modelExtraParameters; // raw JSON merged into request body (top level)
     int         requestTimeoutSec;  // HTTP timeout
+
+    // --- Ollama-only (apiType == "ollama") ---------------------------------
+    bool        ollamaThink        = false; // false → send think:false (suppress reasoning)
+    std::string ollamaKeepAlive;            // keep_alive value (empty = omit, use Ollama default)
+    int         ollamaNumCtx       = 0;     // options.num_ctx (0 = omit)
+    std::string ollamaExtraOptions;         // raw JSON merged into the options object
 };
 
 // ---------------------------------------------------------------------------
