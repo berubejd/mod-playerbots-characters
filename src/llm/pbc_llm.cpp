@@ -165,12 +165,15 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
         if (cfg.ollamaNumCtx > 0)
             options["num_ctx"] = cfg.ollamaNumCtx;
 
-        // num_predict mirrors the OpenAI max_tokens override semantics:
-        //   -1 → omit (let the model decide), 0 → config value, >0 → override.
+        // num_predict caps generation.  Unlike the OpenAI branch (which omits
+        // max_tokens on -1 and lets a cloud model stop on its own), Ollama
+        // treats a missing/-1 num_predict as open-ended generation bounded only
+        // by num_ctx — on local hardware that routinely overruns the request
+        // timeout.  So, like the Anthropic branch, the -1 case (condensation /
+        // relationship updates) uses a generous bounded cap instead of omitting.
+        //   -1 → generous bound (4096), 0 → config value, >0 → explicit override.
         if (maxTokensOverride == -1)
-        {
-            // intentionally omitted
-        }
+            options["num_predict"] = 4096;
         else if (maxTokensOverride > 0)
             options["num_predict"] = maxTokensOverride;
         else if (cfg.maxResponseTokens > 0)
