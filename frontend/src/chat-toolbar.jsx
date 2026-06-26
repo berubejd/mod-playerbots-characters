@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'preact/hooks';
-import { fetchDebugRequest, fetchCharData, fetchMemoryCount, updateCharData, fetchMemories, editMemory, deleteMemory, formatApiError } from './api.js';
+import { fetchCharData, fetchMemoryCount, updateCharData, fetchMemories, editMemory, deleteMemory, regenLast, formatApiError } from './api.js';
 import { useToast } from './toast-provider.jsx';
 
 // --- Constants ---
@@ -470,154 +470,10 @@ export function MemoriesModal({ show, token, guid, charName, onClose, onDesync }
   );
 }
 
-// --- Debug Request modal ---
-
-function DebugRequestModal({ show, data, loading, error, onClose }) {
-  // Accordion state: which section is open (null = all closed)
-  const [openSection, setOpenSection] = useState('general');
-
-  // Reset to general section when modal opens
-  useEffect(() => {
-    if (show) setOpenSection('general');
-  }, [show]);
-
-  if (!show) return null;
-
-  // Threshold for using textarea instead of static text (in characters)
-  const LONG_THRESHOLD = 200;
-
-  const renderField = (label, value) => {
-    if (value == null) return null;
-    const str = String(value);
-    const isLong = str.length > LONG_THRESHOLD;
-    return (
-      <div class="mb-3">
-        <label class="form-label fw-semibold small text-uppercase text-body-secondary mb-1">{label}</label>
-        {isLong ? (
-          <textarea
-            class="form-control form-control-sm font-monospace"
-            rows="8"
-            value={str}
-            readOnly
-            style="resize: vertical; font-size: 0.8rem;"
-          />
-        ) : (
-          <div class="form-control-plaintext font-monospace" style="font-size: 0.85rem;">{str}</div>
-        )}
-      </div>
-    );
-  };
-
-  const renderTokenStat = (label, used, limit) => {
-    if (used == null || limit == null) return null;
-    const pct = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
-    const color = pct < 40 ? '#198754' : pct < 80 ? '#ffc107' : '#dc3545';
-    return (
-      <div class="mb-2">
-        <div class="d-flex justify-content-between small">
-          <span class="text-body-secondary">{label}</span>
-          <span class="font-monospace">{used.toLocaleString()} / {limit.toLocaleString()}</span>
-        </div>
-        <div style="height: 4px; background: var(--bs-tertiary-bg, #2c2c2c); border-radius: 2px;">
-          <div style={`height: 100%; width: ${pct}%; background: ${color}; border-radius: 2px; transition: width 0.3s ease;`}></div>
-        </div>
-      </div>
-    );
-  };
-
-  const toggleSection = (section) => {
-    setOpenSection((prev) => prev === section ? null : section);
-  };
-
-  const renderSection = (id, title, content) => (
-    <div class="accordion-item">
-      <h2 class="accordion-header">
-        <button
-          class={`accordion-button${openSection === id ? '' : ' collapsed'}`}
-          type="button"
-          onClick={() => toggleSection(id)}
-        >
-          {title}
-        </button>
-      </h2>
-      <div class={`accordion-collapse collapse${openSection === id ? ' show' : ''}`}>
-        <div class="accordion-body">
-          {content}
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5)" onClick={onClose}>
-      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" onClick={(e) => e.stopPropagation()}>
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title"><i class="bi bi-eyeglasses me-2"></i>Character Debug</h5>
-            <button type="button" class="btn-close" onClick={onClose}></button>
-          </div>
-          <div class="modal-body">
-            {loading && (
-              <div class="d-flex justify-content-center align-items-center py-4">
-                <div class="spinner-border text-primary me-2" role="status"></div>
-                <span class="text-body-secondary">Building request…</span>
-              </div>
-            )}
-            {error && (
-              <div class="alert alert-danger" role="alert">{error}</div>
-            )}
-            {data && !loading && (
-              <div class="accordion">
-                {renderSection('general', 'General Info', (
-                  <>
-                    {renderTokenStat('History Tokens', data.history_tokens, data.history_token_limit)}
-                    {renderTokenStat('Memory Tokens', data.memory_tokens, data.memory_token_limit)}
-                    <div class="mt-2 small">
-                      <span class="text-body-secondary">Condensation: <span class={data.condensation_needed ? 'text-warning' : 'text-success'}>{data.condensation_needed ? 'Needed' : 'Not needed'}</span></span>
-                    </div>
-                  </>
-                ))}
-
-                {renderSection('prompts', 'Prompts', (
-                  <>
-                    {renderField('System Prompt', data.system_prompt)}
-                    {renderField('User Prompt', data.user_prompt)}
-                  </>
-                ))}
-
-                {data.snapshot && renderSection('snapshot', 'Snapshot', (
-                  <>
-                    {renderField('Character Card', data.snapshot.character_card)}
-                    {renderField('Context', data.snapshot.context)}
-                    {renderField('Scene', data.snapshot.scene)}
-                    {renderField('Combat Status', data.snapshot.combat_status)}
-                    {renderField('Equipment', data.snapshot.equipment)}
-                    {renderField('Group', data.snapshot.char_group)}
-                    {renderField('Line of Sight', data.snapshot.char_los)}
-                    {renderField('Memories', data.snapshot.memories)}
-                    {renderField('Relationships', data.snapshot.relationships)}
-                    {renderField('Chat History', data.snapshot.chat_history)}
-                  </>
-                ))}
-              </div>
-            )}
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onClick={onClose}>Close</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // --- Chat Toolbar ---
 
-export default function ChatToolbar({ token, selectedGuid, charName, isDesktop, selectionMode, selectedIds, onToggleSelectionMode, onBatchDeleteOpen, onDesync }) {
+export default function ChatToolbar({ token, selectedGuid, charName, isDesktop, selectionMode, selectedIds, onToggleSelectionMode, onBatchDeleteOpen, onDesync, isOnline }) {
   const toast = useToast();
-
-  // Debug modal state
-  const [debugModal, setDebugModal] = useState({ show: false, data: null, loading: false, error: null });
 
   // Roll modifier modal state
   const [rollModifierModal, setRollModifierModal] = useState(false);
@@ -665,24 +521,30 @@ export default function ChatToolbar({ token, selectedGuid, charName, isDesktop, 
     return item ? item.value : 0;
   }, [charData]);
 
-  // Debug request handler
-  const handleDebugRequest = useCallback(async () => {
-    setDebugModal({ show: true, data: null, loading: true, error: null });
+  // Regenerate last event responses handler
+  const [regenerating, setRegenerating] = useState(false);
+  const handleRegenLast = useCallback(async () => {
+    if (regenerating) return;
+    setRegenerating(true);
     try {
-      const data = await fetchDebugRequest(token, selectedGuid);
-      setDebugModal({ show: true, data, loading: false, error: null });
+      await regenLast(token);
+      toast('Regenerating last responses…', 'success');
     } catch (err) {
       if (err.message === 'unauthorized') {
         onDesync(err.message);
         return;
       }
-      setDebugModal({ show: true, data: null, loading: false, error: formatApiError(err) });
+      if (err.message === 'conflict') {
+        toast('Cannot regenerate right now', 'error');
+      } else if (err.message === 'forbidden' || err.message === 'gone') {
+        toast('No real player online in a group', 'error');
+      } else {
+        toast('Failed to regenerate', 'error');
+      }
+    } finally {
+      setRegenerating(false);
     }
-  }, [token, selectedGuid, onDesync]);
-
-  const handleDebugClose = useCallback(() => {
-    setDebugModal({ show: false, data: null, loading: false, error: null });
-  }, []);
+  }, [token, regenerating, toast, onDesync]);
 
   // Roll modifier save handler
   const handleRollModifierSave = useCallback(async (newValue) => {
@@ -713,13 +575,18 @@ export default function ChatToolbar({ token, selectedGuid, charName, isDesktop, 
     <>
       <div class="d-flex align-items-center gap-2 px-3 py-1 border-bottom bg-body flex-shrink-0">
         {/* Left side: action icons */}
-        <button
-          class="btn btn-link p-1 text-body"
-          onClick={handleDebugRequest}
-          title="Character Debug"
-        >
-          <i class="bi bi-eyeglasses fs-5"></i>
-        </button>
+        {isOnline && (
+          <button
+            class="btn btn-link p-1 text-body"
+            onClick={handleRegenLast}
+            disabled={regenerating}
+            title="Regenerate Last"
+          >
+            {regenerating
+              ? <span class="spinner-border spinner-border-sm"></span>
+              : <i class="bi bi-arrow-clockwise fs-5"></i>}
+          </button>
+        )}
         {isDesktop && (
           <button
             class="btn btn-link p-1 text-body"
@@ -763,13 +630,6 @@ export default function ChatToolbar({ token, selectedGuid, charName, isDesktop, 
       </div>
 
       {/* Modals */}
-      <DebugRequestModal
-        show={debugModal.show}
-        data={debugModal.data}
-        loading={debugModal.loading}
-        error={debugModal.error}
-        onClose={handleDebugClose}
-      />
       <RollModifierModal
         show={rollModifierModal}
         value={rollMod}

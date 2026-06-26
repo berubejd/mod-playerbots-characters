@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'preact/hooks';
 import CharacterCard from './character-card.jsx';
+import CharacterActions from './character-actions.jsx';
 import ChatView from './chat-view.jsx';
 import CharacterInfo from './character-info.jsx';
 import { getClassColor, getFaction } from './wow-colors.js';
@@ -138,6 +139,11 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
           setInfoReloadKey((k) => k + 1);
         }
         break;
+      case 'regen':
+        if (isForSelected) {
+          setChatEvent(wsEvent);
+        }
+        break;
       case 'thinks':
         if (isForSelected) {
           setChatEvent(wsEvent);
@@ -209,7 +215,7 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
         >{account.account}</span>
         <span class="badge bg-secondary">{allCharacters.length} character{allCharacters.length !== 1 ? 's' : ''}</span>
       </div>
-      {factionIcon && (
+      {factionIcon ? (
         <img
           src={factionIcon}
           alt={selectedFaction === 'horde' ? 'Horde' : 'Alliance'}
@@ -217,6 +223,8 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
           width="48"
           height="48"
         />
+      ) : (
+        <div style="width: 48px; height: 48px;" aria-hidden="true"></div>
       )}
     </div>
   );
@@ -229,19 +237,29 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
         <div class="d-flex flex-column gap-2">
           {chars.map((char) => {
             const isPlayer = char.is_player;
-            const isInParty = category === 'party';
             return (
-              <CharacterCard
-                key={char.guid}
-                name={char.name}
-                level={char.level}
-                gender={char.gender}
-                race={char.race}
-                cls={char.class}
-                selected={selectedGuid === char.guid}
-                onClick={() => handleSelect(char.guid)}
-                badge={isPlayer ? 'Player' : undefined}
-              />
+              <div key={char.guid} class="d-flex align-items-stretch gap-2">
+                <div class="flex-grow-1">
+                  <CharacterCard
+                    name={char.name}
+                    level={char.level}
+                    gender={char.gender}
+                    race={char.race}
+                    cls={char.class}
+                    selected={selectedGuid === char.guid}
+                    onClick={() => handleSelect(char.guid)}
+                    badge={isPlayer ? 'Player' : undefined}
+                  />
+                </div>
+                {char.is_online && (
+                  <CharacterActions
+                    token={token}
+                    guid={char.guid}
+                    charName={char.name}
+                    onDesync={onDesync}
+                  />
+                )}
+              </div>
             );
           })}
         </div>
@@ -294,6 +312,7 @@ export default function PlayerView({ account, party, token, wsEvent, onSelectedG
       charName={selectedCharName}
       reloadKey={infoReloadKey}
       onDesync={onDesync}
+      isOnline={selectedChar ? selectedChar.is_online : false}
     />
   ) : (
     <div class="d-flex justify-content-center align-items-center h-100">

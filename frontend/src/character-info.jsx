@@ -83,7 +83,7 @@ function EditModal({ show, text, onSave, onCancel }) {
   );
 }
 
-export default function CharacterInfo({ token, selectedGuid, nameColorMap, charName, reloadKey = 0, onDesync }) {
+export default function CharacterInfo({ token, selectedGuid, nameColorMap, charName, reloadKey = 0, onDesync, isOnline = false }) {
   const [openSection, setOpenSection] = useState('context');
   const [cardData, setCardData] = useState(null);
   const [relationshipsData, setRelationshipsData] = useState(null);
@@ -163,8 +163,15 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
     setContextData(null);
     setErrors({});
     setLoading({});
-    setOpenSection('context');
+    setOpenSection(isOnline ? 'context' : 'card');
   }, [selectedGuid, token]);
+
+  // When online status changes, switch off the context section if it becomes unavailable
+  useEffect(() => {
+    if (!isOnline && openSection === 'context') {
+      setOpenSection('card');
+    }
+  }, [isOnline]);
 
   // Fetch the open section when selectedGuid changes or retry is triggered
   useEffect(() => {
@@ -364,7 +371,7 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
         </>
       ),
     },
-    {
+    ...(isOnline ? [{
       key: 'context',
       title: 'Current Context',
       content: (
@@ -414,7 +421,7 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
           )}
         </>
       ),
-    },
+    }] : []),
   ];
 
   return (

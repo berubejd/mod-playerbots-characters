@@ -422,12 +422,12 @@ Invalid or expired tokens are rejected with `401` before the connection is estab
 | `online` | A character on the account logged in | `{"event":"online","guid":12345}` |
 | `offline` | A character on the account logged out | `{"event":"offline","guid":12345}` |
 | `party` | Party membership changed for the account | `{"event":"party"}` |
-| `regen` | Last event's responses were regenerated | `{"event":"regen","guid":12345,"messages":[{"id":42,"text":"You: Hello again!"}]}` |
+| `regen` | Last event's responses were regenerated | `{"event":"regen","guid":12345,"messages":[{"id":42,"text":"You: Hello again!","type":2,"message":"Hello again!","author_guid":12345,"author_name":"John"}]}` |
 | `shutdown` | Server is shutting down | `{"event":"shutdown"}` |
 
 `thinks`, `relationship`, `memory`, `online`, `offline`, and `party` events are simple triggers — fetch updated data via the REST API when received.
 
-`regen` carries an array of updated messages (`id` + rendered `text`) so the frontend can replace the affected history entries in place without a full reload. One `regen` event is sent per participant (each receives the messages rendered from their own perspective).
+`regen` carries an array of updated full message objects (same structure as the `history` event's `message` field) so the frontend can replace the affected history entries in place without a full reload. One `regen` event is sent per participant (each receives the messages rendered from their own perspective).
 
 `shutdown` indicates the server is going down.
 

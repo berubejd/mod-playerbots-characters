@@ -265,6 +265,15 @@ export async function deleteRelationship(token, guid, name, original) {
   return res.json();
 }
 
+export async function regenLast(token) {
+  const res = await fetch('/api/regen-last', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  throwForStatus(res, { ...AUTH_STATUS, 403: 'forbidden', 410: 'gone', 409: 'conflict' });
+  return res.json();
+}
+
 export async function fetchDebugRequest(token, guid, event = '') {
   const params = new URLSearchParams();
   if (event) params.set('event', event);

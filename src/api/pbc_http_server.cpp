@@ -259,9 +259,10 @@ void PBC_WsNotifyRegen(uint64_t botGuid, const std::vector<uint64_t>& messageIds
     if (messageIds.empty())
         return;
 
-    // Build the array of {id, text} for every affected message, rendering
-    // each from the bot's perspective so the frontend can replace them
-    // in place.
+    // Build the array of full message objects for every affected message,
+    // rendered from the bot's perspective so the frontend can replace them
+    // in place.  The structure mirrors the `history` event's `message` field
+    // so the frontend can swap the affected entries directly.
     json messages = json::array();
     {
         std::lock_guard<std::mutex> lock(g_PBC_HistoryMutex);
@@ -270,9 +271,14 @@ void PBC_WsNotifyRegen(uint64_t botGuid, const std::vector<uint64_t>& messageIds
             auto it = g_PBC_History.find(id);
             if (it == g_PBC_History.end())
                 continue;
+            const PBC_HistoryEntry& entry = it->second;
             messages.push_back({
                 {"id", id},
-                {"text", PBC_RenderHistoryLine(it->second, botGuid)}
+                {"text", PBC_RenderHistoryLine(entry, botGuid)},
+                {"type", entry.type},
+                {"message", entry.message},
+                {"author_guid", entry.authorGuid},
+                {"author_name", PBC_GetCharacterName(entry.authorGuid)}
             });
         }
     }

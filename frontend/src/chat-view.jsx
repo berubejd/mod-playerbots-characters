@@ -592,6 +592,27 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
       return;
     }
 
+    if (chatEvent.type === 'regen') {
+      // Replace affected messages in place by id (no full reload needed).
+      // The payload carries full message objects (mirroring the `history`
+      // event), so we can swap the affected entries directly.
+      const updated = chatEvent.data.messages || [];
+      if (updated.length === 0) return;
+      const byId = new Map(updated.map((m) => [m.id, m]));
+      setMessages((prev) => {
+        if (!prev) return prev;
+        let changed = false;
+        const next = prev.map((m) => {
+          const u = byId.get(m.id);
+          if (!u) return m;
+          changed = true;
+          return u;
+        });
+        return changed ? next : prev;
+      });
+      return;
+    }
+
     if (chatEvent.type === 'history') {
 
       if (loadingRef.current) return;
@@ -957,6 +978,7 @@ export default function ChatView({ token, selectedGuid, playerGuid, nameColorMap
         onToggleSelectionMode={toggleSelectionMode}
         onBatchDeleteOpen={handleBatchDeleteOpen}
         onDesync={onDesync}
+        isOnline={charCategory !== 'offline'}
       />
       <div class="position-relative flex-grow-1" style="min-height: 0">
         <div ref={containerRef} class={`overflow-auto p-3${selectionMode ? ' selection-mode' : ''}`} style={`height: calc(100% - ${inputHeight}px); font-size: 1.25rem`} onScroll={handleScroll}>
