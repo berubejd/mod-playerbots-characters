@@ -474,7 +474,6 @@ void HandleGetConfig(const httplib::Request& /*req*/, httplib::Response& res,
                      const PBC_AuthInfo& /*authInfo*/)
 {
     json config = json::array();
-    config.push_back({{"key", "MaxResponseLength"},        {"value", g_PBC_MaxResponseTokens}});
     config.push_back({{"key", "MaxHistoryCtx"},            {"value", g_PBC_MaxHistoryCtx}});
     config.push_back({{"key", "MaxMemoriesCtx"},           {"value", g_PBC_MaxMemoriesCtx}});
     config.push_back({{"key", "ReplyChanceWhisper"},       {"value", g_PBC_ReplyChanceWhisper}});

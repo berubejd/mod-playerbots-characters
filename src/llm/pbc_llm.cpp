@@ -48,12 +48,12 @@ static bool IEquals(const std::string& a, const std::string& b)
 // PBC_CallLLMWithConfig  – universal synchronous LLM call
 //   openai:     POST {baseUrl}/chat/completions  (OpenAI-compatible)
 //   anthropic:  POST {baseUrl}/messages          (Anthropic Messages API)
+//   ollama:     POST {baseUrl}/api/chat          (Ollama native)
 // Safe to call from any thread; does not touch game objects.
 // ---------------------------------------------------------------------------
 PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
                                      const std::string& systemPrompt,
                                      const std::string& userPrompt,
-                                     int maxTokensOverride,
                                      bool preserveNewlines)
 {
     PBC_LLMResult result{ false, "", 0 };
@@ -65,12 +65,19 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
     PBC_CleanUnknownTokens(usrPrompt);
 
     const bool isAnthropic = IEquals(cfg.apiType, "anthropic");
+    const bool isOllama     = IEquals(cfg.apiType, "ollama");
 
     // --- Build URL --------------------------------------------------------
     std::string url = cfg.baseUrl;
     if (!url.empty() && url.back() == '/')
         url.pop_back();
-    url += isAnthropic ? "/messages" : "/chat/completions";
+
+    if (isAnthropic)
+        url += "/messages";
+    else if (isOllama)
+        url += "/api/chat";
+    else
+        url += "/chat/completions";
 
     // --- Build request body -----------------------------------------------
     json body;
@@ -88,39 +95,23 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
         body["messages"] = messages;
 
         // max_tokens is required for Anthropic — unlike OpenAI, it cannot be omitted.
-        // maxTokensOverride == -1 (condensation/relationship): use a generous limit
-        //   so the model isn't truncated mid-output.
-        // maxTokensOverride ==  0: use config value (cfg.maxResponseTokens).
-        // maxTokensOverride  >  0: use the explicit override.
-        if (maxTokensOverride == -1)
+        // If the connection's requestParameters does not include max_tokens, default
+        // to a generous limit so the model isn't truncated mid-output.
+        if (!cfg.requestParameters.contains("max_tokens"))
             body["max_tokens"] = 4096;
-        else if (maxTokensOverride > 0)
-            body["max_tokens"] = maxTokensOverride;
-        else if (cfg.maxResponseTokens > 0)
-            body["max_tokens"] = cfg.maxResponseTokens;
-        else
-            body["max_tokens"] = 4096;
-
-        if (cfg.temperature >= 0.0)
-            body["temperature"] = cfg.temperature;
+    }
+    else if (isOllama)
+    {
+        // Ollama native /api/chat format
+        json messages = json::array();
+        if (!sysPrompt.empty())
+            messages.push_back({ {"role", "system"}, {"content", sysPrompt} });
+        messages.push_back({ {"role", "user"}, {"content", usrPrompt} });
+        body["messages"] = messages;
     }
     else
     {
         // OpenAI-compatible /chat/completions format
-        body["temperature"] = cfg.temperature;
-
-        // maxTokensOverride == -1  → omit max_tokens (condensation / relationship calls)
-        // maxTokensOverride ==  0  → use config value
-        // maxTokensOverride  >  0  → use the override value
-        if (maxTokensOverride == -1)
-        {
-            // intentionally omitted — let the model decide when to stop
-        }
-        else if (maxTokensOverride > 0)
-            body["max_tokens"] = maxTokensOverride;
-        else if (cfg.maxResponseTokens > 0)
-            body["max_tokens"] = cfg.maxResponseTokens;
-
         json messages = json::array();
         if (!sysPrompt.empty())
             messages.push_back({ {"role", "system"}, {"content", sysPrompt} });
@@ -128,22 +119,17 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
         body["messages"] = messages;
     }
 
-    std::string bodyStr = body.dump();
+    // Many endpoints stream by default. The module does not support streaming,
+    // so explicitly disable it for every connection type.
+    body["stream"] = false;
 
-    // Append provider-specific extra parameters from config.
-    // cfg.modelExtraParameters is a raw JSON fragment (key:value pairs) that is
-    // spliced into the request body before the closing '}'.  Single quotes in
-    // the config value are automatically replaced with double quotes, so the
-    // user does not need to escape them.
-    // Example (DeepSeek): 'frequency_penalty':0.5,'presence_penalty':0.2
-    // Example (GLM):       'frequency_penalty':0.5,'thinking':{'type':'disabled'}
-    if (!cfg.modelExtraParameters.empty())
-    {
-        std::string extra = cfg.modelExtraParameters;
-        std::replace(extra.begin(), extra.end(), '\'', '"');
-        bodyStr.pop_back(); // remove trailing '}'
-        bodyStr += "," + extra + "}";
-    }
+    // Merge provider-specific extra parameters from the connection file
+    // into the request body. Keys in requestParameters override the defaults
+    // set above (e.g. max_tokens, temperature, stream).
+    if (cfg.requestParameters.is_object())
+        body.update(cfg.requestParameters, /*merge_objects=*/true);
+
+    std::string bodyStr = body.dump();
 
     // --- Build headers ----------------------------------------------------
     std::vector<std::pair<std::string, std::string>> headers;
@@ -154,6 +140,12 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
         if (!cfg.apiKey.empty())
             headers.emplace_back("x-api-key", cfg.apiKey);
         headers.emplace_back("anthropic-version", "2023-06-01");
+    }
+    else if (isOllama)
+    {
+        // Ollama supports an optional Bearer token (OLLAMA_API_KEY).
+        if (!cfg.apiKey.empty())
+            headers.emplace_back("Authorization", "Bearer " + cfg.apiKey);
     }
     else
     {
@@ -229,6 +221,22 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
                     tokensUsed = inputTokens + outputTokens;
                 }
             }
+            else if (isOllama)
+            {
+                // Ollama response: message.content (top-level)
+                if (!resp.contains("message") || !resp["message"].contains("content"))
+                {
+                    PBC_Log(PBC_LogLevel::PBC_ERROR, "LLM: unexpected Ollama response format (attempt {}/{}).", attempt, MAX_ATTEMPTS);
+                    continue;
+                }
+                text = resp["message"]["content"].get<std::string>();
+
+                // Usage: prompt_eval_count (input) + eval_count (output).
+                // These fields are often absent for some models — treat missing as zero.
+                int inputTokens  = resp.value("prompt_eval_count", 0);
+                int outputTokens = resp.value("eval_count", 0);
+                tokensUsed = inputTokens + outputTokens;
+            }
             else
             {
                 // OpenAI response: choices[0].message.content
@@ -267,39 +275,17 @@ PBC_LLMResult PBC_CallLLMWithConfig(const PBC_APIConfig& cfg,
 }
 
 // ---------------------------------------------------------------------------
-// Convenience wrappers — populate PBC_APIConfig from the appropriate globals
+// Convenience wrapper — uses the "default" connection from the registry.
 // ---------------------------------------------------------------------------
-
 PBC_LLMResult PBC_CallLLM(const std::string& systemPrompt,
                            const std::string& userPrompt,
-                           int maxTokensOverride,
                            bool preserveNewlines)
 {
-    PBC_APIConfig cfg;
-    cfg.apiType              = g_PBC_APIType;
-    cfg.baseUrl              = g_PBC_BaseUrl;
-    cfg.apiKey               = g_PBC_ApiKey;
-    cfg.model                = g_PBC_Model;
-    cfg.maxResponseTokens    = g_PBC_MaxResponseTokens;
-    cfg.temperature          = g_PBC_Temperature;
-    cfg.modelExtraParameters = g_PBC_ModelExtraParameters;
-    cfg.requestTimeoutSec    = g_PBC_RequestTimeoutSec;
-    return PBC_CallLLMWithConfig(cfg, systemPrompt, userPrompt, maxTokensOverride, preserveNewlines);
-}
-
-PBC_LLMResult PBC_CallLLMAlt(const std::string& systemPrompt,
-                               const std::string& userPrompt,
-                               int maxTokensOverride,
-                               bool preserveNewlines)
-{
-    PBC_APIConfig cfg;
-    cfg.apiType              = g_PBC_AltModelAPIType;
-    cfg.baseUrl              = g_PBC_AltModelBaseUrl;
-    cfg.apiKey               = g_PBC_AltModelApiKey;
-    cfg.model                = g_PBC_AltModel;
-    cfg.maxResponseTokens    = g_PBC_AltModelMaxResponseTokens;
-    cfg.temperature          = g_PBC_AltModelTemperature;
-    cfg.modelExtraParameters = g_PBC_AltModelModelExtraParameters;
-    cfg.requestTimeoutSec    = g_PBC_AltModelRequestTimeoutSec;
-    return PBC_CallLLMWithConfig(cfg, systemPrompt, userPrompt, maxTokensOverride, preserveNewlines);
+    const PBC_APIConfig* cfg = PBC_GetConnection("default");
+    if (!cfg)
+    {
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "PBC_CallLLM: no default connection configured.");
+        return PBC_LLMResult{ false, "", 0 };
+    }
+    return PBC_CallLLMWithConfig(*cfg, systemPrompt, userPrompt, preserveNewlines);
 }

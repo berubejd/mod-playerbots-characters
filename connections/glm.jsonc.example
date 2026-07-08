@@ -1,0 +1,24 @@
+{
+    // OpenAI-compatible /chat/completions endpoint (GLM / Zhipu AI).
+    // The module appends /chat/completions to baseUrl automatically.
+    "apiType": "openai",
+
+    // Base URL of the endpoint. No trailing slash.
+    "baseUrl": "https://api.z.ai/api/paas/v4",
+
+    // Bearer token sent in the Authorization header.
+    "apiKey": "your-api-key",
+
+    // HTTP request timeout in seconds. Keep low — events are processed
+    // sequentially, so a slow/unreachable API stalls the whole queue.
+    "requestTimeoutSec": 30,
+
+    // Model identifier.
+    "model": "glm-5.2",
+
+    // Extra parameters merged into every request body's root.
+    "requestParameters": {
+        "temperature": 1.0,
+        "thinking": { "type": "disabled" },
+    }
+}

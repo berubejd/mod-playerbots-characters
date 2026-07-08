@@ -1,0 +1,26 @@
+{
+    // Anthropic Messages API /messages endpoint.
+    // The module appends /messages to baseUrl automatically.
+    // Uses the x-api-key header and anthropic-version: 2023-06-01.
+    "apiType": "anthropic",
+
+    // Base URL of the endpoint. No trailing slash.
+    "baseUrl": "https://api.anthropic.com/v1",
+
+    // API key sent in the x-api-key header.
+    "apiKey": "",
+
+    // HTTP request timeout in seconds. Keep low — events are processed
+    // sequentially, so a slow/unreachable API stalls the whole queue.
+    "requestTimeoutSec": 30,
+
+    // Model identifier.
+    "model": "claude-sonnet-5",
+
+    // Extra parameters merged into every request body's root.
+    "requestParameters": {
+        // "temperature": 1.0,
+        // "top_p": 0.95,
+        // "top_k": 40
+    }
+}

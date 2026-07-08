@@ -213,9 +213,8 @@ void ProcessRelationshipUpdate(PBC_EventItem& ev)
     PBC_ReplaceToken(userPrompt, "relationship_target",      ev.relationshipTargetInfo);
     PBC_ReplaceToken(userPrompt, "target_current_relationship", ev.relationshipCurrentText);
 
-    PBC_LLMResult res = g_PBC_UseAltModelForRelationshipUpdate
-        ? PBC_CallLLMAlt(ev.relationshipSystemPrompt, userPrompt, /*maxTokensOverride=*/-1)
-        : PBC_CallLLM(ev.relationshipSystemPrompt, userPrompt, /*maxTokensOverride=*/-1);
+    const PBC_APIConfig* relCfg = PBC_GetConnection("relationship");
+    PBC_LLMResult res = PBC_CallLLMWithConfig(*relCfg, ev.relationshipSystemPrompt, userPrompt);
 
     if (!res.success || res.text.empty())
     {
@@ -301,9 +300,8 @@ void ProcessCardAdditionsMigration(PBC_EventItem& ev)
         std::string userPrompt = PBC_BuildCondensationPromptFromSnapshot(
             snap, ev.migrationCondensationUserPromptTmpl);
 
-        PBC_LLMResult res = g_PBC_UseAltModelForCondensation
-            ? PBC_CallLLMAlt(ev.migrationCondensationSystemPrompt, userPrompt, /*maxTokensOverride=*/-1, /*preserveNewlines=*/true)
-            : PBC_CallLLM(ev.migrationCondensationSystemPrompt, userPrompt, /*maxTokensOverride=*/-1, /*preserveNewlines=*/true);
+        const PBC_APIConfig* condCfg = PBC_GetConnection("condensation");
+        PBC_LLMResult res = PBC_CallLLMWithConfig(*condCfg, ev.migrationCondensationSystemPrompt, userPrompt, /*preserveNewlines=*/true);
 
         if (!res.success || res.text.empty())
         {
@@ -342,7 +340,8 @@ void ProcessCombatSummarization(PBC_EventItem& ev)
         return;
     }
 
-    PBC_LLMResult summary = PBC_CallLLM(ev.combatSystemPrompt, ev.combatUserPrompt);
+    const PBC_APIConfig* utilCfg = PBC_GetConnection("utility");
+    PBC_LLMResult summary = PBC_CallLLMWithConfig(*utilCfg, ev.combatSystemPrompt, ev.combatUserPrompt);
     if (!summary.success || summary.text.empty())
     {
         PBC_Log(PBC_LogLevel::PBC_WARNING, "ProcessEvent: CombatSummarization LLM failed");
@@ -365,7 +364,8 @@ void ProcessQuestSummarization(PBC_EventItem& ev)
         return;
     }
 
-    PBC_LLMResult summary = PBC_CallLLM(ev.questSystemPrompt, ev.questUserPrompt);
+    const PBC_APIConfig* utilCfg = PBC_GetConnection("utility");
+    PBC_LLMResult summary = PBC_CallLLMWithConfig(*utilCfg, ev.questSystemPrompt, ev.questUserPrompt);
     if (!summary.success || summary.text.empty())
     {
         PBC_Log(PBC_LogLevel::PBC_WARNING, "ProcessEvent: QuestSummarization LLM failed");

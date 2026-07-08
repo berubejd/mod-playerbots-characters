@@ -1,0 +1,29 @@
+{
+    // Ollama native /api/chat endpoint.
+    // The module appends /api/chat to baseUrl automatically.
+    "apiType": "ollama",
+
+    // Base URL of the Ollama server. No trailing slash.
+    "baseUrl": "http://localhost:11434",
+
+    // Ollama supports an optional Bearer token (OLLAMA_API_KEY).
+    // Leave empty for a local unauthenticated instance.
+    "apiKey": "",
+
+    // HTTP request timeout in seconds. Local models can be slow to load
+    // on first request — increase this if you see timeouts on cold starts.
+    "requestTimeoutSec": 60,
+
+    // Model identifier (must match a model pulled via `ollama pull`).
+    "model": "qwen3.6:35b",
+
+    // Extra parameters merged into every request body's root.
+    // Ollama-specific options typically nest under "options".
+    "requestParameters": {
+        "think": false,
+        // "options": {
+        //     "temperature": 0.8,
+        //     "num_ctx": 8192,
+        // }
+    }
+}

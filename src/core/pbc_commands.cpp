@@ -459,50 +459,59 @@ static bool HandleCharsRollModifier(ChatHandler* handler,
 }
 
 // ---------------------------------------------------------------------------
-// .chars api-test [query=hi]
+// .chars connection-test [connection_name]
+// Sends a test request to the specified connection (default if omitted).
 // ---------------------------------------------------------------------------
-static bool HandleCharsApiTest(ChatHandler* handler, Optional<std::string_view> queryArg)
+static bool HandleCharsConnectionTest(ChatHandler* handler,
+                                       Optional<std::string_view> nameArg)
 {
     if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
 
-    std::string query = (queryArg && !queryArg->empty()) ? std::string(*queryArg) : "hi";
+    std::string connName = (nameArg && !nameArg->empty()) ? std::string(*nameArg) : "default";
 
-    handler->PSendSysMessage("[PBC] API test: querying with '{}'...", query);
+    // PBC_GetConnection falls back to the default connection when the requested
+    // slot is not specifically configured. Detect that so we can inform the user.
+    bool fellBack = false;
+    const PBC_APIConfig* cfg = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_ConnectionsMutex);
+        auto it = g_PBC_Connections.find(connName);
+        if (it != g_PBC_Connections.end())
+        {
+            cfg = &it->second;
+        }
+        else
+        {
+            it = g_PBC_Connections.find("default");
+            if (it != g_PBC_Connections.end())
+            {
+                cfg = &it->second;
+                fellBack = true;
+            }
+        }
+    }
 
-    PBC_LLMResult result = PBC_CallLLM("Answer in one single short sentence.", query);
+    if (!cfg)
+    {
+        handler->PSendSysMessage("[PBC] No connections configured.");
+        return false;
+    }
+
+    if (fellBack)
+        handler->PSendSysMessage("[PBC] Connection '{}' is not configured, using default.", connName);
+
+    handler->PSendSysMessage("[PBC] Connection '{}' test (model='{}'): querying with 'hi'...",
+        fellBack ? "default" : connName, cfg->model);
+
+    PBC_LLMResult result = PBC_CallLLMWithConfig(*cfg, "Answer in one single short sentence.", "hi");
 
     if (result.success)
     {
-        handler->PSendSysMessage("[PBC] API test OK ({} tokens): {}", result.tokensUsed, result.text);
+        handler->PSendSysMessage("[PBC] Connection '{}' test OK ({} tokens): {}", connName, result.tokensUsed, result.text);
     }
     else
     {
-        handler->PSendSysMessage("[PBC] API test FAILED — no valid response received. Check server logs for details.");
-    }
-
-    return result.success;
-}
-
-// ---------------------------------------------------------------------------
-// .chars alt-api-test [query=hi]
-// ---------------------------------------------------------------------------
-static bool HandleCharsAltApiTest(ChatHandler* handler, Optional<std::string_view> queryArg)
-{
-    if (!g_PBC_Enable) { handler->PSendSysMessage("[PBC] Module is disabled."); return false; }
-
-    std::string query = (queryArg && !queryArg->empty()) ? std::string(*queryArg) : "hi";
-
-    handler->PSendSysMessage("[PBC] Alt API test: querying with '{}'...", query);
-
-    PBC_LLMResult result = PBC_CallLLMAlt("Answer in one single short sentence.", query);
-
-    if (result.success)
-    {
-        handler->PSendSysMessage("[PBC] Alt API test OK ({} tokens): {}", result.tokensUsed, result.text);
-    }
-    else
-    {
-        handler->PSendSysMessage("[PBC] Alt API test FAILED — no valid response received. Check server logs for details.");
+        handler->PSendSysMessage("[PBC] Connection '{}' test FAILED — no valid response received. Check server logs for details.", connName);
     }
 
     return result.success;
@@ -845,8 +854,7 @@ ChatCommandTable PBC_CommandScript::GetCommands() const
         { "relationship-update",      HandleCharsRelationshipUpdate,      SEC_PLAYER,    Console::Yes },
         { "roll-modifier",            HandleCharsRollModifier,            SEC_PLAYER,    Console::Yes },
         { "context",                  HandleCharsContext,                 SEC_PLAYER,    Console::Yes },
-        { "api-test",                 HandleCharsApiTest,                 SEC_GAMEMASTER, Console::Yes },
-        { "alt-api-test",             HandleCharsAltApiTest,              SEC_GAMEMASTER, Console::Yes },
+        { "connection-test",          HandleCharsConnectionTest,          SEC_GAMEMASTER, Console::Yes },
         { "web",                      HandleCharsWeb,                     SEC_PLAYER,    Console::No  },
         { "narrate",                  HandleCharsNarrate,                 SEC_PLAYER,    Console::No  },
         { "narrate-party",            HandleCharsNarrateParty,            SEC_PLAYER,    Console::No  },

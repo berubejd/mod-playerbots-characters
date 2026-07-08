@@ -15,8 +15,7 @@ List of commands that can be used by the player or in the server console.
 | `.chars roll-modifier <name> [value]` | Sets or displays the per-character roll chance modifier (−100 to 100). Positive = more talkative, negative = less talkative. Does not affect whisper or mention chances. Omit value to display current. |
 | `.chars context <name>` | Prints the character's current context variable with all template substitutions applied (useful for debugging). |
 | `.chars web` | Generates a one-time password for the web interface and displays the connection URL. In-game only. |
-| `.chars api-test [query=hi]` | Sends a test request to the main LLM API and prints the response. |
-| `.chars alt-api-test [query=hi]` | Same as `api-test` but uses the alternative model configuration. |
+| `.chars connection-test [connection_name]` | Sends a test request to the specified connection (`default`, `utility`, `condensation`, or `relationship`) and prints the response. Uses `default` if omitted; task-specific slots that aren't individually configured fall back to `default` automatically.|
 | `.chars narrate <name> <message>` | Adds a narrator line to a character's chat history. Does not trigger a response. In-game only. |
 | `.chars narrate-party <message>` | Adds a narrator line to every group character's chat history. Does not trigger responses. In-game only. |
 | `.chars trigger <name>` | Forces a character to respond (party message if grouped, say otherwise). The trigger event is not written into history. Can also trigger the player's own character. |

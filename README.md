@@ -79,67 +79,13 @@ Copy `env/dist/etc/modules/playerbots_characters.conf.dist` as `env/dist/etc/mod
 
 ### Model Connection Setup
 
-The module supports two API formats, controlled by `PBC.APIType`:
+Each LLM connection is defined in a standalone JSONC file (JSON with comments). To get started, pick one of the ready-made `.jsonc.example` templates in the [`connections/`](connections/) directory, copy it to a new file **without** the `.example` suffix, and point the relevant config parameter at it. For the full setup guide — supported API types, config parameters, tested providers and per-task routing — see [Model Connections](docs/CONNECTIONS.md).
 
-- **`openai`** (default) — OpenAI-compatible `/chat/completions` endpoint. The module appends `/chat/completions` to `PBC.BaseUrl` and sends the API key via `Authorization: Bearer` header.
-- **`anthropic`** — Anthropic Messages API `/messages` endpoint. The module appends `/messages` to `PBC.BaseUrl` and sends the API key via `x-api-key` header with the `anthropic-version: 2023-06-01` header.
-
-You need to configure at least `PBC.BaseUrl`, `PBC.Model` and `PBC.ApiKey` before the module can generate responses. The relevant config options are in the **API CONNECTION** and **MODEL PARAMETERS** sections of the config file. After configuring, you can use `.chars api-test` to quickly verify that the connection is working (or `.chars alt-api-test` for the alternative model).
+After configuring, use `.chars connection-test` (optionally with a connection name like `utility`) to verify that a connection is working.
 
 > [!IMPORTANT]
 > Due to the complexity and length of the prompts, locally-run models on average home hardware will generally struggle and produce low-quality output as context grows. A cloud-based model with a large context window is recommended. Make sure to also adjust `PBC.MaxHistoryCtx` accordingly — a good starting point is around 25% of the model's total context window. Aim for at least 32k in general, anything less could lead to poor efficiency of character relationship tracking and memory extraction.
 
-Choosing the right model can be tricky. Two tested configurations are listed below.
-
-#### DeepSeek
-
-| Setting | Value |
-|---|---|
-| `PBC.APIType` | `openai` |
-| `PBC.BaseUrl` | `https://api.deepseek.com/v1` |
-| `PBC.Model` | `deepseek-v4-pro` |
-| `PBC.Temperature` | `1.0` |
-| `PBC.MaxHistoryCtx` | `32768` |
-| `PBC.MaxMemoriesCtx` | `8192` |
-| `PBC.ModelExtraParameters` | `'thinking':{'type':'disabled'}` |
-| `PBC.ApiKey` | your API key from [DeepSeek platform](https://platform.deepseek.com/) |
-
-DeepSeek offers a reasonable cost/capabilities compromise and can be considered the cheapest viable option. Expect to spend under $1 for several hours of play.
-
-#### GLM (Zhipu AI)
-
-| Setting | Value |
-|---|---|
-| `PBC.APIType` | `openai` |
-| `PBC.BaseUrl` | `https://api.z.ai/api/paas/v4` |
-| `PBC.Model` | `glm-5.1` |
-| `PBC.Temperature` | `1.0` |
-| `PBC.MaxHistoryCtx` | `32768` |
-| `PBC.MaxMemoriesCtx` | `8192` |
-| `PBC.ModelExtraParameters` | `'thinking':{'type':'disabled'}` |
-| `PBC.ApiKey` | your API key from [Z.ai](https://z.ai/manage-apikey/apikey-list) |
-
-GLM 5.1 handles the required tasks impressively well, though the cost adds up fairly quickly. Expect to spend around $2 per long game session with a full party.
-
-#### Other Models
-
-Any OpenAI-compatible API should work with `PBC.APIType = openai` — just set `PBC.BaseUrl` to the endpoint (the module appends `/chat/completions` automatically), `PBC.Model` to the model identifier, and `PBC.ApiKey` to your bearer token. If the endpoint doesn't require authentication (e.g. a local Ollama or LM Studio instance), leave `PBC.ApiKey` empty.
-
-Use `PBC.ModelExtraParameters` to inject provider-specific JSON into the request body — this works the same way for both `openai` and `anthropic` API types. Make sure to use parameter names that are valid for your chosen API type (e.g. `top_p` and `top_k` for Anthropic, `frequency_penalty` and `presence_penalty` for OpenAI-compatible providers). Single quotes are used instead of double quotes and are automatically replaced at runtime:
-
-```
-PBC.ModelExtraParameters = 'frequency_penalty':0.5,'presence_penalty':0.2
-```
-
-becomes `"frequency_penalty":0.5,"presence_penalty":0.2` in the request.
-
-When switching providers, pay attention to `PBC.Temperature` — acceptable ranges vary between models. Check the provider's documentation for the recommended value.
-
-### Alternative Model
-
-Condensation and relationship updates are critical — their output becomes permanent parts of the character's context. The `ALTERNATIVE API` config section lets you route these tasks to a more capable model while keeping the main chat on a cheaper/faster one. Parameters follow the same format as the main model, prefixed with `AltModel`.
-
-You can also enable thinking mode (if the model supports it of course) to improve the results further.
 
 ### HTTP Server & Web App
 
@@ -190,6 +136,7 @@ Two config options control debug output:
 
 ## Additional Documentation
 
+- [Model Connections](docs/CONNECTIONS.md) — LLM connection setup, supported API types and tested providers
 - [Events](docs/EVENTS.md) — list of in-game events characters can react to
 - [Commands](docs/COMMANDS.md) — available in-game and console commands
 - [Prompts](docs/PROMPTS.md) — prompt templates, customization and template variables

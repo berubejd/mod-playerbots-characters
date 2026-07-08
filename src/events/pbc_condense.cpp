@@ -70,9 +70,8 @@ bool PBC_CondenseInline(PBC_CharacterSnapshot& snap,
     PBC_Log(PBC_LogLevel::PBC_DEBUG, "CondenseInline: character={} history_lines={}", snap.charName, snap.history.size());
 
     std::string userPrompt = PBC_BuildCondensationPromptFromSnapshot(snap, userPromptTmpl);
-    PBC_LLMResult res = g_PBC_UseAltModelForCondensation
-        ? PBC_CallLLMAlt(sysPrompt, userPrompt, /*maxTokensOverride=*/-1, /*preserveNewlines=*/true)
-        : PBC_CallLLM(sysPrompt, userPrompt, /*maxTokensOverride=*/-1, /*preserveNewlines=*/true);
+    const PBC_APIConfig* cfg = PBC_GetConnection("condensation");
+    PBC_LLMResult res = PBC_CallLLMWithConfig(*cfg, sysPrompt, userPrompt, /*preserveNewlines=*/true);
 
     if (!res.success || res.text.empty())
     {

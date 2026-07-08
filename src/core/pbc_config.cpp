@@ -14,12 +14,15 @@
 #include "Group.h"
 #include "SharedDefines.h"
 
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
 #include <cmath>
 #include <unordered_set>
+
+using json = nlohmann::json;
 
 // Global variable definitions
 
@@ -29,25 +32,9 @@ bool     g_PBC_DebugShowFullRequest = false;
 bool     g_PBC_DisplayNarratorEvents = true;
 bool     g_PBC_CardAdditionsMigrationNeeded = false;
 
-std::string g_PBC_APIType          = "openai";
-std::string g_PBC_BaseUrl          = "";
-std::string g_PBC_ApiKey           = "";
-std::string g_PBC_Model            = "";
-int         g_PBC_MaxResponseTokens = 120;
-double      g_PBC_Temperature      = 1.0;
-std::string g_PBC_ModelExtraParameters;
-int         g_PBC_RequestTimeoutSec = 30;
-
-bool        g_PBC_UseAltModelForCondensation      = false;
-bool        g_PBC_UseAltModelForRelationshipUpdate = false;
-std::string g_PBC_AltModelAPIType                  = "openai";
-std::string g_PBC_AltModelBaseUrl;
-std::string g_PBC_AltModelApiKey;
-std::string g_PBC_AltModel;
-int         g_PBC_AltModelMaxResponseTokens        = 0;
-double      g_PBC_AltModelTemperature              = 1.0;
-std::string g_PBC_AltModelModelExtraParameters;
-int         g_PBC_AltModelRequestTimeoutSec         = 30;
+// Connection registry
+std::unordered_map<std::string, PBC_APIConfig> g_PBC_Connections;
+std::mutex g_PBC_ConnectionsMutex;
 
 uint32_t    g_PBC_MaxHistoryCtx              = 0;
 uint32_t    g_PBC_MaxMemoriesCtx             = 8192;
@@ -151,33 +138,317 @@ static std::vector<std::string> SplitByComma(const std::string& s)
     return out;
 }
 
+// ---------------------------------------------------------------------------
+// Connection file loading
+//
+// Each connection is a JSONC file (JSON with comments).
+//
+// Files are cached by resolved path so a file referenced by multiple slots
+// (e.g. DefaultConnection and UtilityConnection pointing to the same file)
+// is read and parsed only once per config load.
+// ---------------------------------------------------------------------------
+
+// Parses a connection JSONC file into a PBC_APIConfig. Returns false on error.
+static bool PBC_LoadConnectionFile(const std::string& path, PBC_APIConfig& out)
+{
+    std::ifstream f(path);
+    if (!f)
+    {
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Connection file not found: {}", path);
+        return false;
+    }
+
+    std::stringstream buf;
+    buf << f.rdbuf();
+    std::string content = buf.str();
+
+    if (content.empty())
+    {
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Connection file is empty: {}", path);
+        return false;
+    }
+
+    json root;
+    try
+    {
+        // ignore_comments + ignore_trailing_commas → full JSONC support
+        // (comments stripped, trailing commas allowed).
+        root = json::parse(content, nullptr,
+                           /*allow_exceptions=*/true,
+                           /*ignore_comments=*/true,
+                           /*ignore_trailing_commas=*/true);
+    }
+    catch (const std::exception& ex)
+    {
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Failed to parse connection file '{}': {}", path, ex.what());
+        return false;
+    }
+
+    if (!root.is_object())
+    {
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Connection file '{}' must contain a JSON object.", path);
+        return false;
+    }
+
+    // Required fields
+    if (!root.contains("apiType") || !root["apiType"].is_string())
+    {
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Connection file '{}' missing required string field 'apiType'.", path);
+        return false;
+    }
+    if (!root.contains("baseUrl") || !root["baseUrl"].is_string())
+    {
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Connection file '{}' missing required string field 'baseUrl'.", path);
+        return false;
+    }
+    if (!root.contains("model") || !root["model"].is_string())
+    {
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Connection file '{}' missing required string field 'model'.", path);
+        return false;
+    }
+
+    out.apiType = root["apiType"].get<std::string>();
+    out.baseUrl = root["baseUrl"].get<std::string>();
+    out.model   = root["model"].get<std::string>();
+
+    // Optional fields
+    out.apiKey           = root.value("apiKey", "");
+    out.requestTimeoutSec = root.value("requestTimeoutSec", 30);
+
+    // requestParameters: default to an empty object
+    if (root.contains("requestParameters") && root["requestParameters"].is_object())
+        out.requestParameters = root["requestParameters"];
+    else
+        out.requestParameters = json::object();
+
+    PBC_Log(PBC_LogLevel::PBC_DEBUG, "Loaded connection: apiType='{}' model='{}' baseUrl='{}' timeout={}s",
+             out.apiType, out.model, out.baseUrl, out.requestTimeoutSec);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Legacy config fallback
+//
+// When PBC.DefaultConnection is empty but the legacy flat API parameters are
+// present, synthesize virtual connection objects from them so existing users
+// can upgrade without immediately migrating their config.
+//
+// The legacy parameters are read with showLogs=false to suppress the
+// missing-option warning that acore would otherwise emit for keys that are no
+// longer in the dist config.
+//
+// This logic is isolated so it can be removed entirely in a future release.
+// ---------------------------------------------------------------------------
+
+// Builds a PBC_APIConfig from the legacy flat parameters. Returns false if the
+// legacy baseUrl and model are both empty (i.e. no legacy config present).
+static bool PBC_BuildLegacyConnection(
+    const std::string& apiType,
+    const std::string& baseUrl,
+    const std::string& apiKey,
+    const std::string& model,
+    int maxResponseTokens,
+    double temperature,
+    const std::string& modelExtraParameters,
+    int requestTimeoutSec,
+    PBC_APIConfig& out)
+{
+    if (baseUrl.empty() && model.empty())
+        return false;
+
+    out.apiType           = apiType.empty() ? "openai" : apiType;
+    out.baseUrl           = baseUrl;
+    out.apiKey            = apiKey;
+    out.model             = model;
+    out.requestTimeoutSec = requestTimeoutSec > 0 ? requestTimeoutSec : 30;
+    out.requestParameters = json::object();
+
+    // MaxResponseLength → max_tokens (only if > 0)
+    if (maxResponseTokens > 0)
+        out.requestParameters["max_tokens"] = maxResponseTokens;
+
+    // Temperature (always set — matches the old behavior where it was sent unconditionally)
+    out.requestParameters["temperature"] = temperature;
+
+    // ModelExtraParameters: a raw JSON fragment using single quotes instead of
+    // double quotes. Best-effort parse: replace single quotes with double
+    // quotes, wrap in braces, and attempt to parse.
+    if (!modelExtraParameters.empty())
+    {
+        std::string fixed = modelExtraParameters;
+        std::replace(fixed.begin(), fixed.end(), '\'', '"');
+        // Wrap in braces so it becomes a valid JSON object
+        fixed = "{" + fixed + "}";
+
+        try
+        {
+            json extra = json::parse(fixed);
+            if (extra.is_object())
+                out.requestParameters.update(extra, /*merge_objects=*/true);
+        }
+        catch (const std::exception& ex)
+        {
+            PBC_Log(PBC_LogLevel::PBC_WARNING,
+                     "Failed to parse legacy ModelExtraParameters (value='{}'), ignoring. "
+                     "Migrate to a connection file to set requestParameters manually. Error: {}",
+                     modelExtraParameters, ex.what());
+        }
+    }
+
+    return true;
+}
+
+static bool PBC_LoadLegacyConnections()
+{
+    // Read all legacy keys silently (showLogs=false) so acore does not warn
+    // about keys that are no longer in the dist config.
+    constexpr bool kSilent = false;
+
+    std::string apiType     = sConfigMgr->GetOption<std::string>("PBC.APIType", "openai", kSilent);
+    std::string baseUrl     = sConfigMgr->GetOption<std::string>("PBC.BaseUrl", "", kSilent);
+    std::string apiKey      = sConfigMgr->GetOption<std::string>("PBC.ApiKey", "", kSilent);
+    std::string model       = sConfigMgr->GetOption<std::string>("PBC.Model", "", kSilent);
+    int maxResponseTokens   = sConfigMgr->GetOption<int>("PBC.MaxResponseLength", 0, kSilent);
+    double temperature      = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.Temperature", 1.0f, kSilent)) * 100.0) / 100.0;
+    std::string extraParams = sConfigMgr->GetOption<std::string>("PBC.ModelExtraParameters", "", kSilent);
+    int timeoutSec          = sConfigMgr->GetOption<int>("PBC.RequestTimeoutSec", 30, kSilent);
+
+    PBC_APIConfig defaultCfg;
+    if (!PBC_BuildLegacyConnection(apiType, baseUrl, apiKey, model,
+                                   maxResponseTokens, temperature, extraParams, timeoutSec, defaultCfg))
+    {
+        // No legacy config present at all
+        return false;
+    }
+
+    PBC_Log(PBC_LogLevel::PBC_WARNING,
+             "Using legacy API connection parameters (PBC.BaseUrl, PBC.Model, etc.) instead of "
+             "connection files. These parameters are deprecated — migrate to JSONC connection files "
+             "(see PBC.DefaultConnection and the connections/ directory).");
+
+    g_PBC_Connections["default"] = std::move(defaultCfg);
+
+    // Alt model — synthesize condensation and/or relationship connections
+    bool useAltCondense     = sConfigMgr->GetOption<bool>("PBC.UseAltModelForCondensation", false, kSilent);
+    bool useAltRelationship = sConfigMgr->GetOption<bool>("PBC.UseAltModelForRelationshipUpdate", false, kSilent);
+
+    if (useAltCondense || useAltRelationship)
+    {
+        std::string altApiType     = sConfigMgr->GetOption<std::string>("PBC.AltModelAPIType", "openai", kSilent);
+        std::string altBaseUrl     = sConfigMgr->GetOption<std::string>("PBC.AltModelBaseUrl", "", kSilent);
+        std::string altApiKey      = sConfigMgr->GetOption<std::string>("PBC.AltModelApiKey", "", kSilent);
+        std::string altModel       = sConfigMgr->GetOption<std::string>("PBC.AltModel", "", kSilent);
+        int altMaxResponseTokens   = sConfigMgr->GetOption<int>("PBC.AltModelMaxResponseLength", 0, kSilent);
+        double altTemperature      = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.AltModelTemperature", 1.0f, kSilent)) * 100.0) / 100.0;
+        std::string altExtraParams = sConfigMgr->GetOption<std::string>("PBC.AltModelModelExtraParameters", "", kSilent);
+        int altTimeoutSec          = sConfigMgr->GetOption<int>("PBC.AltModelRequestTimeoutSec", 30, kSilent);
+
+        PBC_APIConfig altCfg;
+        if (PBC_BuildLegacyConnection(altApiType, altBaseUrl, altApiKey, altModel,
+                                      altMaxResponseTokens, altTemperature, altExtraParams, altTimeoutSec, altCfg))
+        {
+            if (useAltCondense)
+                g_PBC_Connections["condensation"] = altCfg;
+            if (useAltRelationship)
+                g_PBC_Connections["relationship"] = altCfg;
+        }
+    }
+
+    return true;
+}
+
+// Loads connections from the four PBC.*Connection config paths into the
+// registry. Returns true if the "default" connection was loaded successfully.
+static bool PBC_LoadConnections()
+{
+    std::lock_guard<std::mutex> lock(g_PBC_ConnectionsMutex);
+    g_PBC_Connections.clear();
+
+    std::string defaultPath     = sConfigMgr->GetOption<std::string>("PBC.DefaultConnection", "");
+    std::string utilityPath     = sConfigMgr->GetOption<std::string>("PBC.UtilityConnection", "");
+    std::string condensationPath = sConfigMgr->GetOption<std::string>("PBC.CondensationConnection", "");
+    std::string relationshipPath = sConfigMgr->GetOption<std::string>("PBC.RelationshipUpdateConnection", "");
+
+    // If DefaultConnection is empty, try the legacy fallback.
+    if (defaultPath.empty())
+    {
+        if (PBC_LoadLegacyConnections())
+            return true;
+
+        PBC_Log(PBC_LogLevel::PBC_ERROR,
+                 "PBC.DefaultConnection is not set and no legacy API parameters were found. "
+                 "This is a required setting when the module is enabled.");
+        return false;
+    }
+
+    // Cache: resolved path → loaded config, so a file referenced by multiple
+    // slots is read and parsed only once.
+    std::unordered_map<std::string, PBC_APIConfig> cache;
+
+    auto loadSlot = [&](const std::string& name, const std::string& path) -> bool
+    {
+        if (path.empty())
+            return false; // empty → falls back to default
+
+        auto cacheIt = cache.find(path);
+        if (cacheIt != cache.end())
+        {
+            g_PBC_Connections[name] = cacheIt->second;
+            return true;
+        }
+
+        PBC_APIConfig cfg;
+        if (!PBC_LoadConnectionFile(path, cfg))
+            return false;
+
+        cache[path] = cfg;
+        g_PBC_Connections[name] = cfg;
+        return true;
+    };
+
+    // Default is required.
+    if (!loadSlot("default", defaultPath))
+    {
+        PBC_Log(PBC_LogLevel::PBC_ERROR, "Failed to load default connection from '{}'.", defaultPath);
+        return false;
+    }
+
+    // Task-specific slots (optional — fall back to default if empty or fail).
+    if (!loadSlot("utility", utilityPath))
+        g_PBC_Connections["utility"] = g_PBC_Connections["default"];
+
+    if (!loadSlot("condensation", condensationPath))
+        g_PBC_Connections["condensation"] = g_PBC_Connections["default"];
+
+    if (!loadSlot("relationship", relationshipPath))
+        g_PBC_Connections["relationship"] = g_PBC_Connections["default"];
+
+    return true;
+}
+
+const PBC_APIConfig* PBC_GetConnection(const std::string& name)
+{
+    std::lock_guard<std::mutex> lock(g_PBC_ConnectionsMutex);
+
+    auto it = g_PBC_Connections.find(name);
+    if (it != g_PBC_Connections.end())
+        return &it->second;
+
+    // Fall back to default
+    it = g_PBC_Connections.find("default");
+    if (it != g_PBC_Connections.end())
+        return &it->second;
+
+    return nullptr;
+}
+
 void PBC_LoadConfig(bool /*isStartup*/)
 {
     g_PBC_Enable              = sConfigMgr->GetOption<bool>("PBC.Enable", true);
     g_PBC_DebugEnabled        = sConfigMgr->GetOption<bool>("PBC.DebugEnabled", false);
     g_PBC_DebugShowFullRequest = sConfigMgr->GetOption<bool>("PBC.DebugShowFullRequest", false);
     g_PBC_DisplayNarratorEvents = sConfigMgr->GetOption<bool>("PBC.DisplayNarratorEvents", true);
-
-    g_PBC_APIType              = sConfigMgr->GetOption<std::string>("PBC.APIType", "openai");
-    g_PBC_BaseUrl              = sConfigMgr->GetOption<std::string>("PBC.BaseUrl", "");
-    g_PBC_ApiKey               = sConfigMgr->GetOption<std::string>("PBC.ApiKey", "");
-    g_PBC_Model               = sConfigMgr->GetOption<std::string>("PBC.Model", "");
-    g_PBC_MaxResponseTokens   = sConfigMgr->GetOption<int>("PBC.MaxResponseLength", 120);
-    g_PBC_Temperature         = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.Temperature", 1.0f)) * 100.0) / 100.0;
-    g_PBC_ModelExtraParameters = sConfigMgr->GetOption<std::string>("PBC.ModelExtraParameters", "");
-    g_PBC_RequestTimeoutSec   = sConfigMgr->GetOption<int>("PBC.RequestTimeoutSec", 30);
-
-    // Alt model configuration
-    g_PBC_UseAltModelForCondensation      = sConfigMgr->GetOption<bool>("PBC.UseAltModelForCondensation", false);
-    g_PBC_UseAltModelForRelationshipUpdate = sConfigMgr->GetOption<bool>("PBC.UseAltModelForRelationshipUpdate", false);
-    g_PBC_AltModelAPIType                 = sConfigMgr->GetOption<std::string>("PBC.AltModelAPIType", "openai");
-    g_PBC_AltModelBaseUrl                 = sConfigMgr->GetOption<std::string>("PBC.AltModelBaseUrl", "");
-    g_PBC_AltModelApiKey                  = sConfigMgr->GetOption<std::string>("PBC.AltModelApiKey", "");
-    g_PBC_AltModel                        = sConfigMgr->GetOption<std::string>("PBC.AltModel", "");
-    g_PBC_AltModelMaxResponseTokens       = sConfigMgr->GetOption<int>("PBC.AltModelMaxResponseLength", 0);
-    g_PBC_AltModelTemperature             = std::round(static_cast<double>(sConfigMgr->GetOption<float>("PBC.AltModelTemperature", 1.0f)) * 100.0) / 100.0;
-    g_PBC_AltModelModelExtraParameters    = sConfigMgr->GetOption<std::string>("PBC.AltModelModelExtraParameters", "");
-    g_PBC_AltModelRequestTimeoutSec       = sConfigMgr->GetOption<int>("PBC.AltModelRequestTimeoutSec", 30);
 
     g_PBC_MaxHistoryCtx              = sConfigMgr->GetOption<uint32_t>("PBC.MaxHistoryCtx", 0);
     g_PBC_MaxMemoriesCtx             = sConfigMgr->GetOption<uint32_t>("PBC.MaxMemoriesCtx", 8192);
@@ -217,21 +488,14 @@ void PBC_LoadConfig(bool /*isStartup*/)
 
     if (g_PBC_Enable)
     {
-        struct RequiredCheck { const char* key; std::string const& value; };
-        const RequiredCheck requiredStrings[] = {
-            { "PBC.BaseUrl",                        g_PBC_BaseUrl                        },
-            { "PBC.Model",                          g_PBC_Model                          },
-        };
-
         bool configValid = true;
 
-        for (auto const& check : requiredStrings)
+        // Load connections (from JSONC files or legacy fallback)
+        if (!PBC_LoadConnections())
         {
-            if (check.value.empty())
-            {
-                PBC_Log(PBC_LogLevel::PBC_ERROR, "{} is not set. This is a required setting when the module is enabled.", check.key);
-                configValid = false;
-            }
+            PBC_Log(PBC_LogLevel::PBC_ERROR, "Failed to load LLM API connections. Module DISABLED — fix your playerbots_characters.conf and reload with .chars reload.");
+            g_PBC_Enable = false;
+            return;
         }
 
         if (g_PBC_MaxHistoryCtx == 0)
@@ -262,12 +526,33 @@ void PBC_LoadConfig(bool /*isStartup*/)
         return;
     }
 
+    // Log connection summary
+    {
+        std::lock_guard<std::mutex> lock(g_PBC_ConnectionsMutex);
+        auto logConn = [](const char* slotName)
+        {
+            auto it = g_PBC_Connections.find(slotName);
+            if (it == g_PBC_Connections.end())
+            {
+                PBC_Log(PBC_LogLevel::PBC_DEFAULT, "Connection '{}': (not configured)", slotName);
+                return;
+            }
+            const auto& c = it->second;
+            PBC_Log(PBC_LogLevel::PBC_DEFAULT,
+                     "Connection '{}': apiType='{}' model='{}' baseUrl='{}' timeout={}s",
+                     slotName, c.apiType, c.model, c.baseUrl, c.requestTimeoutSec);
+        };
+        logConn("default");
+        logConn("utility");
+        logConn("condensation");
+        logConn("relationship");
+    }
+
     PBC_Log(PBC_LogLevel::PBC_DEFAULT,
-        "Config: Enable={} APIType='{}' Model='{}' Url='{}' MaxHistoryCtx={} MaxMemoriesCtx={} Timeout={}s "
+        "Config: Enable={} MaxHistoryCtx={} MaxMemoriesCtx={} "
         "Chances: Whisper={}% Mention={}% Message={}% RollPenalty={}% "
         "Item={}% Duel={}% LevelUp={}% HardCombat={}% QuestCompleted={}% QuestTaken={}%",
-        g_PBC_Enable, g_PBC_APIType, g_PBC_Model, g_PBC_BaseUrl, g_PBC_MaxHistoryCtx, g_PBC_MaxMemoriesCtx,
-        g_PBC_RequestTimeoutSec,
+        g_PBC_Enable, g_PBC_MaxHistoryCtx, g_PBC_MaxMemoriesCtx,
         g_PBC_ReplyChanceWhisper, g_PBC_ReplyChanceMention,
         g_PBC_ReplyChanceMessage, g_PBC_RollPenaltyOnAnswer,
         g_PBC_ReplyChanceItem,
@@ -278,11 +563,6 @@ void PBC_LoadConfig(bool /*isStartup*/)
         "HTTP Server: Port={} Bind='{}' Timeout={}s BaseUrl='{}' PrivateKey={} FrontendPath='{}'",
         g_PBC_HttpServerPort, g_PBC_HttpServerBind, g_PBC_HttpServerTimeout, g_PBC_HttpServerBaseUrl,
         g_PBC_HttpServerPrivateKey.empty() ? "(not set)" : "(set)", g_PBC_HttpServerFrontendPath);
-
-    PBC_Log(PBC_LogLevel::PBC_DEFAULT,
-        "Alt Model: Condensation={} RelationshipUpdate={} APIType='{}' Model='{}' Url='{}' Timeout={}s",
-        g_PBC_UseAltModelForCondensation, g_PBC_UseAltModelForRelationshipUpdate,
-        g_PBC_AltModelAPIType, g_PBC_AltModel, g_PBC_AltModelBaseUrl, g_PBC_AltModelRequestTimeoutSec);
 }
 
 // Try to read a file into target. Returns true if the file exists and is non-empty.

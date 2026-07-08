@@ -43,76 +43,43 @@ PBC.DebugShowFullRequest = 0
 PBC.DisplayNarratorEvents = 1
 
 # --------------------------------------------
-# API CONNECTION
+# LLM API CONNECTIONS
 # --------------------------------------------
+#
+# Each connection is defined in a standalone JSONC file (JSON with comments).
+# Copy one of the *.jsonc.example templates from the connections/ directory
+# (without the .example suffix), fill it in, and point the options below at it.
+# See modules/mod-playerbots-characters/docs/CONNECTIONS.md for the full guide.
+# Paths are relative to the server working directory (env/dist/bin/).
 
-# PBC.APIType
-#     Description: The type of LLM API to use.
-#                  "openai"     — OpenAI-compatible /chat/completions endpoint (default).
-#                                 The module appends /chat/completions to PBC.BaseUrl.
-#                  "anthropic"  — Anthropic Messages API /messages endpoint.
-#                                 The module appends /messages to PBC.BaseUrl.
-#                                 Uses x-api-key header and anthropic-version header.
-#     Default:     openai
-PBC.APIType = openai
+# PBC.DefaultConnection
+#     Description: Path to the connection file used for character responses and
+#                  as the fallback for any task that does not have a specific
+#                  connection defined below.
+#                  REQUIRED. The module will be disabled if missing or invalid.
+#     Default:     empty
+PBC.DefaultConnection = ../../../modules/mod-playerbots-characters/connections/my-connection.jsonc
 
-# PBC.BaseUrl
-#     Description: The base URL of the LLM API.
-#                  When PBC.APIType = openai:     the module appends /chat/completions to this URL.
-#                  When PBC.APIType = anthropic:  the module appends /messages to this URL.
-#                  REQUIRED. The module will be disabled if missing.
+# PBC.UtilityConnection
+#     Description: Path to the connection file used for utility requests
+#                  (combat summaries, quest summaries). Typically a fast, cheap model.
+#                  Falls back to PBC.DefaultConnection if empty.
 #     Default:     (empty)
-PBC.BaseUrl =
+PBC.UtilityConnection =
 
-# PBC.ApiKey
-#     Description: Bearer token sent in the Authorization header.
-#                  Leave blank if your endpoint does not require authentication
-#                  (e.g. a local Ollama-compatible or LM Studio instance).
+# PBC.CondensationConnection
+#     Description: Path to the connection file used for condensation
+#                  (extracting memories from history). Typically a capable model.
+#                  Falls back to PBC.DefaultConnection if empty.
 #     Default:     (empty)
-PBC.ApiKey =
+PBC.CondensationConnection =
 
-# PBC.RequestTimeoutSec
-#     Description: HTTP request timeout in seconds.
-#                  Keep low — events are processed sequentially, so if the API is slow or
-#                  unreachable every request will wait up to this timeout, slowing down the
-#                  queue and causing events to pile up.
-#     Default:     30
-PBC.RequestTimeoutSec = 30
-
-
-# --------------------------------------------
-# MODEL PARAMETERS
-# --------------------------------------------
-
-# PBC.Model
-#     Description: The model identifier to be used in the API request.
-#                  REQUIRED. The module will be disabled if missing.
+# PBC.RelationshipUpdateConnection
+#     Description: Path to the connection file used for relationship updates.
+#                  Typically a capable model.
+#                  Falls back to PBC.DefaultConnection if empty.
 #     Default:     (empty)
-PBC.Model =
-
-# PBC.MaxResponseLength
-#     Description: Maximum number of tokens for the model to generate.
-#                  0 = unlimited.
-#     Default:     120
-PBC.MaxResponseLength = 120
-
-# PBC.Temperature
-#     Description: Controls the "creativity" or randomness of the model's output.
-#                  Check model description to determine correct value.
-#     Example:     PBC.Temperature = 0.6
-#     Default:     1.0
-PBC.Temperature = 1.0
-
-# PBC.ModelExtraParameters
-#     Description: Raw JSON fragment appended to every LLM request body.
-#                  Spliced into the JSON object before the closing '}'.
-#                  Use single quotes instead of double quotes — they are
-#                  automatically replaced with double quotes at runtime.
-#                  Leave empty for no extra parameters.
-#     Example (DeepSeek): 'frequency_penalty':0.5,'presence_penalty':0.2
-#     Example (GLM):       'thinking':{'type':'disabled'}
-#     Default:     (empty)
-PBC.ModelExtraParameters =
+PBC.RelationshipUpdateConnection =
 
 # PBC.MaxHistoryCtx
 #     Description: Maximum context length (in tokens) for chat history before condensation happens.
@@ -130,29 +97,6 @@ PBC.MaxHistoryCtx = 32768
 #                  the budget is increased.
 #     Default:     8192
 PBC.MaxMemoriesCtx = 8192
-
-
-# --------------------------------------------
-# ALTERNATIVE API
-# --------------------------------------------
-
-# Allows you to define alternative API connection and model 
-# specifically for condensation and/or relationship updates.
-# Could be useful if you want to use a more capable model for important tasks.
-# Follows the same format as the main API connection and model parameters,
-# prefixed with `AltModel`.
-# Disabled by default.
-
-PBC.UseAltModelForCondensation = 0
-PBC.UseAltModelForRelationshipUpdate = 0
-PBC.AltModelAPIType = openai
-PBC.AltModelBaseUrl =
-PBC.AltModelApiKey =
-PBC.AltModelRequestTimeoutSec = 30
-PBC.AltModel =
-PBC.AltModelMaxResponseLength = 0
-PBC.AltModelTemperature = 1.0
-PBC.AltModelModelExtraParameters =
 
 
 # --------------------------------------------

@@ -15,6 +15,7 @@
 #include <memory>
 #include "ObjectGuid.h"
 #include "ScriptMgr.h"
+#include "pbc_llm.h"
 
 // Module enable / debug
 extern bool     g_PBC_Enable;
@@ -23,27 +24,20 @@ extern bool     g_PBC_DebugShowFullRequest;
 extern bool     g_PBC_DisplayNarratorEvents;
 extern bool     g_PBC_CardAdditionsMigrationNeeded;
 
-// LLM API connection
-extern std::string g_PBC_APIType;
-extern std::string g_PBC_BaseUrl;
-extern std::string g_PBC_ApiKey;
-extern std::string g_PBC_Model;
-extern int         g_PBC_MaxResponseTokens;
-extern double      g_PBC_Temperature;
-extern std::string g_PBC_ModelExtraParameters;
-extern int         g_PBC_RequestTimeoutSec;
+// ---------------------------------------------------------------------------
+// LLM API connection registry
+//
+// Connections are loaded from JSONC files at config time and stored in a map
+// keyed by task name: "default", "utility", "condensation", "relationship".
+// Task-specific slots fall back to "default" when empty.
+// ---------------------------------------------------------------------------
+extern std::unordered_map<std::string, PBC_APIConfig> g_PBC_Connections;
+extern std::mutex g_PBC_ConnectionsMutex;
 
-// Alternative API (for condensation / relationship updates)
-extern bool        g_PBC_UseAltModelForCondensation;
-extern bool        g_PBC_UseAltModelForRelationshipUpdate;
-extern std::string g_PBC_AltModelAPIType;
-extern std::string g_PBC_AltModelBaseUrl;
-extern std::string g_PBC_AltModelApiKey;
-extern std::string g_PBC_AltModel;
-extern int         g_PBC_AltModelMaxResponseTokens;
-extern double      g_PBC_AltModelTemperature;
-extern std::string g_PBC_AltModelModelExtraParameters;
-extern int         g_PBC_AltModelRequestTimeoutSec;
+// Returns a pointer to the connection for the given task name, or nullptr if
+// the task has no connection and no "default" fallback exists. Thread-safe.
+// The returned pointer is valid until the next config reload.
+const PBC_APIConfig* PBC_GetConnection(const std::string& name);
 
 // Context / condensation
 extern uint32_t    g_PBC_MaxHistoryCtx;
