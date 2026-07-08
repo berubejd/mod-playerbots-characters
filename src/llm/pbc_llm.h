@@ -1,7 +1,7 @@
 #ifndef MOD_PBC_LLM_H
 #define MOD_PBC_LLM_H
 
-#include <nlohmann/json.hpp>
+#include "pbc_json.h"
 #include <string>
 
 // Result of a single LLM completion call
@@ -24,7 +24,7 @@ struct PBC_APIConfig
     std::string     apiKey;             // Bearer token / x-api-key (empty = no auth header)
     std::string     model;              // model identifier
     int             requestTimeoutSec;  // HTTP timeout
-    nlohmann::json  requestParameters;  // extra params merged into every request body
+    pbc_json        requestParameters;  // extra params merged into every request body
 };
 
 // ---------------------------------------------------------------------------

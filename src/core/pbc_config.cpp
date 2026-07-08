@@ -14,7 +14,6 @@
 #include "Group.h"
 #include "SharedDefines.h"
 
-#include <nlohmann/json.hpp>
 #include <sstream>
 #include <fstream>
 #include <filesystem>
@@ -22,7 +21,7 @@
 #include <cmath>
 #include <unordered_set>
 
-using json = nlohmann::json;
+using json = pbc_json;
 
 // Global variable definitions
 

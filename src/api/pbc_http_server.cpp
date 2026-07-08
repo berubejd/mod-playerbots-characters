@@ -33,9 +33,9 @@
 #include "Player.h"
 #include "WorldSession.h"
 
-#include <nlohmann/json.hpp>
+#include "pbc_json.h"
 
-using json = nlohmann::json;
+using json = pbc_json;
 
 // ===========================================================================
 // Server globals

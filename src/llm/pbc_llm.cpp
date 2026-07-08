@@ -4,13 +4,12 @@
 #include "pbc_utils.h"
 #include "pbc_log.h"
 
-#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <thread>
 
-using json = nlohmann::json;
+using json = pbc_json;
 
 // ---------------------------------------------------------------------------
 // Token estimator (rough: 1 token ≈ 4 characters)
