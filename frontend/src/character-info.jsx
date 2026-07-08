@@ -156,34 +156,48 @@ export default function CharacterInfo({ token, selectedGuid, nameColorMap, charN
       });
   }, [token, onDesync]);
 
-  // When selectedGuid changes, clear all data and default to context section
+  // When selectedGuid changes, clear all data, pick the default section for the
+  // character's online state and load it in one go. Doing the section selection
+  // and the fetch in the same effect guarantees the correct section is loaded —
+  // previously the load effect ran with a stale openSection value, so the card
+  // of an offline character was never fetched on first selection.
   useEffect(() => {
     setCardData(null);
     setRelationshipsData(null);
     setContextData(null);
     setErrors({});
     setLoading({});
-    setOpenSection(isOnline ? 'context' : 'card');
+
+    const section = isOnline ? 'context' : 'card';
+    setOpenSection(section);
+    if (selectedGuid) {
+      loadSection(section);
+    }
   }, [selectedGuid, token]);
 
-  // When online status changes, switch off the context section if it becomes unavailable
+  // When online status changes (e.g. the selected character logs out), fall back
+  // from the now-unavailable context section to the card and load it.
   useEffect(() => {
-    if (!isOnline && openSection === 'context') {
+    if (!isOnline && openSection === 'context' && selectedGuid) {
       setOpenSection('card');
+      loadSection('card');
     }
   }, [isOnline]);
 
-  // Fetch the open section when selectedGuid changes or retry is triggered
+  // Retry reloads the currently open section.
   useEffect(() => {
-    if (openSection && selectedGuid) {
+    if (retryKey > 0 && openSection && selectedGuid) {
       loadSection(openSection);
     }
-  }, [selectedGuid, token, retryKey]);
+  }, [retryKey]);
 
-  // When reloadKey changes (from WS events), reload context and the currently open section
+  // When reloadKey changes (from WS events), reload context (only for online
+  // characters — context is unavailable offline) and the currently open section.
   useEffect(() => {
     if (!selectedGuid || reloadKey <= 0) return;
-    loadSection('context');
+    if (isOnline) {
+      loadSection('context');
+    }
     if (openSection && openSection !== 'context') {
       loadSection(openSection);
     }
